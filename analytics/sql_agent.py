@@ -23,11 +23,17 @@ class SqlAgent:
     SYSTEM_SQL = (
         "Voce traduz a pergunta do atleta em UMA query SQL para DuckDB. "
         "Responda APENAS com a query SELECT, sem explicacao e sem ponto e virgula. "
-        "Use somente as tabelas e colunas do schema fornecido."
+        "Use somente as tabelas e colunas do schema fornecido. "
+        "Compute valores derivados/legiveis NA PROPRIA query, para o usuario nao "
+        "converter depois. Evite divisao por zero (filtre denominadores > 0). "
+        "Para PACE medio use os totais de dim_activities: "
+        "(total_duration_seconds/60) / (total_distance_meters/1000), nunca a media "
+        "de velocidade instantanea."
     )
     SYSTEM_ANSWER = (
         "Voce e um treinador. Responda a pergunta do atleta em portugues, direto, "
-        "usando SOMENTE os resultados da consulta fornecidos. Nao invente numeros."
+        "usando SOMENTE os resultados da consulta. NAO converta unidades nem faca "
+        "contas — reporte os valores exatamente como vieram na consulta."
     )
 
     def __init__(self, llm: BaseLLMClient, row_limit: int = 200):
