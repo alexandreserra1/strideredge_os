@@ -27,6 +27,19 @@ Qualidade de movimento por exercício · carga muscular estimada via aceleraçã
 
 ---
 
+## Estado atual (checkpoint v0.1.0)
+
+**Feito:** ingestão (`FitParser` + **sync automático Garmin**, idempotente, arquiva `.FIT` bruto) ·
+kernel **Rust** (Kalman/DTW/FFT) · análises de corrida (§6.1 quebra, §6.2 eficiência, §6.3 semáforo,
+zonas de FC, terreno) · **carga/ACWR** (`TrainingLoad`, TRIMP por zona + portão de confiança) ·
+**coach IA local** (Ollama/Qwen, RAG citável + fallback web, personalização, eval anti-alucinação,
+agêntico text-to-SQL) · **API REST** (FastAPI OOP) + **dashboard** Streamlit (cliente HTTP) ·
+**logging estruturado** · conexão reutilizável · **61 testes + CI verde**, tudo versionado.
+
+**Próximo:** HYROX (8 stations — precisa de dado) · agendar o sync (cron) · Fase B (hospedar) com usuários.
+
+---
+
 ## 1. Visão Geral & Arquitetura do Sistema (Monorepo Modular)
 
 Para garantir simplicidade operacional de 1 a 100 usuários, mitigar custos de rede e manter a facilidade de desenvolvimento, o **StriderEdge OS** adota uma abordagem de **Monolito Modular** sob uma estrutura de **Monorepo**. Evitamos microserviços prematuros, mas isolamos rigorosamente os contextos de software para que possam ser destacados como serviços independentes no futuro.
