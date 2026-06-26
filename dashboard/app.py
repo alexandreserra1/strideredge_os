@@ -54,6 +54,21 @@ labels = {f"{a['activity_name']} — {a['activity_id'][:8]}": a["activity_id"] f
 chosen = st.sidebar.selectbox("Atividade", list(labels.keys()))
 activity_id = labels[chosen]
 
+# Prontidão / carga acumulada (ACWR) — nível ATLETA, sempre visível na sidebar.
+_tl = api_get("/training-load")
+if _tl:
+    last = _tl[-1]
+    icon = {"zona segura": "🟢", "atencao": "🟡", "risco de lesao": "🔴",
+            "destreino": "🔵", "aquecendo": "⚪"}.get(last["status"], "⚪")
+    st.sidebar.divider()
+    st.sidebar.metric(
+        "Prontidão (ACWR)",
+        f"{icon} {last['acwr'] if last['acwr'] is not None else '—'}",
+        last["status"],
+    )
+    if last.get("ramp_pct") is not None:
+        st.sidebar.caption(f"Carga semanal: {last['ramp_pct']:+}%")
+
 detail = api_get(f"/activities/{activity_id}")
 tele = pd.DataFrame(api_get(f"/activities/{activity_id}/telemetry"))
 if not tele.empty:

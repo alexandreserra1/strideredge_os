@@ -1,160 +1,155 @@
-"""analytics/training_load.py — carga de treino (TRIMP) e ACWR.
+"""analytics/training_load.py — carga de treino (TRIMP ponderado por zona) e ACWR.
 
-Trilha 1: transforma treinos soltos em metricas de carga e risco de lesao.
-Tudo em SQL (DuckDB) + Python — sem Rust, sem LLM.
+Trilha 1: transforma treinos soltos em métricas de carga e risco de lesão.
 
-Estrategia de performance (pedido do usuario):
-- A varredura pesada da fact_telemetry (milhoes de linhas) acontece UMA vez por
-  treino, em refresh_summary_cache(), com WHERE filtrando ANTES de agregar.
-- As consultas de carga/ACWR leem so cache_workout_summary + dim_activities
-  (1 linha por treino) — nunca reescaneiam a telemetria crua.
-
-Conceitos:
-- CARGA (TRIMP) = duracao_min x FC_media. Proxy do "peso" da sessao.
-- ACWR = carga aguda (media 7 dias) / cronica (media 28 dias).
-  0.8-1.3 = zona segura; >1.5 = risco de lesao; <0.8 = destreino.
+- CARGA (TRIMP de Edwards): soma do tempo em cada zona de FC × peso da zona (zonas
+  altas pesam mais). Usa as zonas REAIS do Garmin (hr_zone_seconds). Fallback p/
+  treinos sem zona: duração × peso estimado da FC média.
+- ACWR = carga aguda (média 7 dias) / crônica (média 28 dias). Com PORTÃO de
+  confiança: nos primeiros ~28 dias (base crônica ainda se formando) o resultado é
+  "aquecendo", não "risco" — evita falso alarme (como o Garmin, que esconde 2 semanas).
+- Regra dos 10%: variação da carga aguda semana-a-semana = sinal precoce de risco.
 """
 
+from datetime import timedelta
+from typing import Optional
+
 from core.database import get_connection
+from core.framework.interfaces import BaseAnalyzer
 
 
-def refresh_summary_cache() -> int:
-    """(Re)calcula os agregados por treino e grava em cache_workout_summary.
+class TrainingLoad:
+    """Carga de treino (TRIMP ponderado por zona) e ACWR (com portão de confiança)."""
 
-    Esta e a UNICA funcao que varre a fact_telemetry. O WHERE filtra nulos ANTES
-    do GROUP BY. Roda na ingestao (ou sob demanda). Retorna o nº de treinos.
-    """
-    con = get_connection()  # read-write: vamos escrever no cache
-    # Reconstroi do zero: evita ORFAOS (atividades ja deletadas) inflarem o cache
-    # e distorcerem agregados/historico. O cache reflete so a telemetria atual.
-    con.execute("DELETE FROM cache_workout_summary")
-    con.execute(
-        """
-        INSERT INTO cache_workout_summary
-            (activity_id, avg_hr, max_hr, avg_cadence)
-        SELECT
-            activity_id,
-            AVG(heart_rate),
-            MAX(heart_rate),
-            AVG(cadence)
-        FROM fact_telemetry
-        WHERE heart_rate IS NOT NULL   -- filtra ANTES de agregar
-        GROUP BY activity_id
-        """
-    )
-    count = con.execute("SELECT COUNT(*) FROM cache_workout_summary").fetchone()[0]
-    return count
+    # Pesos de Edwards por bucket de FC (7 buckets p/ 6 limites do Garmin):
+    # abaixo-Z1, Z1, Z2, Z3, Z4, Z5, acima-Zmax. Zona alta pesa mais.
+    EDWARDS_WEIGHTS = [1, 1, 2, 3, 4, 5, 5]
+    CHRONIC_WINDOW_DAYS = 28
 
+    @staticmethod
+    def activity_trimp(zone_seconds, avg_hr, duration_min, hr_max: int = 198) -> float:
+        """Carga (Edwards) de UM treino. Usa zonas do Garmin; senão estima por FC média."""
+        weights = TrainingLoad.EDWARDS_WEIGHTS
+        if zone_seconds and sum(zone_seconds) > 0:
+            return round(sum((s / 60.0) * weights[min(i, len(weights) - 1)]
+                             for i, s in enumerate(zone_seconds)), 1)
+        if avg_hr and duration_min:
+            frac = avg_hr / hr_max
+            weight = 1 if frac < 0.6 else 2 if frac < 0.7 else 3 if frac < 0.8 else 4 if frac < 0.9 else 5
+            return round(duration_min * weight, 1)
+        return 0.0
 
-def session_loads() -> list[dict]:
-    """Carga (TRIMP) de cada atividade — lendo so tabelas pequenas.
+    @staticmethod
+    def acwr_status(acwr, days_of_history: int) -> str:
+        """Zona do ACWR, com PORTÃO: histórico curto = 'aquecendo' (não confiável)."""
+        if days_of_history < TrainingLoad.CHRONIC_WINDOW_DAYS:
+            return "aquecendo"
+        if acwr is None:
+            return "sem dados"
+        if acwr < 0.8:
+            return "destreino"
+        if acwr <= 1.3:
+            return "zona segura"
+        if acwr <= 1.5:
+            return "atencao"
+        return "risco de lesao"
 
-    Join entre dim_activities (duracao) e cache_workout_summary (FC media). Ambas
-    tem 1 linha por treino, entao o join e trivial — a telemetria crua nao e tocada.
-    """
-    con = get_connection()
-    rows = con.execute(
-        """
-        SELECT
-            a.activity_name,
-            a.primary_type,
-            CAST(a.start_time AS DATE)              AS day,
-            a.total_duration_seconds / 60.0         AS duration_min,
-            c.avg_hr,
-            (a.total_duration_seconds / 60.0) * COALESCE(c.avg_hr, 0) AS trimp_load
-        FROM dim_activities a
-        LEFT JOIN cache_workout_summary c ON c.activity_id = a.activity_id
-        WHERE a.total_duration_seconds IS NOT NULL
-        ORDER BY a.start_time
-        """
-    ).fetchall()
-    cols = ["activity_name", "primary_type", "day", "duration_min", "avg_hr", "trimp_load"]
-    return [dict(zip(cols, r)) for r in rows]
-
-
-def acwr_timeline() -> list[dict]:
-    """Linha do tempo de carga diaria + ACWR (razao aguda/cronica).
-
-    Window function ensinada (= pandas df.rolling('7d').sum()):
-      SUM(load) OVER (ORDER BY day RANGE BETWEEN INTERVAL 6 DAY PRECEDING AND CURRENT ROW)
-      -> para cada dia, soma a carga dos ultimos 7 dias (a "janela desliza").
-
-    ACWR = (soma 7d / 7) / (soma 28d / 28). Dias sem treino contam como carga 0,
-    por isso dividimos pelo nº de dias da janela, nao pela contagem de treinos.
-    """
-    con = get_connection()
-    rows = con.execute(
-        """
-        WITH session AS (                  -- carga de cada treino (so tabelas pequenas)
-            SELECT
-                CAST(a.start_time AS DATE) AS day,
-                (a.total_duration_seconds / 60.0) * COALESCE(c.avg_hr, 0) AS load
-            FROM dim_activities a
-            LEFT JOIN cache_workout_summary c ON c.activity_id = a.activity_id
-            WHERE a.total_duration_seconds IS NOT NULL
-        ),
-        daily AS (                         -- soma por dia (varios treinos no mesmo dia)
-            SELECT day, SUM(load) AS daily_load
-            FROM session GROUP BY day
+    def refresh_cache(self) -> int:
+        """(Re)calcula os agregados por treino em cache_workout_summary (única varredura
+        da fact_telemetry). Reconstrói do zero p/ não acumular órfãos."""
+        con = get_connection()
+        con.execute("DELETE FROM cache_workout_summary")
+        con.execute(
+            """INSERT INTO cache_workout_summary (activity_id, avg_hr, max_hr, avg_cadence)
+               SELECT activity_id, AVG(heart_rate), MAX(heart_rate), AVG(cadence)
+               FROM fact_telemetry WHERE heart_rate IS NOT NULL
+               GROUP BY activity_id"""
         )
-        SELECT
-            day,
-            daily_load,
-            -- janela de 7 dias / 7 = carga AGUDA media diaria
-            SUM(daily_load) OVER (
-                ORDER BY day RANGE BETWEEN INTERVAL 6 DAY PRECEDING AND CURRENT ROW
-            ) / 7.0 AS acute,
-            -- janela de 28 dias / 28 = carga CRONICA media diaria
-            SUM(daily_load) OVER (
-                ORDER BY day RANGE BETWEEN INTERVAL 27 DAY PRECEDING AND CURRENT ROW
-            ) / 28.0 AS chronic
-        FROM daily
-        ORDER BY day
-        """
-    ).fetchall()
+        return con.execute("SELECT COUNT(*) FROM cache_workout_summary").fetchone()[0]
 
-    result = []
-    for day, daily_load, acute, chronic in rows:
-        # ACWR so faz sentido com cronica > 0 (evita divisao por zero).
-        acwr = (acute / chronic) if chronic and chronic > 0 else None
-        result.append({
-            "day": day,
-            "daily_load": daily_load,
-            "acute_7d": acute,
-            "chronic_28d": chronic,
-            "acwr": acwr,
-        })
-    return result
+    def _activity_rows(self) -> list:
+        con = get_connection()
+        return con.execute(
+            """SELECT CAST(a.start_time AS DATE), a.activity_name, a.primary_type,
+                      a.total_duration_seconds / 60.0, c.avg_hr, a.hr_zone_seconds
+               FROM dim_activities a
+               LEFT JOIN cache_workout_summary c ON c.activity_id = a.activity_id
+               WHERE a.total_duration_seconds IS NOT NULL
+               ORDER BY a.start_time"""
+        ).fetchall()
+
+    def session_loads(self) -> list:
+        return [
+            {"activity_name": name, "primary_type": ptype, "day": day,
+             "duration_min": dur, "avg_hr": hr, "trimp_load": self.activity_trimp(zs, hr, dur)}
+            for day, name, ptype, dur, hr, zs in self._activity_rows()
+        ]
+
+    def acwr_timeline(self) -> list:
+        """Carga diária + ACWR (com portão) + regra dos 10% (ramp semanal)."""
+        daily = {}
+        for day, _n, _t, dur, hr, zs in self._activity_rows():
+            daily[day] = daily.get(day, 0.0) + self.activity_trimp(zs, hr, dur)
+        if not daily:
+            return []
+
+        days = sorted(daily)
+        first = days[0]
+        acute_by_day, rows = {}, []
+        for d in days:
+            # janelas por TEMPO; dias sem treino contam carga 0 (por isso /7 e /28)
+            acute = sum(v for k, v in daily.items() if d - timedelta(days=6) <= k <= d) / 7.0
+            chronic = sum(v for k, v in daily.items() if d - timedelta(days=27) <= k <= d) / 28.0
+            acute_by_day[d] = acute
+            acwr = (acute / chronic) if chronic > 0 else None
+            dh = (d - first).days
+            rows.append({
+                "day": d, "daily_load": round(daily[d], 1),
+                "acute_7d": round(acute, 1), "chronic_28d": round(chronic, 1),
+                "acwr": round(acwr, 2) if acwr is not None else None,
+                "days_of_history": dh, "status": self.acwr_status(acwr, dh),
+            })
+        for r in rows:  # regra dos 10%: carga aguda de hoje vs. a de 7 dias atrás
+            prev = acute_by_day.get(r["day"] - timedelta(days=7))
+            r["ramp_pct"] = round(100 * (r["acute_7d"] - prev) / prev, 1) if prev and prev > 0 else None
+        return rows
+
+    def latest(self) -> Optional[dict]:
+        """Estado de carga mais recente (o 'hoje' do atleta)."""
+        tl = self.acwr_timeline()
+        return tl[-1] if tl else None
 
 
-def _acwr_zone(acwr) -> str:
-    """Traduz o ACWR em zona de risco (linguagem de Coach)."""
-    if acwr is None:
-        return "sem dados"
-    if acwr < 0.8:
-        return "destreino"
-    if acwr <= 1.3:
-        return "zona segura"
-    if acwr <= 1.5:
-        return "atencao"
-    return "RISCO DE LESAO"
+class AcwrAnalyzer(BaseAnalyzer):
+    """Estado de carga atual do atleta (ACWR) como contexto pro Coach — polimórfico.
+
+    É métrica de atleta (não do treino), então ignora o activity_id e usa o estado mais
+    recente. Adicionar ao Coach dá a ele a noção de risco de lesão por carga acumulada.
+    """
+
+    label = "Carga e prontidão (ACWR)"
+
+    def analyze(self, activity_id: str) -> dict:
+        return TrainingLoad().latest() or {}
+
+    def to_prompt(self, result: dict) -> Optional[str]:
+        if not result or result.get("acwr") is None:
+            return None
+        ramp = result.get("ramp_pct")
+        ramp_txt = f"; carga semanal {ramp:+}%" if ramp is not None else ""
+        return (f"Carga acumulada atual (ACWR): {result['acwr']} — {result['status']}{ramp_txt}. "
+                f"(ACWR 0.8-1.3 = seguro; >1.5 = risco de lesao.)")
+
+
+# Compatibilidade: callers antigos (conftest, sync) usam a função.
+def refresh_summary_cache() -> int:
+    return TrainingLoad().refresh_cache()
 
 
 if __name__ == "__main__":
-    n = refresh_summary_cache()
-    print(f"cache atualizado: {n} treinos\n")
-    print("=== Carga por treino (TRIMP) ===")
-    for s in session_loads():
-        print(
-            f"{s['day']}  {s['primary_type']:8} {s['activity_name'][:16]:16} "
-            f"dur={s['duration_min']:5.0f}min  fc={(s['avg_hr'] or 0):3.0f}  "
-            f"carga={s['trimp_load']:7.0f}"
-        )
-    print("\n=== Linha do tempo ACWR ===")
-    for r in acwr_timeline():
-        acwr_str = f"{r['acwr']:.2f}" if r["acwr"] is not None else "  - "
-        print(
-            f"{r['day']}  carga_dia={r['daily_load']:7.0f}  "
-            f"aguda={r['acute_7d']:6.0f}  cronica={r['chronic_28d']:6.0f}  "
-            f"ACWR={acwr_str}  [{_acwr_zone(r['acwr'])}]"
-        )
+    tl = TrainingLoad()
+    print(f"cache: {tl.refresh_cache()} treinos\n=== Linha do tempo ACWR ===")
+    for r in tl.acwr_timeline():
+        acwr = f"{r['acwr']:.2f}" if r["acwr"] is not None else "  - "
+        ramp = f"{r['ramp_pct']:+.0f}%" if r["ramp_pct"] is not None else "   -"
+        print(f"{r['day']}  carga={r['daily_load']:6.0f}  ACWR={acwr}  ramp={ramp:>5}  [{r['status']}]")

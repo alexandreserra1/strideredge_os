@@ -105,3 +105,11 @@ def test_ask_endpoint_with_fake_llm():
 
 def test_ask_validation_requires_question():
     assert client.post("/api/v1/ask", json={}).status_code == 422
+
+
+def test_training_load_endpoint():
+    r = client.get("/api/v1/training-load")
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body, list) and body
+    assert {"day", "acwr", "status", "ramp_pct"} <= set(body[0])

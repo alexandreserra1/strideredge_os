@@ -13,8 +13,9 @@ from pydantic import BaseModel
 
 from analytics.coach import Coach
 from analytics.sql_agent import SqlAgent
+from analytics.training_load import TrainingLoad
 from api.services import ActivityService
-from api.deps import get_activity_service, get_coach, get_sql_agent
+from api.deps import get_activity_service, get_coach, get_sql_agent, get_training_load
 
 
 class AskRequest(BaseModel):
@@ -68,6 +69,12 @@ def activity_spectrum(activity_id: str, svc: ActivityService = Depends(get_activ
 def coach_verdict(activity_id: str, coach: Coach = Depends(get_coach)):
     _ensure_uuid(activity_id)
     return {"activity_id": activity_id, "verdict": coach.verdict(activity_id)}
+
+
+@app.get("/api/v1/training-load")
+def training_load(tl: TrainingLoad = Depends(get_training_load)):
+    """Linha do tempo de carga + ACWR (com portão de confiança) — nível atleta."""
+    return tl.acwr_timeline()
 
 
 @app.post("/api/v1/ask")
