@@ -23,5 +23,8 @@ storage/samples/
 # Segredos / credenciais (NUNCA versionar)
 .env
 
+# Logs (gerados)
+*.log
+
 # macOS
 .DS_Store

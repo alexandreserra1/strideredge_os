@@ -13,8 +13,11 @@ import os
 import zipfile
 from pathlib import Path
 
+from uuid import uuid4
+
 from core.database import PROJECT_ROOT, get_connection
 from core.ingest import ingest_fit_file
+from core.logging import Logger
 
 # Diretório onde o garth cacheia o token de sessão (login uma vez, reusa depois).
 TOKEN_DIR = str(Path.home() / ".garminconnect")
@@ -42,6 +45,7 @@ class GarminSync:
         self.user_id = user_id
         self.device_id = device_id
         self.ingest = ingest
+        self.log = Logger("garmin_sync")
 
     def existing_garmin_ids(self) -> set:
         con = get_connection()
@@ -77,14 +81,21 @@ class GarminSync:
         existing = self.existing_garmin_ids()
         activities = self.client.get_activities_by_date(start, end)
         new = [a for a in activities if a["activityId"] not in existing]
+        log = self.log.bind(trace_id=uuid4().hex[:8])  # acompanha todo o sync
+        log.info("sync_started", start=start, end=end, total=len(activities), new=len(new))
         imported, errors = 0, []
         for a in new:
+            gid = a["activityId"]
             try:
-                res = self._process_activity(a["activityId"], a.get("activityName", "Atividade Garmin"))
+                res = self._process_activity(gid, a.get("activityName", "Atividade Garmin"))
                 if res.get("status") == "imported":
                     imported += 1
+                    log.info("activity_imported", garmin_id=gid)
             except Exception as e:  # uma atividade ruim nao aborta as demais
-                errors.append({"activityId": a["activityId"], "erro": str(e).splitlines()[0]})
+                erro = str(e).splitlines()[0]
+                errors.append({"activityId": gid, "erro": erro})
+                log.error("activity_failed", garmin_id=gid, erro=erro)
+        log.info("sync_done", imported=imported, errors=len(errors))
         return {"total": len(activities), "new": len(new), "imported": imported, "errors": errors}
 
 

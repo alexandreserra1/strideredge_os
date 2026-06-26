@@ -9,7 +9,10 @@ import uuid
 from typing import Optional
 
 from core.database import get_connection
+from core.logging import Logger
 from core.parsers.fit_parser import FitParser
+
+log = Logger("ingest")
 
 
 def _derive_primary_type(sport: Optional[str], sub_sport: Optional[str]) -> str:
@@ -59,6 +62,7 @@ def ingest_fit_file(
         [garmin_activity_id],
     ).fetchone()
     if existing is not None:
+        log.info("activity_skipped", garmin_id=garmin_activity_id)
         return {"status": "skipped", "activity_id": str(existing[0]), "records": 0}
 
     # 2) Parseia o arquivo.
@@ -107,6 +111,8 @@ def ingest_fit_file(
             ],
         )
 
+    log.info("activity_imported", garmin_id=garmin_activity_id,
+             primary_type=primary_type, records=df.height)
     return {
         "status": "imported",
         "activity_id": activity_id,
