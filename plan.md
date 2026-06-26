@@ -545,6 +545,24 @@ novo produtor de dados na ponta.
 
 ---
 
+## 11. Estratégia de Testes
+
+**Agora (suíte hermética, roda no CI sem dados pessoais):**
+- **Unit** — mecânica do RAG, guarda-corpos do SQL, métricas de eval (mockado, banco temp).
+- **Integração** — API (TestClient) e analyzers sobre um DuckDB **sintético** semeado pela conftest.
+- **Avaliação (RAG/coach)** — relevância e fidelidade com embeddings/LLM reais (gated por Ollama).
+- **E2E / smoke** — cliente HTTP vs. servidor up (gated; vira smoke pós-deploy na Fase B).
+- **Segurança / injeção** — o text-to-SQL é a superfície de ataque nº 1; `is_safe` barra
+  SQL destrutivo, com testes confirmando recusa + dados intactos.
+- **CI** — GitHub Actions: build do kernel Rust + `pytest` (Ollama/E2E pulam).
+
+**Fase B (quando hospedar):**
+- **Testes de configuração** (secrets/URLs/env de deploy) — base já existe (`STRIDEREDGE_DB`).
+- **Smoke em produção** — subconjunto E2E pós-deploy (`/health`, endpoints chave).
+- **Penetração completa** — auth, rede, rate-limit (além da injeção SQL já coberta).
+
+---
+
 ## Nome e Significado do Projeto
 
 **Nome Oficial:** StriderEdge OS
