@@ -26,6 +26,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 dashboard = ["streamlit", "plotly", "folium", "streamlit-folium", "pandas"]
+sync = ["garminconnect"]  # automacao da ingestao (login + download .FIT da Garmin)
 
 [tool.maturin]
 # Onde esta o manifesto do crate Rust dentro do monorepo.
