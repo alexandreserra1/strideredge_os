@@ -1,0 +1,15 @@
+[package]
+name = "rust_kernel"
+version = "0.1.0"
+edition = "2021"
+
+# Compila como biblioteca dinâmica C-compatível: é o .so/.pyd que o Python importa.
+[lib]
+name = "rust_kernel"
+crate-type = ["cdylib"]
+
+[dependencies]
+# abi3-py39: gera um binário estável compatível com Python 3.9+ (não recompila por versão).
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+# FFT performática para análise espectral da cadência (fft.rs).
+rustfft = "6"

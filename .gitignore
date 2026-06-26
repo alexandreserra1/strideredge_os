@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Rust (artefatos de build)
+target/
+rust_kernel/target/
+
+# Extensão compilada (gerada pelo maturin)
+*.so
+
+# Bancos DuckDB (gerados — não versionar)
+storage/*.db
+
+# Dados pessoais de telemetria (.FIT) — privacidade / LGPD
+*.fit
+*.FIT
+storage/samples/
+
+# macOS
+.DS_Store

@@ -1,0 +1,27 @@
+# pyproject.toml — configuracao do projeto Python E do build da extensao Rust.
+
+[build-system]
+# Quem "constroi" o pacote: o maturin. Ele compila o Rust e gera o .so/.pyd
+# que o Python importa como um modulo normal.
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "strideredge-os"
+version = "0.1.0"
+description = "Ecossistema de biotelemetria e analytics esportivo de alta performance."
+requires-python = ">=3.9"
+# Dependencias Python da aplicacao (NAO as do Rust — essas ficam no Cargo.toml).
+dependencies = [
+    "duckdb",      # banco analitico embutido (um unico arquivo .db)
+    "polars",      # dataframes velozes para series temporais
+    "fastapi",     # framework da API REST
+    "uvicorn",     # servidor que roda a API
+    "structlog",   # logs estruturados em JSON
+]
+
+[tool.maturin]
+# Onde esta o manifesto do crate Rust dentro do monorepo.
+manifest-path = "rust_kernel/Cargo.toml"
+# Usa a ABI estavel do CPython (abi3): um unico binario serve para 3.9+.
+features = ["pyo3/abi3-py39"]
