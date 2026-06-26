@@ -14,11 +14,23 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from core.database import get_connection
+from core.database import PROJECT_ROOT, get_connection
 from core.ingest import ingest_fit_file
 
 # Diretório onde o garth cacheia o token de sessão (login uma vez, reusa depois).
 TOKEN_DIR = str(Path.home() / ".garminconnect")
+
+
+def _load_dotenv() -> None:
+    """Carrega .env (KEY=VALUE) pro ambiente, sem dependência externa. Gitignored."""
+    env = PROJECT_ROOT / ".env"
+    if not env.exists():
+        return
+    for line in env.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"\''))
 
 
 class GarminSync:
@@ -83,6 +95,7 @@ def connect_garmin(email: str = None, password: str = None):
     """
     from garminconnect import Garmin
 
+    _load_dotenv()
     email = email or os.environ.get("GARMIN_EMAIL")
     password = password or os.environ.get("GARMIN_PASSWORD")
     try:

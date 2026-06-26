@@ -20,5 +20,8 @@ storage/*.db
 *.FIT
 storage/samples/
 
+# Segredos / credenciais (NUNCA versionar)
+.env
+
 # macOS
 .DS_Store
