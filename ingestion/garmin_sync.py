@@ -79,12 +79,15 @@ class GarminSync:
         existing = self.existing_garmin_ids()
         activities = self.client.get_activities_by_date(start, end)
         new = [a for a in activities if a["activityId"] not in existing]
-        imported = 0
+        imported, errors = 0, []
         for a in new:
-            res = self._process_activity(a["activityId"], a.get("activityName", "Atividade Garmin"))
-            if res.get("status") == "imported":
-                imported += 1
-        return {"total": len(activities), "new": len(new), "imported": imported}
+            try:
+                res = self._process_activity(a["activityId"], a.get("activityName", "Atividade Garmin"))
+                if res.get("status") == "imported":
+                    imported += 1
+            except Exception as e:  # uma atividade ruim nao aborta as demais
+                errors.append({"activityId": a["activityId"], "erro": str(e).splitlines()[0]})
+        return {"total": len(activities), "new": len(new), "imported": imported, "errors": errors}
 
 
 def connect_garmin(email: str = None, password: str = None):
@@ -119,4 +122,9 @@ if __name__ == "__main__":
     print(f"Sincronizando atividades de {start} a {end}...")
     client = connect_garmin()  # usa GARMIN_EMAIL / GARMIN_PASSWORD do ambiente
     sync = GarminSync(client=client, user_id=SEED_USER_ID, device_id=SEED_DEVICE_ID)
-    print(sync.sync(start, end))
+    result = sync.sync(start, end)
+    print(result)
+    if result["imported"]:
+        from analytics.training_load import refresh_summary_cache
+        refresh_summary_cache()  # atualiza agregados pros novos treinos
+        print("Cache de resumo atualizado.")

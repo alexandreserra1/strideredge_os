@@ -70,7 +70,10 @@ class FitParser(BaseTelemetryParser):
                 "stance_time_ms": rec.get("stance_time"),
             })
 
-        return pl.DataFrame(rows)
+        # infer_schema_length=None: infere o tipo olhando TODAS as linhas. Sem isso,
+        # uma coluna int/None no inicio que vira float depois (ex: oscilacao 0.215)
+        # quebra a inferencia baseada nas primeiras linhas.
+        return pl.DataFrame(rows, infer_schema_length=None)
 
     def session_metadata(self) -> dict:
         """Le a mensagem de sessao (resumo da atividade calculado pelo relogio).
