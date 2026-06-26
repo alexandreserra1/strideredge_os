@@ -10,7 +10,6 @@ função de ingestão. O login real (garth, com cache de token) fica no factory.
 
 import io
 import os
-import tempfile
 import zipfile
 from pathlib import Path
 
@@ -19,6 +18,8 @@ from core.ingest import ingest_fit_file
 
 # Diretório onde o garth cacheia o token de sessão (login uma vez, reusa depois).
 TOKEN_DIR = str(Path.home() / ".garminconnect")
+# Arquivo dos .FIT brutos (fonte da verdade — permite re-parsear sem re-baixar).
+RAW_DIR = PROJECT_ROOT / "storage" / "raw"
 
 
 def _load_dotenv() -> None:
@@ -49,30 +50,27 @@ class GarminSync:
         ).fetchall()
         return {r[0] for r in rows}
 
-    def _extract_fit(self, zip_bytes: bytes) -> str:
-        """O download ORIGINAL vem como ZIP com o .FIT dentro — extrai pra um temp."""
+    def _save_fit(self, zip_bytes: bytes, garmin_id: int) -> str:
+        """ORIGINAL vem como ZIP com o .FIT dentro — extrai e ARQUIVA em storage/raw/."""
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             fit_name = next(n for n in zf.namelist() if n.lower().endswith(".fit"))
             data = zf.read(fit_name)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".fit")
-        tmp.write(data)
-        tmp.close()
-        return tmp.name
+        RAW_DIR.mkdir(parents=True, exist_ok=True)
+        path = RAW_DIR / f"{garmin_id}.fit"
+        path.write_bytes(data)  # fonte da verdade preservada (gitignored)
+        return str(path)
 
     def _process_activity(self, garmin_id: int, name: str) -> dict:
-        """Baixa o .FIT ORIGINAL e ingere. (Não testado em unit — usa rede/garmin.)"""
+        """Baixa o .FIT ORIGINAL, arquiva e ingere. (Não testado em unit — usa rede.)"""
         from garminconnect import Garmin
         zip_bytes = self.client.download_activity(
             garmin_id, dl_fmt=Garmin.ActivityDownloadFormat.ORIGINAL
         )
-        fit_path = self._extract_fit(zip_bytes)
-        try:
-            return self.ingest(
-                file_path=fit_path, garmin_activity_id=garmin_id,
-                user_id=self.user_id, device_id=self.device_id, activity_name=name,
-            )
-        finally:
-            os.unlink(fit_path)
+        fit_path = self._save_fit(zip_bytes, garmin_id)
+        return self.ingest(
+            file_path=fit_path, garmin_activity_id=garmin_id,
+            user_id=self.user_id, device_id=self.device_id, activity_name=name,
+        )
 
     def sync(self, start: str, end: str) -> dict:
         """Sincroniza atividades no intervalo [start, end] (YYYY-MM-DD)."""
