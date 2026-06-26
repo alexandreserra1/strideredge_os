@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install (build do kernel Rust + deps)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev]"
+
+      # Os testes Ollama-gated e E2E pulam sozinhos (sem servidor/LLM no CI).
+      # O banco é semeado em memória pela conftest (hermético) — não precisa de .FIT.
+      - name: Testes
+        run: pytest -q

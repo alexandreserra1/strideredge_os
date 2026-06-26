@@ -8,6 +8,7 @@ Concorrencia entre varios processos (ex: dashboard + API ao mesmo tempo) e um
 tema de Fase 2 (hospedado) — hoje o app roda em um processo por vez.
 """
 
+import os
 from pathlib import Path
 import duckdb
 
@@ -20,6 +21,11 @@ MIGRATIONS_DIR = PROJECT_ROOT / "db" / "migrations"
 _connection = None
 
 
+def _resolve_db_path() -> str:
+    """Caminho do banco. STRIDEREDGE_DB permite os testes usarem um banco temporario."""
+    return os.environ.get("STRIDEREDGE_DB", str(DB_PATH))
+
+
 def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Devolve a conexao reutilizavel (cria na 1a vez). NAO feche — e compartilhada.
 
@@ -28,8 +34,9 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """
     global _connection
     if _connection is None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)  # garante a pasta storage/
-        _connection = duckdb.connect(str(DB_PATH))
+        path = _resolve_db_path()
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        _connection = duckdb.connect(path)
     return _connection
 
 
