@@ -69,6 +69,21 @@ if _tl:
     if last.get("ramp_pct") is not None:
         st.sidebar.caption(f"Carga semanal: {last['ramp_pct']:+}%")
 
+# Fitness / previsão de prova (Riegel) — nível ATLETA, abaixo da prontidão.
+_fit = api_get("/fitness")
+if _fit and _fit.get("predictions"):
+    st.sidebar.divider()
+    trend = _fit.get("fitness", {}).get("trend", "")
+    trend_icon = {"melhorando": "📈", "caindo": "📉", "estavel": "➡️"}.get(trend, "")
+    st.sidebar.markdown(f"**Previsão de prova** {trend_icon}")
+    for p in _fit["predictions"]:
+        m, s = divmod(p["time_s"], 60)
+        h, m = divmod(m, 60)
+        tempo = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+        st.sidebar.caption(f"{p['race']}: **{tempo}**  ({p['pace_s_km']/60:.2f} min/km)")
+    if trend and trend != "dados insuficientes":
+        st.sidebar.caption(f"Fitness: {trend}")
+
 detail = api_get(f"/activities/{activity_id}")
 tele = pd.DataFrame(api_get(f"/activities/{activity_id}/telemetry"))
 if not tele.empty:

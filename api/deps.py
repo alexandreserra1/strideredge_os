@@ -6,6 +6,7 @@ app.dependency_overrides para injetar fakes (ex: LLM falso) sem tocar o Ollama.
 
 from api.services import ActivityService
 from analytics.coach import Coach, OllamaClient
+from analytics.fitness import RunningFitness
 from analytics.sql_agent import SqlAgent
 from analytics.training_load import TrainingLoad
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
@@ -18,6 +19,10 @@ def get_activity_service() -> ActivityService:
 
 def get_training_load() -> TrainingLoad:
     return TrainingLoad()
+
+
+def get_running_fitness() -> RunningFitness:
+    return RunningFitness()
 
 
 def get_sql_agent() -> SqlAgent:

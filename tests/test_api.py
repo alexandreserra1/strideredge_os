@@ -113,3 +113,11 @@ def test_training_load_endpoint():
     body = r.json()
     assert isinstance(body, list) and body
     assert {"day", "acwr", "status", "ramp_pct"} <= set(body[0])
+
+
+def test_fitness_endpoint():
+    r = client.get("/api/v1/fitness")
+    assert r.status_code == 200
+    body = r.json()
+    assert "predictions" in body and "fitness" in body
+    assert {p["race"] for p in body["predictions"]} >= {"5k", "10k"}

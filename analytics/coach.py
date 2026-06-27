@@ -20,6 +20,7 @@ from analytics.run_analysis import (
 from analytics.intensity import HrZoneAnalyzer
 from analytics.athlete import AthleteHistoryAnalyzer
 from analytics.training_load import AcwrAnalyzer
+from analytics.fitness import FitnessAnalyzer
 from rag.knowledge_base import KnowledgeBase
 
 
@@ -55,6 +56,7 @@ DEFAULT_ANALYZERS = [
     TerrainContextAnalyzer(), CadenceReferenceAnalyzer(), HrZoneAnalyzer(),
     AthleteHistoryAnalyzer(),   # personalização: compara com o histórico do atleta
     AcwrAnalyzer(),             # carga acumulada / risco de lesão (ACWR)
+    FitnessAnalyzer(),          # previsão de prova (Riegel) + tendência de fitness
 ]
 
 

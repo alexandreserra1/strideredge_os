@@ -32,7 +32,7 @@ def _seed_run(con, counter, activity_id, garmin_id, name, with_gps, cad_base, hr
             total_distance_meters, total_duration_seconds, primary_type,
             hr_zone_boundaries, hr_zone_seconds)
            VALUES (?, ?, ?, ?, ?, ?, 'RUN', ?, ?)""",
-        [activity_id, garmin_id, name, start, n * 3.0, float(n), boundaries, seconds],
+        [activity_id, garmin_id, name, start, 5000.0, 1500.0, boundaries, seconds],
     )
     for i in range(n):
         # cadência cai ~10% no último terço (gera ponto de quebra); FC sobe

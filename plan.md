@@ -32,9 +32,10 @@ Qualidade de movimento por exercício · carga muscular estimada via aceleraçã
 **Feito:** ingestão (`FitParser` + **sync automático Garmin**, idempotente, arquiva `.FIT` bruto) ·
 kernel **Rust** (Kalman/DTW/FFT) · análises de corrida (§6.1 quebra, §6.2 eficiência, §6.3 semáforo,
 zonas de FC, terreno) · **carga/ACWR** (`TrainingLoad`, TRIMP por zona + portão de confiança) ·
-**coach IA local** (Ollama/Qwen, RAG citável + fallback web, personalização, eval anti-alucinação,
-agêntico text-to-SQL) · **API REST** (FastAPI OOP) + **dashboard** Streamlit (cliente HTTP) ·
-**logging estruturado** · conexão reutilizável · **61 testes + CI verde**, tudo versionado.
+**fitness/prova** (`RunningFitness`: preditor de Riegel 5k→42k + tendência de eficiência velocidade÷FC
+— fecha a Trilha 1) · **coach IA local** (Ollama/Qwen, RAG citável + fallback web, personalização,
+eval anti-alucinação, agêntico text-to-SQL) · **API REST** (FastAPI OOP) + **dashboard** Streamlit
+(cliente HTTP) · **logging estruturado** · conexão reutilizável · **67 testes + CI verde**, tudo versionado.
 
 **Próximo:** HYROX (8 stations — precisa de dado) · agendar o sync (cron) · Fase B (hospedar) com usuários.
 
