@@ -137,6 +137,14 @@ with tab_geral:
 
 # --- Esforço ---
 with tab_esforco:
+    dur = detail.get("durability", {})
+    if dur.get("applicable"):
+        icon = {"durabilidade alta": "🟢", "durabilidade boa": "🟡"}.get(dur["label"], "🔴")
+        d1, d2 = st.columns(2)
+        d1.metric("Durabilidade (decoupling Pa:FC)", f"{icon} {dur['decoupling_pct']}%", dur["label"])
+        d2.caption(f"Eficiência 1ª→2ª metade: {dur['eff_first']} → {dur['eff_second']}  "
+                   f"(FC {dur['hr_first']}→{dur['hr_second']})")
+
     st.subheader("Frequência cardíaca")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=tele["timestamp"], y=tele["heart_rate"], mode="lines",

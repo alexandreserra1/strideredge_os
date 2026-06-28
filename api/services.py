@@ -7,7 +7,7 @@ COMPÕE os analyzers (polimorfismo) — adicionar análise nova não muda os end
 from typing import Optional
 
 from core.database import get_connection
-from analytics.run_analysis import BreakingPointAnalyzer, EfficiencyAnalyzer
+from analytics.run_analysis import BreakingPointAnalyzer, EfficiencyAnalyzer, DurabilityAnalyzer
 from analytics.intensity import HrZoneAnalyzer
 from analytics.processors import smooth_track, cadence_analysis
 
@@ -18,6 +18,7 @@ class ActivityService:
     def __init__(self):
         self.breaking = BreakingPointAnalyzer()
         self.efficiency = EfficiencyAnalyzer()
+        self.durability = DurabilityAnalyzer()
         self.zones = HrZoneAnalyzer()
 
     def list(self) -> list:
@@ -55,6 +56,7 @@ class ActivityService:
             "avg_hr": avg_hr, "avg_cadence": avg_cad,
             "breaking_point": self.breaking.analyze(activity_id),
             "efficiency": self.efficiency.analyze(activity_id),
+            "durability": self.durability.analyze(activity_id),
             "hr_zones": self.zones.analyze(activity_id),
         }
 

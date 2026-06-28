@@ -24,6 +24,16 @@ from core.framework.interfaces import BaseAnalyzer
 CADENCE_PROTECTIVE_MIN = 166   # abaixo: risco tibial 6-7x maior
 CADENCE_PROTECTIVE_GOOD = 178  # >= : faixa mais protetora
 CADENCE_REF_SOURCE = "Revisao sistematica de cadencia e prevencao de lesao (PMC12440572)"
+DECOUPLING_SOURCE = "Revisao sobre deriva cardiaca / decoupling aerobico (PMC12271085)"
+
+
+def metabolic_efficiency(speed_ms: float, heart_rate: float) -> float:
+    """Eficiencia metabolica = velocidade por batimento (x100 p/ escala).
+
+    DEFINICAO UNICA da metrica, reusada por durabilidade (abaixo) e por RunningFitness.
+    O EfficiencyAnalyzer calcula a MESMA conta em SQL (por terreno) — mesma formula.
+    """
+    return speed_ms / heart_rate * 100
 
 
 def breaking_point(activity_id: str, cadence_drop: float = 0.05) -> dict:
@@ -92,7 +102,7 @@ def efficiency_by_terrain(activity_id: str, grade_threshold: float = 0.01) -> di
         """
         WITH pts AS (
             SELECT
-                (speed_ms / heart_rate) * 100 AS efficiency,
+                (speed_ms / heart_rate) * 100 AS efficiency,  -- = metabolic_efficiency() em SQL
                 altitude   - LAG(altitude, 10)   OVER (ORDER BY timestamp) AS alt_delta,
                 distance_m - LAG(distance_m, 10) OVER (ORDER BY timestamp) AS dist_delta
             FROM fact_telemetry
@@ -126,6 +136,41 @@ def efficiency_by_terrain(activity_id: str, grade_threshold: float = 0.01) -> di
         drop = round(100 * (1 - up / flat), 1)
 
     return {"activity_id": activity_id, "by_terrain": by_terrain, "uphill_efficiency_drop_pct": drop}
+
+
+def aerobic_decoupling(activity_id: str, min_points: int = 60) -> dict:
+    """Durabilidade aerobica: a MESMA eficiencia (velocidade/FC) na 1a vs 2a metade da
+    corrida. Desacoplamento >10% = 'racha' sob fadiga (deriva cardiaca). So onde ha
+    velocidade continua (corrida/esteira) — força/HIIT sem speed caem fora sozinhos.
+
+    SQL ensinado — NTILE(2) OVER (ORDER BY timestamp): divide as leituras em 2 baldes
+    iguais por tempo (1a/2a metade), sem achar o ponto medio na mao.
+    """
+    con = get_connection()
+    rows = con.execute(
+        """
+        WITH pts AS (
+            SELECT speed_ms, heart_rate, NTILE(2) OVER (ORDER BY timestamp) AS half
+            FROM fact_telemetry
+            WHERE activity_id = ? AND heart_rate > 0 AND speed_ms > 0
+        )
+        SELECT half, AVG(speed_ms), AVG(heart_rate), COUNT(*)
+        FROM pts GROUP BY half ORDER BY half
+        """,
+        [activity_id],
+    ).fetchall()
+    if len(rows) < 2 or sum(r[3] for r in rows) < min_points:
+        return {"applicable": False}
+
+    (_, sp1, hr1, _), (_, sp2, hr2, _) = rows
+    eff1, eff2 = metabolic_efficiency(sp1, hr1), metabolic_efficiency(sp2, hr2)
+    pct = round((eff1 - eff2) / eff1 * 100, 1)
+    label = "durabilidade alta" if pct <= 5 else "durabilidade boa" if pct <= 10 else "racha sob fadiga"
+    return {
+        "applicable": True, "decoupling_pct": pct, "label": label,
+        "eff_first": round(eff1, 2), "eff_second": round(eff2, 2),
+        "hr_first": round(hr1), "hr_second": round(hr2),
+    }
 
 
 class BreakingPointAnalyzer(BaseAnalyzer):
@@ -165,6 +210,25 @@ class EfficiencyAnalyzer(BaseAnalyzer):
         if drop is not None:
             linha += f" Queda na subida: {drop}%."
         return linha
+
+
+class DurabilityAnalyzer(BaseAnalyzer):
+    """Durabilidade aerobica (decoupling Pa:FC) — 'segura o ritmo sob fadiga?'. Modulo Corrida."""
+
+    label = "Durabilidade aerobica"
+
+    def analyze(self, activity_id: str) -> dict:
+        return aerobic_decoupling(activity_id)
+
+    def to_prompt(self, result: dict) -> Optional[str]:
+        if not result.get("applicable"):
+            return None
+        pct = result["decoupling_pct"]
+        como = ("Para melhorar: volume em Z2 (base aerobica) e longoes."
+                if pct > 10 else "Boa resistencia a fadiga aerobica.")
+        return (f"CONCLUSAO (durabilidade): desacoplamento aerobico de {pct}% entre 1a e 2a metade "
+                f"(FC media {result['hr_first']}->{result['hr_second']}) — {result['label']}. {como} "
+                f"(FONTE: {DECOUPLING_SOURCE})")
 
 
 class TerrainContextAnalyzer(BaseAnalyzer):

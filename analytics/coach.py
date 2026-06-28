@@ -15,7 +15,7 @@ from core.database import get_connection
 from core.framework.interfaces import BaseLLMClient, BaseAnalyzer, BaseRetriever
 from analytics.run_analysis import (
     BreakingPointAnalyzer, EfficiencyAnalyzer, TerrainContextAnalyzer,
-    CadenceReferenceAnalyzer,
+    CadenceReferenceAnalyzer, DurabilityAnalyzer,
 )
 from analytics.intensity import HrZoneAnalyzer
 from analytics.athlete import AthleteHistoryAnalyzer
@@ -52,7 +52,7 @@ class OllamaClient(BaseLLMClient):
 # Lista padrao de analises que entram no veredito. Para incluir uma nova,
 # basta adicionar outro BaseAnalyzer aqui — o Coach nao muda.
 DEFAULT_ANALYZERS = [
-    BreakingPointAnalyzer(), EfficiencyAnalyzer(),
+    BreakingPointAnalyzer(), EfficiencyAnalyzer(), DurabilityAnalyzer(),
     TerrainContextAnalyzer(), CadenceReferenceAnalyzer(), HrZoneAnalyzer(),
     AthleteHistoryAnalyzer(),   # personalização: compara com o histórico do atleta
     AcwrAnalyzer(),             # carga acumulada / risco de lesão (ACWR)

@@ -50,6 +50,7 @@ def test_activity_detail_ok():
     body = r.json()
     assert body["activity_id"] == aid
     assert "breaking_point" in body and "hr_zones" in body and "efficiency" in body
+    assert "durability" in body
 
 
 def test_activity_detail_bad_uuid_returns_404():

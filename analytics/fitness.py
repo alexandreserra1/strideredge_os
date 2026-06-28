@@ -17,6 +17,7 @@ from typing import Optional
 
 from core.database import get_connection
 from core.framework.interfaces import BaseAnalyzer
+from analytics.run_analysis import metabolic_efficiency
 
 # Distâncias-padrão de prova (km) — chave do dicionário é o rótulo.
 STANDARD_RACES = {"5k": 5.0, "10k": 10.0, "21k (meia)": 21.0975, "42k (maratona)": 42.195}
@@ -95,8 +96,7 @@ class RunningFitness:
         for day, name, dist, dur, hr in self._run_rows():
             if not hr or hr <= 0:
                 continue
-            speed = dist / dur                      # m/s
-            efficiency = round(speed / hr * 100, 2)  # m/s por batimento (×100 p/ escala)
+            efficiency = round(metabolic_efficiency(dist / dur, hr), 2)  # velocidade por batimento
             points.append({"day": day, "activity_name": name, "efficiency": efficiency})
         trend = self.trend_label([p["efficiency"] for p in points])
         return {"trend": trend, "points": points}
