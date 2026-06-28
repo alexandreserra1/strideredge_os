@@ -69,4 +69,5 @@ Os testes E2E (cliente HTTP) rodam com a API/Ollama no ar: `pytest tests/test_e2
 
 - [`constitution.md`](constitution.md) — princípios não-negociáveis (critério de desempate).
 - [`plan.md`](plan.md) — arquitetura, visão de produto e roadmap.
+- [`device-spec.md`](device-spec.md) — spec do wearable próprio (Fase 3: firmware, IMU, BLE).
 - [`CLAUDE.md`](CLAUDE.md) — contexto pro Claude Code.

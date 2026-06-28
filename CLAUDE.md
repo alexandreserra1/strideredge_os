@@ -9,6 +9,8 @@ Ecossistema local de biotelemetria e analytics esportivo (corrida / Hyrox): inge
   decisão técnica (Rust só p/ compute pesado, dado validado, conclusão-pronta pro LLM,
   sem overengineering, conexão reutilizável, fontes citáveis, etc.). Respeite-os sempre.
 - **`plan.md`** — blueprint de arquitetura e fatias de construção.
+- **`device-spec.md`** — spec do wearable próprio (**Fase 3**: firmware, IMU, BLE). Ler só ao
+  trabalhar em hardware/IMU; não é o dia a dia.
 
 ## Stack
 

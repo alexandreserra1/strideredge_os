@@ -452,6 +452,10 @@ Quando hospedado, a coleta de dados de saúde do software é centralizada usando
 
 O hardware é Fase 3 (jornada longa). Toda decisão de software hoje deve mantê-lo viável — mas não se constrói nada de hardware ainda. Enquanto isso, os arquivos `.FIT` são a fonte primária de dados.
 
+> 📄 **Spec completa de engenharia do device** (peças, firmware Rust, schema IMU, BLE/GATT, fluxo de
+> dados, dataset rotulado, módulos HYROX/CrossFit): ver **[`device-spec.md`](device-spec.md)**.
+> Resumo abaixo.
+
 ### 8.1 Referência real: Amazfit Helio Strap
 
 Puck sem tela (~20g) com **PPG (5 fotodiodos + 2 LEDs) + acelerômetro + giroscópio + temperatura**, **BLE 5.2**, ~10 dias de bateria, 5ATM, **sem assinatura**. Placement no **braço (perto do coração)** — mais estável que o pulso em força/HYROX/corrida.
