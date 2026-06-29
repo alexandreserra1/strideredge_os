@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
+from analytics.coach_eval import GOLDEN_RETRIEVAL, OFFTOPIC_QUERY
 
 
 def _ollama_up() -> bool:
@@ -22,15 +23,8 @@ def _ollama_up() -> bool:
 pytestmark = pytest.mark.skipif(not _ollama_up(), reason="Ollama não está rodando")
 
 
-# (pergunta do atleta, trecho esperado na fonte) — palavras diferentes do corpus de propósito.
-CASES = [
-    ("minha passada esta lenta, risco de me machucar?", "PMC12440572"),   # cadência
-    ("aumentei muito a carga essa semana, perigo?", "PMC7047972"),         # ACWR
-    ("como distribuir intensidade dos treinos?", "PMC11679080"),           # polarizado
-    ("estou quicando muito ao correr, gasto energia?", "PMC11127892"),     # economia/oscilação
-    ("minha FC sobe sozinha no fim do treino longo", "PMC12271085"),       # deriva cardíaca
-    ("quanto dormir para recuperar melhor?", "PMC10354314"),               # sono/recuperação
-]
+# Casos-ouro centralizados em analytics.coach_eval (mesma fonte do Benchmark — sem duplicar).
+CASES = GOLDEN_RETRIEVAL
 
 
 @pytest.fixture(scope="module")
@@ -48,4 +42,4 @@ def test_retrieval_relevance(kb, query, expected_source):
 
 def test_offtopic_returns_nothing(kb):
     # pergunta sem relação com o corpus deve ficar abaixo do limiar
-    assert kb.retrieve("qual a melhor receita de panqueca?", k=2) == []
+    assert kb.retrieve(OFFTOPIC_QUERY, k=2) == []

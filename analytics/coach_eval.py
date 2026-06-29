@@ -50,3 +50,77 @@ class CoachEvaluator:
             "citation_validity": self.citation_validity(verdict, prompt),
             "verdict": verdict,
         }
+
+
+# Casos-ouro de retrieval (pergunta do atleta -> fonte esperada). FONTE UNICA:
+# o test_rag_eval.py importa daqui (antes estavam duplicados no teste).
+GOLDEN_RETRIEVAL = [
+    ("minha passada esta lenta, risco de me machucar?", "PMC12440572"),   # cadencia
+    ("aumentei muito a carga essa semana, perigo?", "PMC7047972"),         # ACWR
+    ("como distribuir intensidade dos treinos?", "PMC11679080"),           # polarizado
+    ("estou quicando muito ao correr, gasto energia?", "PMC11127892"),     # economia/oscilacao
+    ("minha FC sobe sozinha no fim do treino longo", "PMC12271085"),       # deriva cardiaca
+    ("quanto dormir para recuperar melhor?", "PMC10354314"),               # sono/recuperacao
+]
+OFFTOPIC_QUERY = "qual a melhor receita de panqueca?"
+
+
+class Benchmark:
+    """Boletim de qualidade (coach + RAG). 'Eval-driven': mede ANTES de mexer no prompt/corpus.
+
+    Reusa o CoachEvaluator (fidelidade) e o proprio retriever do coach (retrieval). Roda com
+    Ollama de pe — e a ferramenta de medicao para iterar prompt/RAG sem achismo.
+    """
+
+    def __init__(self, coach):
+        self.coach = coach
+        self.evaluator = CoachEvaluator(coach)
+
+    def retrieval_report(self, k: int = 2) -> dict:
+        """Acerto dos casos-ouro + rejeicao de off-topic (o RAG 'pega' o chunk certo?)."""
+        kb = self.coach.knowledge
+        hits, misses = 0, []
+        for q, expected in GOLDEN_RETRIEVAL:
+            fontes = " ".join(h["source"] for h in kb.retrieve(q, k=k))
+            if expected in fontes:
+                hits += 1
+            else:
+                misses.append({"query": q, "expected": expected, "got": fontes or "—"})
+        return {
+            "hit_rate": round(hits / len(GOLDEN_RETRIEVAL), 3),
+            "hits": hits, "total": len(GOLDEN_RETRIEVAL),
+            "offtopic_rejected": kb.retrieve(OFFTOPIC_QUERY, k=k) == [],
+            "misses": misses,
+        }
+
+    def coach_report(self, activity_ids: list) -> dict:
+        """Fidelidade media (numeros + citacoes) do veredito sobre varias atividades."""
+        rows = [self.evaluator.evaluate(aid) for aid in activity_ids]
+        n = max(len(rows), 1)
+        return {
+            "n": len(rows),
+            "numeric_fidelity": round(sum(r["numeric_fidelity"] for r in rows) / n, 3),
+            "citation_validity": round(sum(r["citation_validity"] for r in rows) / n, 3),
+        }
+
+    def run(self, activity_ids: list) -> dict:
+        return {"retrieval": self.retrieval_report(), "coach": self.coach_report(activity_ids)}
+
+
+if __name__ == "__main__":
+    from core.database import get_connection
+    from api.deps import get_coach  # reusa a fiacao do coach (LLM + RAG + web)
+
+    runs = [str(r[0]) for r in get_connection().execute(
+        "SELECT activity_id FROM dim_activities WHERE primary_type='RUN' ORDER BY start_time DESC LIMIT 4"
+    ).fetchall()]
+
+    report = Benchmark(get_coach()).run(runs)
+    r, c = report["retrieval"], report["coach"]
+    print("=== BOLETIM DO COACH (baseline) ===")
+    print(f"RAG  retrieval hit-rate : {r['hit_rate']:.0%} ({r['hits']}/{r['total']})  "
+          f"off-topic rejeitado: {r['offtopic_rejected']}")
+    for m in r["misses"]:
+        print(f"     MISS: '{m['query']}' -> esperava {m['expected']}, veio {m['got']}")
+    print(f"Coach fidelidade numerica: {c['numeric_fidelity']:.0%}  "
+          f"validade de citacao: {c['citation_validity']:.0%}  (n={c['n']} treinos)")
