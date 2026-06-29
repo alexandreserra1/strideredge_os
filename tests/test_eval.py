@@ -11,6 +11,12 @@ def test_numeric_fidelity_pega_numero_inventado():
     assert ev.numeric_fidelity("sem numeros", "prompt 5.5") == 1.0
 
 
+def test_numeric_fidelity_virgula_decimal_pt():
+    ev = CoachEvaluator(coach=None)
+    # veredito em PT (virgula) vs prompt com ponto: deve casar -> 1.0 (sem falso negativo)
+    assert ev.numeric_fidelity("desacoplamento de 2,9% e ACWR 0,96", "decoupling 2.9 acwr 0.96") == 1.0
+
+
 def test_citation_validity():
     ev = CoachEvaluator(coach=None)
     assert ev.citation_validity("fontes PMC123 e PMC999", "evidencia PMC123") == 0.5

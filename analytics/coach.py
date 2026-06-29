@@ -28,9 +28,10 @@ class OllamaClient(BaseLLMClient):
     """Cliente do LLM local servido pelo Ollama (implementa BaseLLMClient)."""
 
     def __init__(self, model: str = "qwen2.5:7b-instruct",
-                 url: str = "http://localhost:11434/api/chat"):
+                 url: str = "http://localhost:11434/api/chat", temperature: float = 0.2):
         self.model = model
         self.url = url
+        self.temperature = temperature   # baixa = mais factual; 0 = deterministico (eval)
 
     def chat(self, system_prompt: str, user_prompt: str) -> str:
         response = httpx.post(
@@ -42,6 +43,7 @@ class OllamaClient(BaseLLMClient):
                     {"role": "user", "content": user_prompt},
                 ],
                 "stream": False,
+                "options": {"temperature": self.temperature},
             },
             timeout=120.0,
         )
@@ -73,6 +75,9 @@ class Coach:
         "- Ao usar uma evidencia, CITE a fonte entre parenteses.\n"
         "- Se nao houver evidencia relevante para um ponto, diga que nao ha evidencia "
         "suficiente — NAO invente numeros, faixas ou limiares.\n"
+        "- NUNCA faca contas nem gere numeros novos (pace, porcentagens, conversoes, somas). "
+        "Use SOMENTE numeros que aparecem LITERALMENTE nos dados/conclusoes acima. Se precisar "
+        "de um numero que nao foi dado, descreva em palavras (ex: 'mais alto', 'caiu') — nao o calcule.\n"
         "- Quando uma linha CONCLUSAO ja vier pronta (ex: cadencia vs limiar), use-a "
         "diretamente. NAO recalcule se um valor esta acima/abaixo de um limiar.\n"
         "Responda em portugues, em no maximo 3 paragrafos curtos."

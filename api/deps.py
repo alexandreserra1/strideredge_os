@@ -30,10 +30,15 @@ def get_sql_agent() -> SqlAgent:
     return SqlAgent(llm=OllamaClient())
 
 
-def get_coach() -> Coach:
-    """Coach completo: LLM local + base curada (RAG) + fallback de web."""
+def build_coach(temperature: float = 0.2) -> Coach:
+    """Monta o coach completo (LLM local + RAG + fallback web). temperature=0 -> eval deterministico."""
     return Coach(
-        llm=OllamaClient(),
+        llm=OllamaClient(temperature=temperature),
         knowledge=KnowledgeBase(embedder=OllamaEmbedder()),
         web=WebSearchRetriever(),
     )
+
+
+def get_coach() -> Coach:
+    """Coach completo para a API (sem params: FastAPI Depends nao injeta query)."""
+    return build_coach()

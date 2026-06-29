@@ -21,7 +21,10 @@ class CoachEvaluator:
 
     @staticmethod
     def _numbers(text: str) -> set:
-        return set(re.findall(r"\d+(?:\.\d+)?", text))
+        # aceita virgula OU ponto decimal (PT usa virgula) e normaliza p/ comparar:
+        # '2,9' (veredito) e '2.9' (prompt) viram o MESMO token. Sem isso, a virgula
+        # quebra '2,9' em '2' e '9' -> falso "numero inventado".
+        return {m.replace(",", ".") for m in re.findall(r"\d+(?:[.,]\d+)?", text)}
 
     @staticmethod
     def _citations(text: str) -> set:
@@ -109,13 +112,13 @@ class Benchmark:
 
 if __name__ == "__main__":
     from core.database import get_connection
-    from api.deps import get_coach  # reusa a fiacao do coach (LLM + RAG + web)
+    from api.deps import build_coach  # reusa a fiacao do coach (LLM + RAG + web)
 
     runs = [str(r[0]) for r in get_connection().execute(
         "SELECT activity_id FROM dim_activities WHERE primary_type='RUN' ORDER BY start_time DESC LIMIT 4"
     ).fetchall()]
 
-    report = Benchmark(get_coach()).run(runs)
+    report = Benchmark(build_coach(temperature=0)).run(runs)  # temp 0 = medicao deterministica
     r, c = report["retrieval"], report["coach"]
     print("=== BOLETIM DO COACH (baseline) ===")
     print(f"RAG  retrieval hit-rate : {r['hit_rate']:.0%} ({r['hits']}/{r['total']})  "
