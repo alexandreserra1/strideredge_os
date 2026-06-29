@@ -1,7 +1,29 @@
 """Testes herméticos do harness de avaliação (sem Ollama) — a ferramenta de medir
 tem que ser confiável antes de confiarmos no boletim que ela produz."""
 
-from analytics.coach_eval import CoachEvaluator, Benchmark, GOLDEN_RETRIEVAL
+from analytics.coach_eval import CoachEvaluator, Benchmark, LLMJudge, GOLDEN_RETRIEVAL
+
+
+class _FakeLLM:
+    def __init__(self, reply):
+        self.reply = reply
+
+    def chat(self, system, user):
+        return self.reply
+
+
+def test_llmjudge_parse_json_com_texto_em_volta():
+    # LLM costuma cercar o JSON de texto — o parser tem que extrair mesmo assim
+    judge = LLMJudge(_FakeLLM('Claro!\n{"acionabilidade": 0.8, "aterramento": 0.5, '
+                              '"justificativa": "extrapolou desidratacao"}\nFim.'))
+    r = judge.judge("fatos", "veredito")
+    assert r["acionabilidade"] == 0.8 and r["aterramento"] == 0.5
+    assert "desidrata" in r["justificativa"]
+
+
+def test_llmjudge_resposta_invalida_nao_quebra():
+    r = LLMJudge(_FakeLLM("desculpe, nao consigo")).judge("f", "v")
+    assert r["acionabilidade"] is None and r["aterramento"] is None
 
 
 def test_numeric_fidelity_pega_numero_inventado():

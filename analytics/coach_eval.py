@@ -8,6 +8,7 @@ Mede, de forma DETERMINÍSTICA, se o veredito é fiel ao que foi fornecido:
 evaluate() roda o coach numa atividade e devolve as métricas + o veredito.
 """
 
+import json
 import re
 
 from analytics.coach import Coach
@@ -52,7 +53,53 @@ class CoachEvaluator:
             "numeric_fidelity": self.numeric_fidelity(verdict, prompt),
             "citation_validity": self.citation_validity(verdict, prompt),
             "verdict": verdict,
+            "prompt": prompt,   # o LLM-judge precisa dos fatos p/ avaliar aterramento
         }
+
+
+class LLMJudge:
+    """LLM-as-judge: pontua qualidades SUBJETIVAS que a regua deterministica nao pega
+    (acionabilidade + aterramento ao contexto). Complementa o CoachEvaluator.
+
+    Caveat honesto: juiz LLM e ruidoso e enviesado (e aqui o Qwen julga a si mesmo —
+    ideal seria um modelo mais forte/diferente). Use como sinal de tendencia, nao verdade
+    absoluta. Roda em temperatura 0 para consistencia.
+    """
+
+    RUBRICA = (
+        "Voce e um avaliador rigoroso de feedback de coach esportivo. Pontue o VEREDITO em "
+        "dois criterios, de 0.0 a 1.0:\n"
+        "- acionabilidade: prescreve COMO corrigir de forma concreta e especifica (nao apenas "
+        "descreve o que aconteceu)?\n"
+        "- aterramento: TODAS as afirmacoes se sustentam SOMENTE nos dados fornecidos, sem "
+        "extrapolar nem inventar contexto (ex: citar desidratacao/calor sem nenhum dado que "
+        "sustente)?\n"
+        "Responda APENAS um JSON valido, sem texto fora dele:\n"
+        '{"acionabilidade": 0.0, "aterramento": 0.0, "justificativa": "uma frase curta"}'
+    )
+
+    def __init__(self, llm):
+        self.llm = llm
+
+    @staticmethod
+    def _parse(raw: str) -> dict:
+        """Extrai o 1o objeto JSON da resposta (robusto a texto em volta)."""
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not m:
+            return {"acionabilidade": None, "aterramento": None, "justificativa": "parse falhou"}
+        try:
+            data = json.loads(m.group(0))
+        except json.JSONDecodeError:
+            return {"acionabilidade": None, "aterramento": None, "justificativa": "json invalido"}
+        return {
+            "acionabilidade": data.get("acionabilidade"),
+            "aterramento": data.get("aterramento"),
+            "justificativa": data.get("justificativa", ""),
+        }
+
+    def judge(self, facts: str, verdict: str) -> dict:
+        prompt = f"DADOS FORNECIDOS AO COACH:\n{facts}\n\nVEREDITO DO COACH:\n{verdict}"
+        return self._parse(self.llm.chat(self.RUBRICA, prompt))
 
 
 # Casos-ouro de retrieval (pergunta do atleta -> fonte esperada). FONTE UNICA:
@@ -100,34 +147,50 @@ class Benchmark:
             "misses": misses,
         }
 
-    def coach_report(self, activity_ids: list) -> dict:
-        """Fidelidade media (numeros + citacoes) do veredito sobre varias atividades."""
+    @staticmethod
+    def _avg(values: list):
+        """Media ignorando None (juiz pode falhar parse num caso)."""
+        vals = [v for v in values if v is not None]
+        return round(sum(vals) / len(vals), 3) if vals else None
+
+    def coach_report(self, activity_ids: list, judge: "LLMJudge" = None) -> dict:
+        """Fidelidade (deterministica) + acionabilidade/aterramento (LLM-judge, se fornecido)."""
         rows = [self.evaluator.evaluate(aid) for aid in activity_ids]
         n = max(len(rows), 1)
-        return {
+        out = {
             "n": len(rows),
             "numeric_fidelity": round(sum(r["numeric_fidelity"] for r in rows) / n, 3),
             "citation_validity": round(sum(r["citation_validity"] for r in rows) / n, 3),
         }
+        if judge is not None:
+            judged = [judge.judge(r["prompt"], r["verdict"]) for r in rows]
+            out["acionabilidade"] = self._avg([j["acionabilidade"] for j in judged])
+            out["aterramento"] = self._avg([j["aterramento"] for j in judged])
+        return out
 
-    def run(self, activity_ids: list) -> dict:
-        return {"retrieval": self.retrieval_report(), "coach": self.coach_report(activity_ids)}
+    def run(self, activity_ids: list, judge: "LLMJudge" = None) -> dict:
+        return {"retrieval": self.retrieval_report(),
+                "coach": self.coach_report(activity_ids, judge)}
 
 
 if __name__ == "__main__":
     from core.database import get_connection
     from api.deps import build_coach  # reusa a fiacao do coach (LLM + RAG + web)
+    from analytics.coach import OllamaClient
 
     runs = [str(r[0]) for r in get_connection().execute(
         "SELECT activity_id FROM dim_activities WHERE primary_type='RUN' ORDER BY start_time DESC LIMIT 4"
     ).fetchall()]
 
-    report = Benchmark(build_coach(temperature=0)).run(runs)  # temp 0 = medicao deterministica
+    judge = LLMJudge(OllamaClient(temperature=0))           # juiz deterministico
+    report = Benchmark(build_coach(temperature=0)).run(runs, judge=judge)
     r, c = report["retrieval"], report["coach"]
-    print("=== BOLETIM DO COACH (baseline) ===")
+    print("=== BOLETIM DO COACH ===")
     print(f"RAG  retrieval hit-rate : {r['hit_rate']:.0%} ({r['hits']}/{r['total']})  "
           f"off-topic rejeitado: {r['offtopic_rejected']}")
     for m in r["misses"]:
         print(f"     MISS: '{m['query']}' -> esperava {m['expected']}, veio {m['got']}")
-    print(f"Coach fidelidade numerica: {c['numeric_fidelity']:.0%}  "
-          f"validade de citacao: {c['citation_validity']:.0%}  (n={c['n']} treinos)")
+    print(f"Deterministico  fidelidade numerica: {c['numeric_fidelity']:.0%}  "
+          f"citacao: {c['citation_validity']:.0%}")
+    print(f"LLM-judge       acionabilidade: {c.get('acionabilidade')}  "
+          f"aterramento: {c.get('aterramento')}  (n={c['n']} treinos)")
