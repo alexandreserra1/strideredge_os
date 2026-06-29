@@ -55,3 +55,43 @@ FONTE: The Impact of Sleep Interventions on Athletic Performance — Systematic 
 
 Sono insuficiente prejudica o atleta em varias frentes: apos cerca de 4 horas de sono caem a resistencia, a forca, a potencia e a execucao motora, alem da funcao cognitiva. Privacao de sono tambem esta associada a maior risco de lesao.
 FONTE: The Impact of Sleep Interventions on Athletic Performance — Systematic Review (PMC10354314)
+
+---
+
+A base aerobica se constroi com treino leve e lento, em ritmo confortavel de conversar — a chamada Zona 2, tipicamente entre 72 e 82 por cento da FC maxima ou lactato entre 1,5 e 2,5 mmol/L. Correr devagar por bastante tempo desenvolve a capacidade aerobica, a oxidacao de gordura e a eficiencia — a base que sustenta o ritmo sob fadiga.
+FONTE: Meixner et al., Zone 2 Intensity: A Critical Comparison of Individual Variability (PMC11986187)
+
+---
+
+Marcadores fixos de Zona 2 (como uma porcentagem fixa da FC maxima) tem alta variabilidade entre individuos: o coeficiente de variacao chega a 29 por cento. Por isso e melhor personalizar a zona por limiares medidos (VT1, FatMax, lactato basal mais 0,5) do que por uma formula universal.
+FONTE: Meixner et al., Zone 2 Intensity: A Critical Comparison of Individual Variability (PMC11986187)
+
+---
+
+Treino de forca melhora a economia de corrida em corredores de meia e longa distancia. A forca de alta carga (maior ou igual a 80 por cento de 1RM) traz melhora pequena em velocidades de 8,6 a 17,9 km/h, maior em velocidades altas; metodos combinados trazem melhora moderada (10 a 14,5 km/h) e superam os metodos isolados.
+FONTE: Llanos-Lagos et al., Effect of Strength Training Programs on Runners Economy — Systematic Review with Meta-analysis (PMC11052887)
+
+---
+
+Nem todo metodo de forca melhora a economia de corrida: a pliometria so ajuda em velocidades ate 12 km/h (e atrapalha acima disso), enquanto forca submaxima e isometrica nao mostraram efeito significativo. Revisao de 31 estudos e 652 participantes.
+FONTE: Llanos-Lagos et al., Effect of Strength Training Programs on Runners Economy — Systematic Review with Meta-analysis (PMC11052887)
+
+---
+
+A ingestao de carboidrato no exercicio depende da duracao: ate cerca de 1h basta bochechar ou pouca quantidade; de 2 a 3h cerca de 60 g/h (carboidrato de transporte unico); acima de cerca de 3h ate 90 g/h usando carboidratos de multiplo transporte (glicose com frutose na razao 2:1).
+FONTE: Jeukendrup, A Step Towards Personalized Sports Nutrition: Carbohydrate Intake During Exercise (PMC4008807)
+
+---
+
+O teto classico de oxidacao de carboidrato de fonte unica e cerca de 1,0 g/min (60 g/h); combinar glicose e frutose (2:1) usa transportadores intestinais diferentes e eleva a oxidacao para cerca de 1,5 g/min (90 g/h). A estrategia de nutricao deve ser TREINADA nos treinos (adaptacao intestinal) e equilibrada com a hidratacao.
+FONTE: Jeukendrup, A Step Towards Personalized Sports Nutrition: Carbohydrate Intake During Exercise (PMC4008807)
+
+---
+
+A aclimatacao ao calor melhora o desempenho de endurance: o tempo ate a exaustao aumenta cerca de 23 por cento e provas contrarrelogio ficam cerca de 45 segundos mais rapidas. As principais adaptacoes sao a queda da FC e o aumento do volume plasmatico (3 a 6 dias) e o aumento da taxa de sudorese com queda da temperatura corporal (5 a 14 dias).
+FONTE: Benjamin et al., Performance Changes Following Heat Acclimation — Meta-Analysis and Meta-Regression (PMC6890862)
+
+---
+
+Adaptacoes basicas ao calor (FC e temperatura interna) ja aparecem com protocolos curtos de ate 7 dias de exposicao; protocolos mais longos (10 ou mais dias) produzem ganhos superiores de potencia. Treinar com taxa de trabalho controlada supera metodos isotermicos para melhorar o tempo ate a exaustao.
+FONTE: Benjamin et al., Performance Changes Following Heat Acclimation — Meta-Analysis and Meta-Regression (PMC6890862)

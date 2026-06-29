@@ -64,6 +64,10 @@ GOLDEN_RETRIEVAL = [
     ("estou quicando muito ao correr, gasto energia?", "PMC11127892"),     # economia/oscilacao
     ("minha FC sobe sozinha no fim do treino longo", "PMC12271085"),       # deriva cardiaca
     ("quanto dormir para recuperar melhor?", "PMC10354314"),               # sono/recuperacao
+    ("qual o jeito certo de construir base aerobica devagar?", "PMC11986187"),  # zona 2
+    ("musculacao ajuda a correr melhor?", "PMC11052887"),                  # forca x economia
+    ("quanto comer de acucar numa prova longa?", "PMC4008807"),            # fueling carboidrato
+    ("treinar no calor atrapalha? da pra me adaptar?", "PMC6890862"),      # calor/aclimatacao
 ]
 OFFTOPIC_QUERY = "qual a melhor receita de panqueca?"
 
