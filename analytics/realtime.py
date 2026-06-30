@@ -140,13 +140,17 @@ class LogAnnouncer(BaseAnnouncer):
 
 
 class MacSayAnnouncer(BaseAnnouncer):
-    """Fala o cue pelo `say` do macOS (offline, instantâneo) — para OUVIR o replay/demo."""
+    """Fala o cue pelo `say` do macOS (offline) — para OUVIR o replay/demo. Voz e ritmo
+    configuraveis: troque por uma voz PT-BR 'Aprimorada/Premium' (qualidade Siri) baixada em
+    Ajustes > Acessibilidade > Conteudo Falado para soar natural. No produto, e o TTS neural
+    do celular (mesmo padrao de Runna/Garmin)."""
 
-    def __init__(self, voice: str = "Luciana"):  # voz PT-BR no macOS
+    def __init__(self, voice: str = "Sandy", rate_wpm: int = 150):  # voz natural + ritmo calmo
         self.voice = voice
+        self.rate_wpm = rate_wpm
 
     def announce(self, cue: Cue) -> None:
-        subprocess.run(["say", "-v", self.voice, cue.message], check=False)
+        subprocess.run(["say", "-v", self.voice, "-r", str(self.rate_wpm), cue.message], check=False)
 
 
 # --- Motor: COMPOE regras + alvo + announcer (= Coach compõe analyzers) ---
