@@ -93,6 +93,41 @@ Arquitetura: `BaseModalityModule` → `HyroxModule` (template fixo + ordem) e `C
 (classificador aberto). Disciplina vem de **rótulo/modo**, nunca de chute (precedente: modo
 "HYROX Race" do Amazfit).
 
+## 9. Coaching de VOZ em tempo real (momento 2 — falar no ouvido durante a corrida)
+
+O coach tem **dois momentos**: (1) resumo **pós-corrida** (LLM+RAG, no backend; latência de segundos
+ok) e (2) **tempo real** — avisos de voz **durante** a corrida (determinístico, <500ms, **sem LLM**).
+Esta seção é o momento 2.
+
+### 9.1 Fluxo no produto (igual Runna/Garmin)
+```
+sensores ao vivo (GPS do celular + BLE da cinta/relogio)
+  → app no celular: stream → MOTOR DE CUES (RealtimeCoach)
+  → TTS NATIVO do celular (texto → voz, offline)  → fone BLE (abafa a musica)
+```
+- **Tudo no celular** no momento 2 — rede no meio mataria os <500ms. O backend (DuckDB/RAG/LLM)
+  serve só o momento 1.
+- **Voz = TTS do SO** (iOS/Android), voz selecionável. Não empacotamos voz nenhuma — Runna e Garmin
+  fazem igual; Strava nem tem voz. (No dev, o stand-in é o `say` do macOS via `MacSayAnnouncer`.)
+
+### 9.2 As costuras já existentes no código (`analytics/realtime.py`)
+- **Motor:** `RealtimeCoach` + regras (`BaseCueRule`, Strategy) — a MESMA lógica do dev ao app.
+- **Entrega (`BaseAnnouncer`):** `LogAnnouncer` (testes) · `MacSayAnnouncer` (dev, voz do macOS) ·
+  **`CallbackAnnouncer`** = a costura pro app: encaminha o `Cue` a um callback; no celular esse
+  callback chama o **TTS nativo** (o "PhoneTTSAnnouncer" é isto ligado ao bridge de voz).
+- **Fonte:** o motor consome `on_sample(Sample)`. Hoje `ReplayDriver` alimenta do `.FIT` (banco);
+  no app, um `LiveStreamDriver` alimenta dos sensores ao vivo e chama o MESMO `on_sample`.
+
+### 9.3 O que falta (fase C do roadmap — o app)
+1. App mobile lendo **GPS + sensor BLE ao vivo**.
+2. **Portar o motor** pro celular: regras são leves (reescrever no idioma do app) **ou** compilar a
+   parte pesada (Kalman p/ suavizar o sinal vivo) do **kernel Rust** — "escreve uma vez, roda no
+   servidor e no aparelho" (ver §10 do `plan.md`).
+3. `PhoneTTSAnnouncer` = `CallbackAnnouncer` ligado ao TTS nativo.
+
+**Costura pronta:** o motor e o contrato de voz (`BaseAnnouncer`) existem e estão testados; no app só
+se troca a FONTE (replay → stream BLE) e o ANNOUNCER (say → TTS do celular). O motor não muda.
+
 ---
 
 **Nada se joga fora:** o kernel genérico, o `BaseTelemetryParser`, o DuckDB e o coach são o **mesmo

@@ -153,7 +153,24 @@ class MacSayAnnouncer(BaseAnnouncer):
         subprocess.run(["say", "-v", self.voice, "-r", str(self.rate_wpm), cue.message], check=False)
 
 
+class CallbackAnnouncer(BaseAnnouncer):
+    """COSTURA de entrega para um host externo (app mobile / integração): encaminha cada Cue
+    a um callback. No produto, o app liga esse callback ao **TTS nativo do celular** (iOS/Android),
+    que fala no fone — ou seja, o `PhoneTTSAnnouncer` do app É este callback apontando pro bridge
+    de voz nativo. Mantém o motor agnóstico de COMO se fala (mesmo padrão Runna/Garmin)."""
+
+    def __init__(self, on_cue):
+        self.on_cue = on_cue   # ex: lambda cue: phone_tts.speak(cue.message)
+
+    def announce(self, cue: Cue) -> None:
+        self.on_cue(cue)
+
+
 # --- Motor: COMPOE regras + alvo + announcer (= Coach compõe analyzers) ---
+#
+# COSTURA da FONTE de dados: o motor consome amostras por on_sample(Sample). Hoje quem alimenta
+# é o ReplayDriver (lê o .FIT do banco, ~1 Hz). No app, um "LiveStreamDriver" leria os sensores
+# ao vivo (GPS do celular + BLE da cinta/relogio) e chamaria o MESMO on_sample — o motor nao muda.
 
 class RealtimeCoach:
     """Processa a telemetria tick-a-tick e emite o cue de maior prioridade (com cooldown)."""

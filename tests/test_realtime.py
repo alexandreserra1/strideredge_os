@@ -2,8 +2,15 @@
 
 from analytics.realtime import (
     Sample, Window, Target, Cue, RealtimeCoach, ReplayDriver, Hysteresis,
-    PaceCueRule, HrCeilingCueRule, CadenceCueRule, LogAnnouncer,
+    PaceCueRule, HrCeilingCueRule, CadenceCueRule, LogAnnouncer, CallbackAnnouncer,
 )
+
+
+def test_callback_announcer_encaminha_ao_host():
+    # costura de entrega: o host (app) recebe o cue p/ falar no TTS nativo
+    saidas = []
+    CallbackAnnouncer(saidas.append).announce(Cue("pace", "acelere", 2))
+    assert saidas and saidas[0].kind == "pace" and saidas[0].message == "acelere"
 
 
 def test_hysteresis_nao_pisca_no_limiar():
