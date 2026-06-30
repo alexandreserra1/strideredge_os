@@ -66,14 +66,22 @@ class LLMJudge:
     absoluta. Roda em temperatura 0 para consistencia.
     """
 
+    # Rubrica CALIBRADA contra notas humanas do atleta (severo). O juiz cru era leniente
+    # (MAE ~0.65 vs humano). Padrao do coach: rigor por dentro, DIDATICO ao falar com o atleta.
     RUBRICA = (
-        "Voce e um avaliador rigoroso de feedback de coach esportivo. Pontue o VEREDITO em "
-        "dois criterios, de 0.0 a 1.0:\n"
-        "- acionabilidade: prescreve COMO corrigir de forma concreta e especifica (nao apenas "
-        "descreve o que aconteceu)?\n"
-        "- aterramento: TODAS as afirmacoes se sustentam SOMENTE nos dados fornecidos, sem "
-        "extrapolar nem inventar contexto (ex: citar desidratacao/calor sem nenhum dado que "
-        "sustente)?\n"
+        "Voce e um avaliador SEVERO de feedback de coach esportivo. Pontue o VEREDITO de 0.0 a "
+        "1.0 em dois criterios:\n"
+        "- acionabilidade: SO e alta (>= 0.7) se da um passo CONCRETO E ESPECIFICO e EXPLICA o "
+        "porque de forma didatica, ligada ao dado/ciencia (ex: 'sua cadencia caiu 5% no fim = "
+        "fadiga; faca 4 tiros de 1min focando passos curtos e rapidos, que reduzem o impacto'). "
+        "Platitude generica ('mantenha a cadencia', 'monitore a carga', 'continue assim') NAO "
+        "ensina nem orienta -> 0.0 a 0.2. Despejar numero/jargao sem explicar tambem nao.\n"
+        "- aterramento: comeca em 1.0 e CAI a cada afirmacao que nao esteja LITERALMENTE nos dados. "
+        "Citar causa nao medida (desidratacao, calor, deplecao de glicogenio) sem dado que sustente, "
+        "ou interpretar mal um numero, derruba para <= 0.4.\n"
+        "EXEMPLOS de nota:\n"
+        "- 'Mantenha a cadencia e monitore a carga semanal' -> acionabilidade 0.1 (generico, nao ensina).\n"
+        "- 'A FC subiu na 2a metade, pode ser desidratacao' sem dado de hidratacao/calor -> aterramento 0.3.\n"
         "Responda APENAS um JSON valido, sem texto fora dele:\n"
         '{"acionabilidade": 0.0, "aterramento": 0.0, "justificativa": "uma frase curta"}'
     )
@@ -171,6 +179,28 @@ class Benchmark:
     def run(self, activity_ids: list, judge: "LLMJudge" = None) -> dict:
         return {"retrieval": self.retrieval_report(),
                 "coach": self.coach_report(activity_ids, judge)}
+
+    def calibrate(self, judge: "LLMJudge", labeled: list) -> dict:
+        """Compara o juiz com NOTAS HUMANAS (gold) e calcula o erro medio absoluto (MAE).
+
+        labeled: [(activity_id, acionabilidade_humana, aterramento_humano), ...].
+        MAE alto = juiz desalinhado do humano (recalibrar a rubrica). Calibracao em poucas
+        amostras e so indicativa; o ideal sao ~10-20 vereditos rotulados.
+        """
+        rows = []
+        for aid, ha, hg in labeled:
+            e = self.evaluator.evaluate(aid)
+            j = judge.judge(e["prompt"], e["verdict"])
+            rows.append({"acion_j": j["acionabilidade"], "acion_h": ha,
+                         "ground_j": j["aterramento"], "ground_h": hg, "just": j["justificativa"]})
+
+        def mae(jk, hk):
+            ds = [abs(r[jk] - r[hk]) for r in rows if r[jk] is not None]
+            return round(sum(ds) / len(ds), 3) if ds else None
+
+        return {"rows": rows,
+                "mae_acionabilidade": mae("acion_j", "acion_h"),
+                "mae_aterramento": mae("ground_j", "ground_h")}
 
 
 if __name__ == "__main__":
