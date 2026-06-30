@@ -49,13 +49,23 @@ class HrZoneAnalyzer(BaseAnalyzer):
             for i, sec in enumerate(seconds)
             if sec > 0
         ]
-        return {"hr_max": boundaries[-1], "zones": zones}
+        result = {"hr_max": boundaries[-1], "zones": zones}
+        # Faixas REAIS do atleta a partir dos MESMOS limites (sem query/calculo extra):
+        # buckets <b0 | b0-b1 Z1 | b1-b2 Z2 | b2-b3 Z3 | b3-b4 Z4 | b4-b5 Z5.
+        if len(boundaries) >= 4:
+            result.update(z2_low=boundaries[1], z2_high=boundaries[2], hard_from=boundaries[3])
+        return result
 
     def to_prompt(self, result: dict) -> Optional[str]:
         if not result["zones"]:
             return None
         dist = ", ".join(f"{z['faixa']} bpm: {z['pct']}%" for z in result["zones"])
-        return f"FC maxima real do atleta: {result['hr_max']}. Tempo por faixa de FC: {dist}."
+        linha = f"FC maxima real do atleta: {result['hr_max']}. Tempo por faixa de FC: {dist}."
+        if result.get("z2_low"):  # da ao coach o NUMERO real para recomendar intensidade
+            linha += (f" Faixas reais do atleta (cite estes numeros ao recomendar intensidade, "
+                      f"NAO invente): Zona 2 / base aerobica (ritmo leve) = "
+                      f"{result['z2_low']}-{result['z2_high']} bpm; forte = acima de {result['hard_from']} bpm.")
+        return linha
 
 
 if __name__ == "__main__":
