@@ -144,6 +144,47 @@ class BaseGuard(ABC):
         return "CORRECAO: ajuste a resposta para remover os problemas detectados."
 
 
+class BaseCueRule(ABC):
+    """Regra de coaching em TEMPO REAL (Strategy). Olha a janela recente + o alvo e talvez
+    devolve a mensagem de um aviso. O cooldown (nao repetir o mesmo aviso a cada tick) e
+    tratado aqui (template-method); a subclasse so implementa _check (a condicao).
+
+    POLIMORFISMO: adicionar uma regra nova = nova subclasse, sem mexer no motor (RealtimeCoach).
+    """
+
+    kind: str = "cue"          # categoria do aviso ("pace", "hr", "cadence")
+    priority: int = 1          # seguranca (FC) > pace > cadencia
+    cooldown_s: float = 20.0   # silencio minimo entre avisos da mesma regra
+
+    def __init__(self):
+        self._last_fire: Optional[float] = None
+
+    @abstractmethod
+    def _check(self, window: Any, target: Any) -> Optional[str]:
+        """Devolve a MENSAGEM do aviso se a condicao bate; senao None."""
+        ...
+
+    def evaluate(self, window: Any, target: Any, now: float) -> Optional[str]:
+        """Aplica a condicao + cooldown. Devolve a mensagem (str) ou None. O motor monta o Cue."""
+        msg = self._check(window, target)
+        if msg is None:
+            return None
+        if self._last_fire is not None and now - self._last_fire < self.cooldown_s:
+            return None
+        self._last_fire = now
+        return msg
+
+
+class BaseAnnouncer(ABC):
+    """Entrega um aviso ao atleta. POLIMORFISMO: trocar o canal (voz no Mac, TTS do celular,
+    log silencioso nos testes) sem mexer no motor."""
+
+    @abstractmethod
+    def announce(self, cue: Any) -> None:
+        """Fala/registra o Cue."""
+        ...
+
+
 class BaseAnalyzer(ABC):
     """Contrato para uma analise de UM treino (ponto de quebra, eficiencia, zonas...).
 
