@@ -43,22 +43,36 @@ def test_cadence_rule_dispara_quando_cai():
     assert CadenceCueRule()._check(_win(cad=170), _target()) is None
 
 
-# --- Cooldown (template-method na BaseCueRule) ---
+# --- Falar como gente: sustain + nao-tagarelar + re-lembrete (template-method) ---
 
-def test_cooldown_silencia_repeticao():
-    r, w, t = PaceCueRule(), _win(speed=2.5), _target()
-    assert r.evaluate(w, t, 0.0) is not None     # dispara
-    assert r.evaluate(w, t, 5.0) is None         # dentro do cooldown (20s) -> quieto
-    assert r.evaluate(w, t, 30.0) is not None     # passou o cooldown -> dispara de novo
+def test_sustain_e_nao_tagarela():
+    r, w, t = PaceCueRule(), _win(speed=2.5), _target()   # problema persistente (lento)
+    assert r.evaluate(w, t, 0.0) is None        # acabou de comecar -> ainda nao sustentou
+    assert r.evaluate(w, t, 5.0) is None         # 5s < sustain (8s)
+    assert r.evaluate(w, t, 10.0) is not None    # sustentou -> fala UMA vez
+    assert r.evaluate(w, t, 15.0) is None         # mesmo problema -> quieto (nao tagarela)
+    assert r.evaluate(w, t, 140.0) is not None    # re-lembrete so apos o cooldown (120s)
+
+
+def test_fala_de_novo_apos_voltar_ao_normal():
+    r, t = PaceCueRule(), _target()
+    slow, ok = _win(speed=2.5), _win(speed=3.0)
+    r.evaluate(slow, t, 0.0)                          # comeca a sustentar
+    assert r.evaluate(slow, t, 10.0) is not None      # falou (lento, sustentado)
+    assert r.evaluate(ok, t, 12.0) is None             # voltou ao normal -> reseta
+    r.evaluate(slow, t, 14.0)                          # problema recomecou
+    assert r.evaluate(slow, t, 24.0) is not None       # sustentou de novo -> fala de novo
 
 
 # --- Motor: prioridade + announcer ---
 
 def test_prioridade_fc_vence_pace():
     coach = RealtimeCoach([PaceCueRule(), HrCeilingCueRule()], _target(), LogAnnouncer())
-    cue = coach.on_sample(Sample(0.0, 2.5, 185, 170))   # pace lento E FC alta no mesmo tick
-    assert cue.kind == "hr"                              # seguranca tem prioridade
-    assert coach.announcer.cues == [cue]                # foi anunciado
+    # sustenta pace lento E FC alta ate passar o sustain (8s)
+    fired = [coach.on_sample(Sample(float(tt), 2.5, 185, 170)) for tt in range(0, 11)]
+    fired = [c for c in fired if c]
+    assert fired and fired[0].kind == "hr"              # seguranca tem prioridade
+    assert any(c.kind == "hr" for c in coach.announcer.cues)
 
 
 # --- Replay sobre um .FIT real (conftest sintetico) ---

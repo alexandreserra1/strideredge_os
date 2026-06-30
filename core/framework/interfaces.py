@@ -154,25 +154,37 @@ class BaseCueRule(ABC):
 
     kind: str = "cue"          # categoria do aviso ("pace", "hr", "cadence")
     priority: int = 1          # seguranca (FC) > pace > cadencia
-    cooldown_s: float = 20.0   # silencio minimo entre avisos da mesma regra
+    sustain_s: float = 8.0     # o problema precisa PERSISTIR isso antes de avisar (ignora blip)
+    cooldown_s: float = 120.0  # re-lembrete do MESMO problema so apos isso (evita tagarelar)
 
     def __init__(self):
+        self._pending_msg: Optional[str] = None    # problema observado agora (ainda nao falado)
+        self._pending_since: Optional[float] = None
+        self._spoken_msg: Optional[str] = None      # ultimo problema FALADO
         self._last_fire: Optional[float] = None
 
     @abstractmethod
     def _check(self, window: Any, target: Any) -> Optional[str]:
-        """Devolve a MENSAGEM do aviso se a condicao bate; senao None."""
+        """Devolve a MENSAGEM do aviso se a condicao bate; senao None (tudo certo)."""
         ...
 
     def evaluate(self, window: Any, target: Any, now: float) -> Optional[str]:
-        """Aplica a condicao + cooldown. Devolve a mensagem (str) ou None. O motor monta o Cue."""
+        """Fala como gente: so avisa se o problema (a) PERSISTIU (sustain), e (b) e NOVO vs. o
+        ultimo falado OU ja passou o cooldown de re-lembrete. Devolve a mensagem ou None."""
         msg = self._check(window, target)
-        if msg is None:
+        if msg is None:                       # voltou ao normal: zera (proximo problema fala de novo)
+            self._pending_msg = self._pending_since = self._spoken_msg = None
             return None
-        if self._last_fire is not None and now - self._last_fire < self.cooldown_s:
-            return None
-        self._last_fire = now
-        return msg
+        if msg != self._pending_msg:          # problema novo/mudou -> reinicia o relogio de sustentacao
+            self._pending_msg, self._pending_since = msg, now
+        if now - self._pending_since < self.sustain_s:
+            return None                        # ainda nao persistiu o bastante
+        new_problem = msg != self._spoken_msg
+        cooldown_ok = self._last_fire is None or now - self._last_fire >= self.cooldown_s
+        if new_problem or cooldown_ok:
+            self._spoken_msg, self._last_fire = msg, now
+            return msg
+        return None
 
 
 class BaseAnnouncer(ABC):

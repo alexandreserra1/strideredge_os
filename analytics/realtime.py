@@ -65,7 +65,7 @@ class Window:
 # --- Regras (Strategy): cada uma herda BaseCueRule e implementa só a condição ---
 
 class PaceCueRule(BaseCueRule):
-    kind, priority, cooldown_s = "pace", 2, 20.0
+    kind, priority = "pace", 2
 
     def _check(self, window: Window, target: Target) -> Optional[str]:
         sp = window.avg("speed_ms")
@@ -80,7 +80,7 @@ class PaceCueRule(BaseCueRule):
 
 
 class HrCeilingCueRule(BaseCueRule):
-    kind, priority, cooldown_s = "hr", 3, 30.0   # seguranca = prioridade alta
+    kind, priority = "hr", 3   # seguranca = prioridade alta
 
     def _check(self, window: Window, target: Target) -> Optional[str]:
         hr = window.avg("heart_rate")
@@ -90,7 +90,7 @@ class HrCeilingCueRule(BaseCueRule):
 
 
 class CadenceCueRule(BaseCueRule):
-    kind, priority, cooldown_s = "cadence", 1, 30.0
+    kind, priority = "cadence", 1
 
     def _check(self, window: Window, target: Target) -> Optional[str]:
         cad = window.avg("cadence")
