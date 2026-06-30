@@ -12,7 +12,7 @@ Desenho OOP:
 import httpx
 
 from core.database import get_connection
-from core.framework.interfaces import BaseLLMClient, BaseAnalyzer, BaseRetriever
+from core.framework.interfaces import BaseLLMClient, BaseAnalyzer, BaseRetriever, BaseGuard
 from analytics.run_analysis import (
     BreakingPointAnalyzer, EfficiencyAnalyzer, TerrainContextAnalyzer,
     CadenceReferenceAnalyzer, DurabilityAnalyzer,
@@ -21,6 +21,7 @@ from analytics.intensity import HrZoneAnalyzer
 from analytics.athlete import AthleteHistoryAnalyzer
 from analytics.training_load import AcwrAnalyzer
 from analytics.fitness import FitnessAnalyzer
+from analytics.grounding import GroundingGuard
 from rag.knowledge_base import KnowledgeBase
 
 
@@ -66,36 +67,35 @@ class Coach:
     """Gera o veredito de um treino. COMPOE um LLM + uma lista de analisadores."""
 
     SYSTEM_PROMPT = (
-        "Voce e um treinador de corrida experiente e DIDATICO. Seu papel e ENSINAR o atleta: "
-        "explique o porque de cada ponto em linguagem simples e acessivel, sem jargao seco e sem "
-        "platitude vaga. Oriente como quem educa.\n"
-        "ESTRUTURE em 3 partes curtas:\n"
-        "1. Pontos fortes — o que foi bem, com o dado que mostra isso.\n"
-        "2. Pontos a melhorar — onde falhou e POR QUE isso importa (explique didaticamente).\n"
-        "3. O que fazer — acoes CONCRETAS e especificas (tipo de treino, educativo, foco na "
-        "proxima corrida), cada uma explicada e, quando houver, ligada a evidencia citada.\n"
+        "Voce e um treinador de corrida experiente e DIDATICO. Ensine o atleta: explique o porque "
+        "em linguagem simples, sem jargao e sem platitude.\n"
+        "ESTRUTURE em 3 partes, cada uma com UMA ou DUAS frases (a explicacao vai JUNTO, nunca em "
+        "secao separada de 'explicacao'):\n"
+        "1. Pontos fortes — o que foi bem, com o dado que mostra.\n"
+        "2. Pontos a melhorar — onde falhou e por que importa.\n"
+        "3. O que fazer — acoes concretas, cada uma explicada e (se houver) com a fonte citada.\n"
         "REGRAS:\n"
-        "- Baseie tudo SOMENTE nos dados do atleta e nas evidencias fornecidas; cite a fonte (PMC) ao usar uma.\n"
-        "- Acoes concretas NAO precisam de numeros inventados: prescreva o TIPO de treino/foco "
-        "(ex: 'tiros curtos focando passos mais rapidos', 'um longao leve em ritmo de conversa'), "
-        "nunca platitude como 'mantenha' ou 'monitore' sem dizer COMO.\n"
-        "- NUNCA invente nem calcule numeros (pace, %, bpm, conversoes). Use so os que aparecem nos "
-        "dados/conclusoes; se faltar, descreva em palavras. Use as CONCLUSOES prontas como vierem.\n"
-        "- Ao sugerir intensidade, use termos QUALITATIVOS ('ritmo de conversa', 'bem leve', 'forte'). "
-        "ERRADO: 'longao a cerca de 130-140 bpm' (numero inventado). CERTO: 'longao leve, em ritmo de conversa'.\n"
-        "- PROIBIDO citar desidratacao, calor, glicogenio, clima ou qualquer causa NAO medida. "
-        "ERRADO: 'a FC subiu, pode ser desidratacao'. CERTO: 'a FC subiu no fim, sinal de fadiga'. "
-        "Fale so do que os dados mostram (FC, cadencia, pace, carga).\n"
-        "Responda em portugues, conciso (frases curtas)."
+        "- Baseie tudo SOMENTE nos dados/evidencias; cite a fonte (PMC) ao usar uma.\n"
+        "- Ao prescrever treino, descreva-o QUALITATIVAMENTE — NUNCA com series, repeticoes, minutos, "
+        "ritmo ou bpm. ERRADO: '3 series de 5min a 170 spm'. CERTO: 'tiros curtos de passada rapida "
+        "com pausa para recuperar'.\n"
+        "- NUNCA invente nem calcule numeros. Use so os que aparecem nos dados/conclusoes; se faltar, "
+        "descreva em palavras. Para intensidade use termos QUALITATIVOS ('ritmo de conversa', 'bem leve').\n"
+        "- PROIBIDO citar desidratacao, calor, glicogenio ou clima (nao sao medidos). "
+        "ERRADO: 'pode ser desidratacao'. CERTO: 'sinal de fadiga'.\n"
+        "- Seja CONCISO: no MAXIMO ~110 palavras no total. NAO repita pontos nem crie secao de 'explicacao'.\n"
+        "Responda em portugues."
     )
 
     def __init__(self, llm: BaseLLMClient, analyzers: list = None,
-                 knowledge: BaseRetriever = None, web: BaseRetriever = None, k: int = 3):
+                 knowledge: BaseRetriever = None, web: BaseRetriever = None, k: int = 3,
+                 guard: BaseGuard = None):
         self.llm = llm                              # cerebro injetado (composicao)
         self.analyzers = analyzers or DEFAULT_ANALYZERS
         self.knowledge = knowledge                  # base curada (opcional)
         self.web = web                              # fallback de web (opcional)
         self.k = k
+        self.guard = guard or GroundingGuard()      # guarda de aterramento (composicao)
 
     def _header(self, activity_id: str) -> str:
         """Cabecalho do prompt: metadados basicos do treino."""
@@ -147,8 +147,9 @@ class Coach:
         return "\n".join(linhas)
 
     def verdict(self, activity_id: str) -> str:
-        """Monta o prompt e chama o LLM."""
-        return self.llm.chat(self.SYSTEM_PROMPT, self.build_user_prompt(activity_id))
+        """Monta o prompt e gera o veredito com a guarda de aterramento (retry se inventar)."""
+        prompt = self.build_user_prompt(activity_id)
+        return self.guard.enforce(self.llm, self.SYSTEM_PROMPT, prompt)
 
 
 if __name__ == "__main__":

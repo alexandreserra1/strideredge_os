@@ -12,20 +12,22 @@ import json
 import re
 
 from analytics.coach import Coach
+from analytics.grounding import GroundingGuard
 
 
 class CoachEvaluator:
-    """Avalia a fidelidade do veredito ao prompt (dados + evidências)."""
+    """Avalia a fidelidade do veredito ao prompt (dados + evidências).
+
+    REUSA o GroundingGuard para as primitivas de numero/causa (fonte unica) — o mesmo
+    objeto que o Coach usa para enforce, agora usado aqui para medir.
+    """
 
     def __init__(self, coach: Coach):
         self.coach = coach
 
     @staticmethod
     def _numbers(text: str) -> set:
-        # aceita virgula OU ponto decimal (PT usa virgula) e normaliza p/ comparar:
-        # '2,9' (veredito) e '2.9' (prompt) viram o MESMO token. Sem isso, a virgula
-        # quebra '2,9' em '2' e '9' -> falso "numero inventado".
-        return {m.replace(",", ".") for m in re.findall(r"\d+(?:[.,]\d+)?", text)}
+        return GroundingGuard.numbers(text)   # reusa a primitiva (virgula->ponto incluso)
 
     @staticmethod
     def _citations(text: str) -> set:
@@ -38,14 +40,10 @@ class CoachEvaluator:
         supported = nums & self._numbers(prompt)
         return round(len(supported) / len(nums), 3)
 
-    # Causas que NUNCA medimos: se aparecem no veredito, e extrapolacao (alucinacao de contexto).
-    EXTRAPOLATION_TERMS = ("desidrat", "calor", "glicog", "clima")
-
-    @classmethod
-    def extrapolation_terms(cls, verdict: str) -> list:
-        """Termos de causa NAO medida presentes no veredito (guard deterministico de aterramento)."""
-        v = verdict.lower()
-        return [t for t in cls.EXTRAPOLATION_TERMS if t in v]
+    @staticmethod
+    def extrapolation_terms(verdict: str) -> list:
+        """Causas NAO medidas citadas (reusa o guard)."""
+        return GroundingGuard.banned(verdict)
 
     def citation_validity(self, verdict: str, prompt: str) -> float:
         cited = self._citations(verdict)
@@ -55,12 +53,14 @@ class CoachEvaluator:
         return round(len(valid) / len(cited), 3)
 
     def evaluate(self, activity_id: str) -> dict:
-        """Gera o veredito sobre o MESMO prompt e mede a fidelidade."""
+        """Gera o veredito GUARDADO (com enforce de aterramento) e mede a fidelidade."""
         prompt = self.coach.build_user_prompt(activity_id)
-        verdict = self.coach.llm.chat(self.coach.SYSTEM_PROMPT, prompt)
+        verdict = self.coach.guard.enforce(self.coach.llm, self.coach.SYSTEM_PROMPT, prompt)
         return {
             "numeric_fidelity": self.numeric_fidelity(verdict, prompt),
             "citation_validity": self.citation_validity(verdict, prompt),
+            "words": len(verdict.split()),                      # verbosidade (deterministico)
+            "banned": len(self.extrapolation_terms(verdict)),   # causas nao medidas (deterministico)
             "verdict": verdict,
             "prompt": prompt,   # o LLM-judge precisa dos fatos p/ avaliar aterramento
         }
@@ -178,6 +178,8 @@ class Benchmark:
             "n": len(rows),
             "numeric_fidelity": round(sum(r["numeric_fidelity"] for r in rows) / n, 3),
             "citation_validity": round(sum(r["citation_validity"] for r in rows) / n, 3),
+            "avg_words": round(sum(r["words"] for r in rows) / n),   # verbosidade media
+            "banned_total": sum(r["banned"] for r in rows),          # causas nao medidas (total)
         }
         if judge is not None:
             judged = [judge.judge(r["prompt"], r["verdict"]) for r in rows]
@@ -230,6 +232,7 @@ if __name__ == "__main__":
     for m in r["misses"]:
         print(f"     MISS: '{m['query']}' -> esperava {m['expected']}, veio {m['got']}")
     print(f"Deterministico  fidelidade numerica: {c['numeric_fidelity']:.0%}  "
-          f"citacao: {c['citation_validity']:.0%}")
+          f"citacao: {c['citation_validity']:.0%}  palavras/veredito: {c['avg_words']}  "
+          f"termos banidos: {c['banned_total']}")
     print(f"LLM-judge       acionabilidade: {c.get('acionabilidade')}  "
           f"aterramento: {c.get('aterramento')}  (n={c['n']} treinos)")

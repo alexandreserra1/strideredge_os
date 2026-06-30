@@ -106,6 +106,44 @@ class BaseRetriever(ABC):
         ...
 
 
+class BaseGuard(ABC):
+    """Contrato para uma GUARDA de qualidade sobre a saida do LLM (ex: aterramento).
+
+    POLIMORFISMO: trocar a politica (mais/menos rigida, ou outra dimensao) sem mexer no
+    Coach, que apenas COMPOE uma guarda e chama enforce(). Padrao template-method: a base
+    define o loop de regeneracao; a subclasse define O QUE e problema (issues) e COMO
+    corrigir (_correction).
+    """
+
+    @abstractmethod
+    def issues(self, output: str, reference: str) -> Dict[str, list]:
+        """Problemas da 'output' frente ao texto de 'reference' (dict de listas; vazio = ok)."""
+        ...
+
+    def is_clean(self, output: str, reference: str) -> bool:
+        return not any(self.issues(output, reference).values())
+
+    def enforce(self, llm: "BaseLLMClient", system_prompt: str, user_prompt: str,
+                max_retries: int = 2) -> str:
+        """Gera com o LLM e REGENERA enquanto houver problema (ate max_retries). Devolve a
+        melhor tentativa (menos problemas) — enforcement em codigo, sem confiar so no modelo."""
+        best, best_score, prompt = None, None, user_prompt
+        for _ in range(max_retries + 1):
+            out = llm.chat(system_prompt, prompt)
+            found = self.issues(out, user_prompt)
+            score = sum(len(v) for v in found.values())
+            if best_score is None or score < best_score:
+                best, best_score = out, score
+            if score == 0:
+                break
+            prompt = user_prompt + "\n\n" + self._correction(found)
+        return best
+
+    def _correction(self, issues: Dict[str, list]) -> str:
+        """Mensagem de correcao para a regeneracao (subclasse sobrescreve)."""
+        return "CORRECAO: ajuste a resposta para remover os problemas detectados."
+
+
 class BaseAnalyzer(ABC):
     """Contrato para uma analise de UM treino (ponto de quebra, eficiencia, zonas...).
 
