@@ -1,9 +1,17 @@
 """Testes do motor de cues em tempo real — determinísticos, sem LLM, sem som."""
 
 from analytics.realtime import (
-    Sample, Window, Target, Cue, RealtimeCoach, ReplayDriver,
+    Sample, Window, Target, Cue, RealtimeCoach, ReplayDriver, Hysteresis,
     PaceCueRule, HrCeilingCueRule, CadenceCueRule, LogAnnouncer,
 )
+
+
+def test_hysteresis_nao_pisca_no_limiar():
+    h = Hysteresis(enter=161.5, exit_=166.6)   # cadencia: abaixo e ruim
+    assert h.below(160) is True      # entrou no problema (160 < 161.5)
+    assert h.below(163) is True      # banda morta vindo de baixo -> CONTINUA (nao pisca)
+    assert h.below(168) is False     # so sai acima de 166.6
+    assert h.below(163) is False     # banda morta vindo de cima -> continua ok
 
 
 def _target():

@@ -62,6 +62,22 @@ class Window:
         return sum(vals) / len(vals) if vals else None
 
 
+class Hysteresis:
+    """Evita 'piscar' no limiar: liga o estado-problema em `enter`, só desliga em `exit`
+    (banda morta entre os dois). `below` p/ 'abaixo é ruim' (cadência); `above` p/ 'acima é ruim' (FC)."""
+
+    def __init__(self, enter: float, exit_: float):
+        self.enter, self.exit, self._on = enter, exit_, False
+
+    def below(self, value: float) -> bool:
+        self._on = (value < self.enter) if not self._on else (value <= self.exit)
+        return self._on
+
+    def above(self, value: float) -> bool:
+        self._on = (value > self.enter) if not self._on else (value >= self.exit)
+        return self._on
+
+
 # --- Regras (Strategy): cada uma herda BaseCueRule e implementa só a condição ---
 
 class PaceCueRule(BaseCueRule):
@@ -82,21 +98,33 @@ class PaceCueRule(BaseCueRule):
 class HrCeilingCueRule(BaseCueRule):
     kind, priority = "hr", 3   # seguranca = prioridade alta
 
+    def __init__(self):
+        super().__init__()
+        self._h: Optional[Hysteresis] = None
+
     def _check(self, window: Window, target: Target) -> Optional[str]:
         hr = window.avg("heart_rate")
-        if hr and hr > target.hr_ceiling:
-            return "FC acima do teto — alivie um pouco."
-        return None
+        if hr is None:
+            return None
+        if self._h is None:   # entra acima do teto; so sai 3 bpm abaixo (banda morta)
+            self._h = Hysteresis(enter=target.hr_ceiling, exit_=target.hr_ceiling - 3)
+        return "FC acima do teto — alivie um pouco." if self._h.above(hr) else None
 
 
 class CadenceCueRule(BaseCueRule):
     kind, priority = "cadence", 1
 
+    def __init__(self):
+        super().__init__()
+        self._h: Optional[Hysteresis] = None
+
     def _check(self, window: Window, target: Target) -> Optional[str]:
         cad = window.avg("cadence")
-        if cad and cad < target.cadence_base * 0.95:
-            return "Cadencia caiu — encurte e acelere a passada."
-        return None
+        if cad is None:
+            return None
+        if self._h is None:   # entra abaixo de 95% da base; so sai acima de 98% (banda morta)
+            self._h = Hysteresis(enter=target.cadence_base * 0.95, exit_=target.cadence_base * 0.98)
+        return "Cadencia caiu — encurte e acelere a passada." if self._h.below(cad) else None
 
 
 # --- Announcers (entrega) ---
