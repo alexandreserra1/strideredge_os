@@ -45,22 +45,29 @@ def test_citation_validity_no_citation_is_one():
     assert ev.citation_validity("sem citação", "x") == 1.0
 
 
-@pytest.mark.skipif(not _ollama_up(), reason="Ollama não está rodando")
-def test_real_coach_eval_smoke():
-    """Smoke: o pipeline de eval roda e produz scores válidos + veredito.
+def test_extrapolation_terms_flags_unmeasured_cause():
+    # citar causa nao medida (desidratacao) = extrapolacao; falar de fadiga (medida) = ok
+    assert "desidrat" in ev.extrapolation_terms("a FC subiu, pode ser desidratacao")
+    assert ev.extrapolation_terms("a FC subiu no fim, sinal de fadiga") == []
 
-    Não asserta limiares rígidos (LLM é não-determinístico) — a MEDIÇÃO de
-    alucinação é feita rodando o eval e observando, não como gate de CI.
+
+@pytest.mark.skipif(not _ollama_up(), reason="Ollama não está rodando")
+def test_real_coach_grounding_gate():
+    """Portão de ATERRAMENTO (gated por Ollama, temp 0 p/ estabilidade): o veredito real
+    nao pode inventar numeros nem extrapolar causas nao medidas. Garante que o coach
+    'sai do jeito certo' — concreto E aterrado.
     """
-    from analytics.coach import Coach, OllamaClient
-    from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
+    from api.deps import build_coach
     from core.database import get_connection
 
     aid = str(get_connection().execute(
         "SELECT activity_id FROM dim_activities WHERE activity_name = 'Corrida Floripa'"
     ).fetchone()[0])
-    coach = Coach(llm=OllamaClient(), knowledge=KnowledgeBase(embedder=OllamaEmbedder()))
+    coach = build_coach(temperature=0)              # deterministico
     r = CoachEvaluator(coach).evaluate(aid)
-    assert 0.0 <= r["numeric_fidelity"] <= 1.0
-    assert 0.0 <= r["citation_validity"] <= 1.0
     assert isinstance(r["verdict"], str) and r["verdict"]
+    # Garantias DETERMINISTICAS que o prompt controla de fato:
+    assert r["citation_validity"] == 1.0                          # nenhuma fonte inventada
+    assert CoachEvaluator.extrapolation_terms(r["verdict"]) == []  # nenhuma causa nao medida
+    # Fidelidade numerica: piso tolerante (LLM oscila em dado sintetico); a medicao fina e o benchmark.
+    assert r["numeric_fidelity"] >= 0.6

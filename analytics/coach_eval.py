@@ -38,6 +38,15 @@ class CoachEvaluator:
         supported = nums & self._numbers(prompt)
         return round(len(supported) / len(nums), 3)
 
+    # Causas que NUNCA medimos: se aparecem no veredito, e extrapolacao (alucinacao de contexto).
+    EXTRAPOLATION_TERMS = ("desidrat", "calor", "glicog", "clima")
+
+    @classmethod
+    def extrapolation_terms(cls, verdict: str) -> list:
+        """Termos de causa NAO medida presentes no veredito (guard deterministico de aterramento)."""
+        v = verdict.lower()
+        return [t for t in cls.EXTRAPOLATION_TERMS if t in v]
+
     def citation_validity(self, verdict: str, prompt: str) -> float:
         cited = self._citations(verdict)
         if not cited:
