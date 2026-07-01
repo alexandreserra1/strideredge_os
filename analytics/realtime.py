@@ -17,6 +17,8 @@ from typing import List, Optional
 
 from core.database import get_connection
 from core.framework.interfaces import BaseCueRule, BaseAnnouncer
+from analytics.intensity import HrZoneAnalyzer
+from analytics.run_analysis import CADENCE_PROTECTIVE_MIN
 
 
 @dataclass
@@ -30,11 +32,37 @@ class Sample:
 
 @dataclass
 class Target:
-    """Alvo da sessão (vem do que já temos: pace do preditor + zonas reais do atleta)."""
+    """Alvo da sessão. Vem dos DADOS REAIS do atleta (zonas) + a INTENÇÃO da sessão — nunca de
+    chute. As fábricas abaixo montam alvos realistas por tipo de treino (leve/longo/ritmo).
+    Como no HYROX, a intenção é um RÓTULO do treino, não adivinhação."""
     pace_low_s_km: float    # limite RÁPIDO da faixa-alvo (s/km)
     pace_high_s_km: float   # limite LENTO da faixa-alvo (s/km)
-    hr_ceiling: int         # teto de FC (ex: topo da Z2 p/ treino leve)
-    cadence_base: int       # cadência de referência do atleta
+    hr_ceiling: int         # teto de FC
+    cadence_base: int       # cadência de referência (limiar protetor)
+
+    # pace "livre" (não cobra ritmo): banda larguíssima -> a regra de pace nunca dispara
+    _PACE_FREE = (0.0, 1e9)
+
+    @classmethod
+    def easy_run(cls, activity_id: str) -> "Target":
+        """Treino LEVE: dirigido por FC (fica na base aeróbica, topo da Z2); pace livre; cadência protetora."""
+        z = HrZoneAnalyzer().analyze(activity_id)
+        lo, hi = cls._PACE_FREE
+        return cls(lo, hi, hr_ceiling=z.get("z2_high") or 150, cadence_base=CADENCE_PROTECTIVE_MIN)
+
+    @classmethod
+    def steady_run(cls, activity_id: str) -> "Target":
+        """Treino LONGO/steady: fica até o fim da Z3 (não deixa virar treino forte); pace livre."""
+        z = HrZoneAnalyzer().analyze(activity_id)
+        lo, hi = cls._PACE_FREE
+        return cls(lo, hi, hr_ceiling=z.get("hard_from") or 165, cadence_base=CADENCE_PROTECTIVE_MIN)
+
+    @classmethod
+    def goal_pace(cls, goal_pace_s_km: float, activity_id: str, tol: float = 0.06) -> "Target":
+        """Sessão de RITMO: faixa em torno do pace-alvo (± tol); teto de FC de segurança (início da Z4)."""
+        z = HrZoneAnalyzer().analyze(activity_id)
+        return cls(pace_low_s_km=goal_pace_s_km * (1 - tol), pace_high_s_km=goal_pace_s_km * (1 + tol),
+                   hr_ceiling=z.get("hard_from") or 175, cadence_base=CADENCE_PROTECTIVE_MIN)
 
 
 @dataclass
@@ -217,15 +245,12 @@ class ReplayDriver:
 
 if __name__ == "__main__":
     # Demo: replay de uma corrida real, FALANDO os cues (say). Alvo leve (Z2).
-    from analytics.intensity import HrZoneAnalyzer
     con = get_connection()
     aid, name = con.execute(
         "SELECT activity_id, activity_name FROM dim_activities WHERE primary_type='RUN' "
         "ORDER BY start_time DESC LIMIT 1"
     ).fetchone()
-    z = HrZoneAnalyzer().analyze(str(aid))
-    target = Target(pace_low_s_km=270, pace_high_s_km=360,
-                    hr_ceiling=z.get("z2_high") or 150, cadence_base=170)
+    target = Target.steady_run(str(aid))   # alvo realista de treino longo (dirigido por FC)
     coach = RealtimeCoach([PaceCueRule(), HrCeilingCueRule(), CadenceCueRule()],
                           target, MacSayAnnouncer())
     print(f"=== Replay (com voz): {name} ===")

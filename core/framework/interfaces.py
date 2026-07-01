@@ -155,7 +155,7 @@ class BaseCueRule(ABC):
     kind: str = "cue"          # categoria do aviso ("pace", "hr", "cadence")
     priority: int = 1          # seguranca (FC) > pace > cadencia
     sustain_s: float = 8.0     # o problema precisa PERSISTIR isso antes de avisar (ignora blip)
-    cooldown_s: float = 120.0  # re-lembrete do MESMO problema so apos isso (evita tagarelar)
+    cooldown_s: float = 180.0  # re-lembrete do MESMO problema so apos isso (evita tagarelar)
 
     def __init__(self):
         self._pending_msg: Optional[str] = None    # problema observado agora (ainda nao falado)

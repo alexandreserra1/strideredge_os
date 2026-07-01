@@ -6,6 +6,26 @@ from analytics.realtime import (
 )
 
 
+def test_target_easy_run_dirige_por_fc():
+    from core.database import get_connection
+    aid = str(get_connection().execute(
+        "SELECT activity_id FROM dim_activities WHERE activity_name = 'Corrida Floripa'"
+    ).fetchone()[0])
+    t = Target.easy_run(aid)
+    assert t.pace_high_s_km > 1e6          # pace livre (nao cobra ritmo)
+    assert t.hr_ceiling > 0                 # dirigido por FC (topo da Z2 real do atleta)
+    assert t.cadence_base > 0
+
+
+def test_target_goal_pace_faz_faixa():
+    from core.database import get_connection
+    aid = str(get_connection().execute(
+        "SELECT activity_id FROM dim_activities WHERE activity_name = 'Corrida Floripa'"
+    ).fetchone()[0])
+    t = Target.goal_pace(300.0, aid, tol=0.05)
+    assert t.pace_low_s_km == 285.0 and t.pace_high_s_km == 315.0   # 300 ± 5%
+
+
 def test_callback_announcer_encaminha_ao_host():
     # costura de entrega: o host (app) recebe o cue p/ falar no TTS nativo
     saidas = []
@@ -66,7 +86,7 @@ def test_sustain_e_nao_tagarela():
     assert r.evaluate(w, t, 5.0) is None         # 5s < sustain (8s)
     assert r.evaluate(w, t, 10.0) is not None    # sustentou -> fala UMA vez
     assert r.evaluate(w, t, 15.0) is None         # mesmo problema -> quieto (nao tagarela)
-    assert r.evaluate(w, t, 140.0) is not None    # re-lembrete so apos o cooldown (120s)
+    assert r.evaluate(w, t, 200.0) is not None    # re-lembrete so apos o cooldown (180s)
 
 
 def test_fala_de_novo_apos_voltar_ao_normal():
