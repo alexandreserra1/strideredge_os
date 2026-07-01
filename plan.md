@@ -529,6 +529,10 @@ pro firmware depois. A matemática de sinal não se reescreve.
 | **A — API-first** (próxima) | expor análises/coach via FastAPI; dashboard consome a API | FastAPI + atual | agora |
 | **B — Hospedar** | auth, Postgres, fila pro LLM, deploy (ver §9 capacidade) | AWS/Docker, Postgres, Celery | quando houver usuários |
 | **C — App mobile** | cliente **fino**: insights + conectar wearable por **BLE** + sync | React Native ou Flutter | API estável |
+
+> 📄 **Spec completa da Fase C** (app: momento 1 pós-treino como cliente da API + momento 2 voz em
+> tempo real on-device, ingestão BLE/GPS, motor Rust no celular, costuras já prontas): ver
+> **[`app-spec.md`](app-spec.md)**.
 | **D — Dispositivo embarcado** | firmware Rust, IMU 100Hz, storage, BLE sync | Rust no-std (Embassy), Pico/nRF | valor provado + app pronto |
 
 ### 10.1 Estratégia meticulosa do embarcado (de-riscar em camadas)
