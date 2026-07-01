@@ -20,7 +20,22 @@ O StriderEdge OS é um **wearable de IA para atletas de corrida, HYROX e CrossFi
 
 Qualidade de movimento por exercício · carga muscular estimada via aceleração · queda de performance (ex.: redução da frequência de repetições = fadiga) · reconhecimento automático de exercícios · split cardio vs. muscular do esforço.
 
-### 0.3 ATUAL vs FASE 2 (evitar overengineering)
+### 0.3 Gerador de plano adaptativo (feature de produto PLANEJADA — ainda não existe)
+
+Hoje o sistema **analisa o passado** (treinos ocorridos). O **gerador de plano** é o inverso:
+**prescreve o futuro** — um plano de treino semanal/mensal rumo a uma **prova-alvo** (ex: meia
+maratona em 8 semanas), estilo Runna. É um **módulo NOVO de backend**, não algo pronto pra plugar.
+
+- **Entrada:** prova-alvo + data + disponibilidade + estado atual do atleta (ACWR/prontidão, fitness,
+  durabilidade — que já calculamos).
+- **Saída:** treinos agendados por dia (leve/longão/tiros/HYROX/força/descanso) com alvo (pace/FC/Z2),
+  respeitando a **regra dos 10%** e periodização; **adaptativo** (reajusta conforme desempenho/prontidão).
+- **Base científica:** intensidade polarizada (PMC11679080), carga/ACWR (PMC7047972), Z2 (PMC11986187)
+  — corpus que já temos. Prescrição = regras determinísticas + citação (mesma filosofia do coach).
+- **Depende disto:** as telas de **Plano/Calendário** do app (Fase C) — desenhar o design tudo bem,
+  mas o backend do plano vem depois.
+
+### 0.4 ATUAL vs FASE 2 (evitar overengineering)
 
 - **ATUAL (local, single-user):** Python + Rust (maturin) + DuckDB + Ollama (Qwen + bge-m3) + Streamlit. Fonte de dados = `.FIT`.
 - **FASE 2 (quando hospedar / multiusuário):** Celery+Redis (fila), TimescaleDB/PostgreSQL, AWS S3, Docker+AWS, TF Lite/ONNX (inferência on-device). **Não são stack atual** — entram só quando o volume justificar.
@@ -37,7 +52,9 @@ zonas de FC, terreno) · **carga/ACWR** (`TrainingLoad`, TRIMP por zona + portã
 eval anti-alucinação, agêntico text-to-SQL) · **API REST** (FastAPI OOP) + **dashboard** Streamlit
 (cliente HTTP) · **logging estruturado** · conexão reutilizável · **67 testes + CI verde**, tudo versionado.
 
-**Próximo:** HYROX (8 stations — precisa de dado) · agendar o sync (cron) · Fase B (hospedar) com usuários.
+**Próximo (produto):** frontend web de verdade (React, substitui o Streamlit) · **gerador de plano
+adaptativo** (§0.3 — backend novo, base das telas de calendário) · dado ao vivo (Connect IQ) · app
+mobile · HYROX (precisa de IMU). Autonomia: agendar o sync (cron). **Hospedar = por último** (§10).
 
 ---
 
