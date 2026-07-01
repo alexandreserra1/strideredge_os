@@ -28,8 +28,8 @@
 
 App = **cliente fino** da nossa FastAPI: chama `/activities/{id}`, `/coach`, `/fitness`,
 `/training-load` etc. e desenha. Nada novo no backend — a API já é consumida pelo dashboard hoje;
-o app é "outro cliente da mesma API". Depende da **Fase B** (backend hospedado + auth) pra ser
-multiusuário (ver §7).
+o app é "outro cliente da mesma API". No desenvolvimento roda contra o **backend LOCAL**;
+**hospedar é a última etapa** (só ao ir pra usuários reais — ver `plan.md §10`).
 
 ## 3. Momento 2 — tempo real (on-device)
 
@@ -68,14 +68,14 @@ DuckDB→kernel→coach **não muda**). Aí o **momento 1** (resumo pós-corrida
 
 ## 7. Dependências e ordem de de-risking
 
-- **Momento 1 depende da Fase B** (backend hospedado + auth) pra multiusuário.
-- **Momento 2 NÃO depende de backend** (é on-device) — pode até vir antes, local.
-- **Ordem sugerida (de-riscar em camadas, como o §10.1 do device):**
+- **Tudo roda contra o backend LOCAL.** Hospedar é a **última** etapa do produto (ver `plan.md §10`).
+- **Momento 2 não depende de backend** (é on-device); **momento 1** consome a API local.
+- **Ordem sugerida (de-riscar em camadas):**
   0. App cliente da API (momento 1) contra o backend local — risco baixo.
   1. Ingestão ao vivo com **sensor BLE pronto** (cinta FC / Stryd) — valida GPS+BLE+background.
   2. Plugar `LiveStreamDriver` + `PhoneTTSAnnouncer` → **momento 2 tocando no fone**.
   3. Gravar+subir a sessão → fecha com o momento 1.
-  4. Fase B (hospedar) quando for multiusuário.
+  4. **Hospedar — só no fim**, quando for pra usuários reais.
 
 ## 8. Costuras JÁ prontas (reuso) vs. novo
 

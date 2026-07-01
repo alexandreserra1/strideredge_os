@@ -515,25 +515,30 @@ Exemplo — 100 usuários, 20 vereditos no mesmo minuto, W≈10s →
 
 ---
 
-## 10. Roadmap de Build-out (backend → app → embarcado)
+## 10. Roadmap de Build-out (local primeiro; HOSPEDAR por último)
 
-**Regra de ouro:** provar valor com o dado atual (dashboard = protótipo) antes de investir em
-app/hardware (caros e lentos). Cada fase entrega algo útil sozinha; nada é jogado fora.
+**Regra de ouro (sênior):** constrói-se TUDO localmente; **hospedar é a ÚLTIMA etapa** — só quando o
+produto está completo e vai pra usuários reais. Hospedar é *deploy, não feature*; montar nuvem/auth/
+fila antes de ter produto é overengineering (constituição: "local agora, hospedado depois").
 
-**Costura que evita retrabalho:** tudo consome **UMA API** (FastAPI). E o **kernel Rust
-(Kalman/DTW/FFT) é escrito uma vez e roda nos dois lados** — servidor agora, cross-compilado
-pro firmware depois. A matemática de sinal não se reescreve.
+**Caminho crítico:** o diferencial (voz em tempo real + inteligência de movimento) é travado por UMA
+coisa — **obter dado ao vivo e rico do corpo** (BLE/Connect IQ → depois IMU próprio). É o maior risco
+técnico → de-riscar cedo. As telas (web/app) são clientes de **baixo risco** da API já pronta.
 
-| Fase | O quê | Stack | Gatilho |
-|---|---|---|---|
-| **A — API-first** (próxima) | expor análises/coach via FastAPI; dashboard consome a API | FastAPI + atual | agora |
-| **B — Hospedar** | auth, Postgres, fila pro LLM, deploy (ver §9 capacidade) | AWS/Docker, Postgres, Celery | quando houver usuários |
-| **C — App mobile** | cliente **fino**: insights + conectar wearable por **BLE** + sync | React Native ou Flutter | API estável |
+**Costura que evita retrabalho:** tudo consome UMA API (FastAPI); o kernel Rust é escrito uma vez e
+cross-compila pro celular/firmware. A matemática de sinal não se reescreve.
 
-> 📄 **Spec completa da Fase C** (app: momento 1 pós-treino como cliente da API + momento 2 voz em
-> tempo real on-device, ingestão BLE/GPS, motor Rust no celular, costuras já prontas): ver
-> **[`app-spec.md`](app-spec.md)**.
-| **D — Dispositivo embarcado** | firmware Rust, IMU 100Hz, storage, BLE sync | Rust no-std (Embassy), Pico/nRF | valor provado + app pronto |
+| Fase | O quê | Estado / gatilho |
+|---|---|---|
+| **A — Cérebro + API** | ingestão, kernel, análises, coach, RAG, tempo real, eval; API REST | ✅ feito (local) |
+| **B — Dado ao vivo** (ponte Connect IQ) | capturar live/IMU do relógio → destrava voz real + base do HYROX | **próximo (caminho crítico)** |
+| **C — App mobile** (o produto) | insights (cliente da API) + voz em tempo real on-device + BLE | contra backend **LOCAL** |
+| **D — Web de verdade** | React/Next substitui o Streamlit (protótipo → produto) | quando útil |
+| **E — Device/IMU próprio** | firmware Rust, IMU, HYROX/movimento | valor provado + app pronto |
+| **F — Hospedar** (POR ÚLTIMO) | deploy, auth, Postgres/fila (ver §9) | **só ao ir pra usuários reais** |
+
+> **Streamlit = protótipo/ferramenta interna, nunca o produto.** O produto é a **web (D)** + o **app (C)**,
+> ambos clientes da mesma API. Specs: [`app-spec.md`](app-spec.md) (Fase C) · [`device-spec.md`](device-spec.md) (Fase E).
 
 ### 10.1 Estratégia meticulosa do embarcado (de-riscar em camadas)
 
