@@ -31,7 +31,7 @@ class CoachEvaluator:
 
     @staticmethod
     def _citations(text: str) -> set:
-        return set(m.upper() for m in re.findall(r"PMC\d+", text, re.IGNORECASE))
+        return set(GroundingGuard.citations(text))   # reusa a primitiva (fonte unica)
 
     def numeric_fidelity(self, verdict: str, prompt: str) -> float:
         nums = self._numbers(verdict)

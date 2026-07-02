@@ -9,6 +9,7 @@ import time
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
@@ -27,6 +28,13 @@ class AskRequest(BaseModel):
 
 app = FastAPI(title="StriderEdge OS API", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # compacta payloads grandes (telemetria)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _log = Logger("api")
 
@@ -85,8 +93,9 @@ def activity_spectrum(activity_id: str, svc: ActivityService = Depends(get_activ
 
 @app.post("/api/v1/activities/{activity_id}/coach")
 def coach_verdict(activity_id: str, coach: Coach = Depends(get_coach)):
+    """Veredito estruturado: texto integral + fortes/melhorar/fazer + citacoes (PMC)."""
     _ensure_uuid(activity_id)
-    return {"activity_id": activity_id, "verdict": coach.verdict(activity_id)}
+    return {"activity_id": activity_id, **coach.structured_verdict(activity_id)}
 
 
 @app.get("/api/v1/training-load")

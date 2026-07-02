@@ -9,6 +9,8 @@ Desenho OOP:
     passar mais um BaseAnalyzer na lista, sem mexer no Coach (aberto/fechado).
 """
 
+import re
+
 import httpx
 
 from core.database import get_connection
@@ -52,6 +54,47 @@ class OllamaClient(BaseLLMClient):
         return response.json()["message"]["content"]
 
 
+class VerdictParser:
+    """Divide o veredito (as 3 partes que o SYSTEM_PROMPT exige) em campos p/ a API/UI.
+
+    Parse DETERMINISTICO: o codigo estrutura — nao pedimos JSON ao LLM (degradaria a prosa
+    e fugiria da filosofia conclusao-pronta). Robusto a variacoes de markdown (###, **, 1./1));
+    sem secoes reconheciveis, devolve listas vazias + texto integral (a UI degrada gracioso).
+    """
+
+    _HEADER = re.compile(
+        r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:\d[.)]\s*)?"
+        r"(pontos?\s+fortes|pontos?\s+a\s+melhorar|o\s+que\s+fazer)\b", re.I)
+    _BULLET = re.compile(r"^\s*[-*•]\s*")
+    _KEY = {"fortes": "strengths", "melhorar": "improvements", "fazer": "actions"}
+
+    @classmethod
+    def _clean(cls, line: str) -> str:
+        # tira bullet, negrito e asteriscos residuais ('**Fonte**' -> 'Fonte')
+        return cls._BULLET.sub("", line).replace("**", "").strip().strip("*").strip()
+
+    def parse(self, text: str) -> dict:
+        out = {"verdict": text, "strengths": [], "improvements": [], "actions": [],
+               "citations": GroundingGuard.citations(text)}   # reusa a primitiva
+        bucket = None
+        for line in text.splitlines():
+            m = self._HEADER.match(line)
+            if m:
+                kw = next(k for k in self._KEY if k in m.group(1).lower())
+                bucket = self._KEY[kw]
+                continue
+            clean = self._clean(line)
+            if bucket is None or not clean:
+                continue
+            if clean.lower().startswith("fonte"):
+                continue   # linhas 'Fonte(s): ...' ja viram citations
+            if self._BULLET.match(line) or not out[bucket]:
+                out[bucket].append(clean)          # novo item (bullet ou 1o paragrafo)
+            else:
+                out[bucket][-1] += " " + clean     # continuacao do item anterior
+        return out
+
+
 # Lista padrao de analises que entram no veredito. Para incluir uma nova,
 # basta adicionar outro BaseAnalyzer aqui — o Coach nao muda.
 DEFAULT_ANALYZERS = [
@@ -89,13 +132,14 @@ class Coach:
 
     def __init__(self, llm: BaseLLMClient, analyzers: list = None,
                  knowledge: BaseRetriever = None, web: BaseRetriever = None, k: int = 3,
-                 guard: BaseGuard = None):
+                 guard: BaseGuard = None, parser: "VerdictParser" = None):
         self.llm = llm                              # cerebro injetado (composicao)
         self.analyzers = analyzers or DEFAULT_ANALYZERS
         self.knowledge = knowledge                  # base curada (opcional)
         self.web = web                              # fallback de web (opcional)
         self.k = k
         self.guard = guard or GroundingGuard()      # guarda de aterramento (composicao)
+        self.parser = parser or VerdictParser()     # estrutura o veredito p/ a API (composicao)
 
     def _header(self, activity_id: str) -> str:
         """Cabecalho do prompt: metadados basicos do treino."""
@@ -150,6 +194,10 @@ class Coach:
         """Monta o prompt e gera o veredito com a guarda de aterramento (retry se inventar)."""
         prompt = self.build_user_prompt(activity_id)
         return self.guard.enforce(self.llm, self.SYSTEM_PROMPT, prompt)
+
+    def structured_verdict(self, activity_id: str) -> dict:
+        """Veredito ESTRUTURADO p/ a API/UI: texto + fortes/melhorar/fazer + citacoes."""
+        return self.parser.parse(self.verdict(activity_id))
 
 
 if __name__ == "__main__":

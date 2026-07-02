@@ -31,6 +31,15 @@ class GroundingGuard(BaseGuard):
         t = text.lower()
         return [b for b in cls.BANNED_CAUSES if b in t]
 
+    @classmethod
+    def citations(cls, text: str) -> list:
+        """Fontes PMC citadas, unicas e NA ORDEM em que aparecem (reusada por parser e eval)."""
+        seen: list = []
+        for pmc in re.findall(r"PMC\d+", text, re.IGNORECASE):
+            if pmc.upper() not in seen:
+                seen.append(pmc.upper())
+        return seen
+
     def issues(self, output: str, reference: str) -> Dict[str, list]:
         return {
             "invented_numbers": sorted(self.numbers(output) - self.numbers(reference)),
