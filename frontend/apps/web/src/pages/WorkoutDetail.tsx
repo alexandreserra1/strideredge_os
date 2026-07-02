@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
-import { Route, Footprints, Heart, Zap, TrendingUp, Play } from 'lucide-react'
+import { Route, Footprints, Heart, Zap, TrendingUp, Play, Sparkles } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
+import { useActivities, useCoachVerdict, toWorkoutSession } from '@strideredge/core'
 import {
-  mockActivities, mockActivityDetail, mockTrack, mockSpectrum,
+  mockActivities, mockActivityDetail, mockTrack,
   mockTelemetry, mockCoachVerdict,
 } from './mockData'
 
@@ -16,13 +17,36 @@ const hrZones = [
 ]
 
 export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) => void }) {
-  const [selectedId, setSelectedId] = useState(mockActivities[0].id)
-  const [showCoach, setShowCoach] = useState(false)
+  // Treinos REAIS quando o backend está up; fallback pro mock (a UI nunca quebra)
+  const { data: apiActs } = useActivities()
+  const isReal = !!apiActs?.length
+  const activities = isReal ? apiActs!.map(toWorkoutSession) : mockActivities
 
-  const activity = mockActivities.find(a => a.id === selectedId) || mockActivities[0]
-  const detail = mockActivityDetail
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showCoach, setShowCoach] = useState(false)
+  const coach = useCoachVerdict()
+
+  const activity = activities.find(a => a.id === selectedId) || activities[0]
+  const detail = mockActivityDetail            // próxima passada: adapters de zonas/track/telemetria
   const track = mockTrack
-  const verdict = mockCoachVerdict
+  // Review REAL quando gerada; senão o mock (demo)
+  const verdict = isReal && coach.data ? coach.data : mockCoachVerdict
+  const hasLists = !!(verdict.strengths?.length || verdict.improvements?.length || verdict.actions?.length)
+
+  const selectActivity = (id: string) => {
+    setSelectedId(id)
+    setShowCoach(false)
+    coach.reset()                              // review é por treino — limpa ao trocar
+  }
+
+  const onCoachClick = () => {
+    if (isReal && !coach.data && !coach.isPending) {
+      coach.mutate(activity.id)                // gera a análise real (LLM local, ~5-15s)
+      setShowCoach(true)
+    } else {
+      setShowCoach(v => !v)
+    }
+  }
 
   // Extract HR and cadence data for charts
   const hrData = mockTelemetry.filter((_, i) => i % 6 === 0).map(t => ({
@@ -55,13 +79,13 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
 
       {/* Activity Strip */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-        {mockActivities.map(act => (
+        {activities.map(act => (
           <button
             key={act.id}
-            onClick={() => setSelectedId(act.id)}
+            onClick={() => selectActivity(act.id)}
             className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-medium border transition-all duration-200 whitespace-nowrap
-              ${selectedId === act.id
-                ? 'bg-lime/10 text-lime border-lime/20'
+              ${activity.id === act.id
+                ? 'bg-brand/10 text-brand border-brand/25'
                 : 'bg-surface-200 text-text-secondary border-border-light hover:border-border-medium hover:text-text-primary'
               }`}
           >
@@ -215,30 +239,52 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
       </div>
 
       {/* Coach Verdict */}
-      <div className="card-hover border-lime/10" id="coach-verdict">
+      <div className="card-hover border-brand/10" id="coach-verdict">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-3">
+            <div className="grid place-items-center w-10 h-10 rounded-xl bg-brand/12 text-brand shrink-0">
+              <Sparkles size={18} />
+            </div>
             <div>
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                Veredito do Coach
-                <span className="text-[10px] bg-lime/10 text-lime px-2 py-0.5 rounded-full border border-lime/20 font-medium">B+</span>
-              </h3>
-              <p className="text-xs text-text-secondary">Análise gerada por IA · Qwen 2.7B + RAG</p>
+              <h3 className="text-lg font-bold">Veredito do Coach</h3>
+              <p className="text-xs text-text-secondary">
+                {isReal && coach.data ? 'Análise real · Qwen 7B + RAG científico' : 'IA local · Qwen 7B + RAG'}
+              </p>
             </div>
           </div>
-          <button onClick={() => setShowCoach(!showCoach)} className="btn-ghost text-xs shrink-0">
-            {showCoach ? 'Ocultar' : 'Ler análise'}
+          <button onClick={onCoachClick} disabled={coach.isPending} className="btn-ghost text-xs shrink-0">
+            {coach.isPending ? 'Analisando…'
+              : isReal && !coach.data ? 'Gerar análise'
+              : showCoach ? 'Ocultar' : 'Ver análise'}
           </button>
         </div>
 
-        <p className="text-sm leading-relaxed text-text-muted mb-6">{verdict.verdict}</p>
+        {coach.isPending && (
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-brand/[0.06] border border-brand/20 mb-6 animate-fade-in">
+            <Sparkles size={16} className="text-brand animate-pulse" />
+            <div>
+              <p className="text-sm font-medium">Analisando seu treino…</p>
+              <p className="text-xs text-text-secondary">O coach roda 100% local — leva alguns segundos.</p>
+            </div>
+          </div>
+        )}
+        {coach.isError && (
+          <p className="text-xs text-accent-red mb-4">Não consegui gerar a análise — o backend/Ollama está no ar?</p>
+        )}
 
-        {showCoach && (
+        {!showCoach && !coach.data && (
+          <p className="text-sm leading-relaxed text-text-muted mb-6">{mockCoachVerdict.verdict}</p>
+        )}
+        {showCoach && !hasLists && !coach.isPending && (
+          <p className="text-sm leading-relaxed text-text-muted mb-6 whitespace-pre-line">{verdict.verdict}</p>
+        )}
+
+        {showCoach && !coach.isPending && (
           <div className="grid md:grid-cols-3 gap-4 animate-fade-in">
             <div className="bg-accent-green/5 rounded-xl p-4 border border-accent-green/10">
               <h4 className="text-xs font-semibold text-accent-green uppercase tracking-wider mb-3">Pontos fortes</h4>
               <ul className="space-y-2">
-                {verdict.strengths.map((s, i) => (
+                {(verdict.strengths ?? []).map((s, i) => (
                   <li key={i} className="text-xs text-text-muted flex items-start gap-2">
                     <span className="text-accent-green mt-0.5 shrink-0">✓</span>
                     {s}
@@ -249,7 +295,7 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
             <div className="bg-accent-orange/5 rounded-xl p-4 border border-accent-orange/10">
               <h4 className="text-xs font-semibold text-accent-orange uppercase tracking-wider mb-3">A melhorar</h4>
               <ul className="space-y-2">
-                {verdict.improvements.map((s, i) => (
+                {(verdict.improvements ?? []).map((s, i) => (
                   <li key={i} className="text-xs text-text-muted flex items-start gap-2">
                     <span className="text-accent-orange mt-0.5 shrink-0">!</span>
                     {s}
@@ -260,7 +306,7 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
             <div className="bg-accent-blue/5 rounded-xl p-4 border border-accent-blue/10">
               <h4 className="text-xs font-semibold text-accent-blue uppercase tracking-wider mb-3">O que fazer</h4>
               <ul className="space-y-2">
-                {verdict.actions.map((s, i) => (
+                {(verdict.actions ?? []).map((s, i) => (
                   <li key={i} className="text-xs text-text-muted flex items-start gap-2">
                     <span className="text-accent-blue mt-0.5 shrink-0">→</span>
                     {s}
@@ -276,7 +322,7 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
           <div className="mt-4 pt-4 border-t border-border-light">
             <p className="text-[10px] text-text-secondary font-medium uppercase tracking-wider mb-2">Fontes</p>
             <div className="flex flex-wrap gap-2">
-              {verdict.citations.map((c, i) => (
+              {(verdict.citations ?? []).map((c, i) => (
                 <span key={i} className="text-[10px] bg-white/5 text-text-secondary px-2 py-1 rounded-md">{c}</span>
               ))}
             </div>

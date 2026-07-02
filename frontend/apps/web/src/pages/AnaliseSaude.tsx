@@ -1,6 +1,6 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
-import { useTrainingLoad, latestAcwr } from '@strideredge/core'
+import { useActivities, useCoachVerdict, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
 
 type Level = 'ok' | 'warn' | 'risk'
@@ -14,6 +14,10 @@ const worst = (ls: Level[]): Level => ls.includes('risk') ? 'risk' : ls.includes
 export default function AnaliseSaude() {
   // ACWR + ramp reais quando o backend está up; fallback pro mock
   const { data: load } = useTrainingLoad()
+  const { data: acts } = useActivities()
+  const coach = useCoachVerdict()
+  const isReal = !!acts?.length
+  const review = isReal && coach.data ? coach.data : mockCoachVerdict
   const timeline = load?.length ? load : mockTrainingLoad
   const acwr = latestAcwr(load ?? []) ?? mockAcwrCurrent
   const ramp = (load?.[load.length - 1]?.ramp_pct) ?? mockAcwrCurrent.ramp_pct ?? 0
@@ -94,20 +98,53 @@ export default function AnaliseSaude() {
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Review da IA */}
         <div className="card">
-          <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
-            <Sparkles size={16} className="text-brand" /> Review da IA
-          </h3>
-          <p className="text-sm text-text-muted leading-relaxed mb-4">{mockCoachVerdict.verdict}</p>
-          <div className="space-y-3">
-            <ReviewList title="Pontos fortes" items={mockCoachVerdict.strengths} color="#34D399" glyph="✓" />
-            <ReviewList title="A melhorar" items={mockCoachVerdict.improvements} color="#FF8A4C" glyph="!" />
-            <ReviewList title="O que fazer" items={mockCoachVerdict.actions} color="#38BDF8" glyph="→" />
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles size={16} className="text-brand" /> Review da IA
+              {isReal && coach.data && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand/12 text-brand">real</span>
+              )}
+            </h3>
+            {isReal && (
+              <button
+                onClick={() => coach.mutate(acts![0].activity_id)}
+                disabled={coach.isPending}
+                className="btn-ghost text-xs"
+              >
+                {coach.isPending ? 'Analisando…' : coach.data ? 'Regerar' : 'Gerar do último treino'}
+              </button>
+            )}
           </div>
-          <div className="mt-4 pt-3 border-t border-border-light flex flex-wrap gap-2">
-            {mockCoachVerdict.citations.map((c, i) => (
-              <span key={i} className="text-[10px] text-text-secondary bg-surface-200 px-2 py-1 rounded-md">{c}</span>
-            ))}
-          </div>
+
+          {coach.isPending ? (
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-brand/[0.06] border border-brand/20 animate-fade-in">
+              <Sparkles size={16} className="text-brand animate-pulse" />
+              <div>
+                <p className="text-sm font-medium">Analisando seu último treino…</p>
+                <p className="text-xs text-text-secondary">O coach roda 100% local — leva alguns segundos.</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {coach.isError && (
+                <p className="text-xs text-accent-red mb-3">Não consegui gerar — o backend/Ollama está no ar?</p>
+              )}
+              {!(review.strengths?.length || review.improvements?.length || review.actions?.length) ? (
+                <p className="text-sm text-text-muted leading-relaxed mb-4 whitespace-pre-line">{review.verdict}</p>
+              ) : (
+                <div className="space-y-3">
+                  <ReviewList title="Pontos fortes" items={review.strengths} color="#34D399" glyph="✓" />
+                  <ReviewList title="A melhorar" items={review.improvements} color="#FF8A4C" glyph="!" />
+                  <ReviewList title="O que fazer" items={review.actions} color="#38BDF8" glyph="→" />
+                </div>
+              )}
+              <div className="mt-4 pt-3 border-t border-border-light flex flex-wrap gap-2">
+                {(review.citations ?? []).map((c, i) => (
+                  <span key={i} className="text-[10px] text-text-secondary bg-surface-200 px-2 py-1 rounded-md">{c}</span>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Tendência de ACWR */}
