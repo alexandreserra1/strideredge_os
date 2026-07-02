@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, CircleMarker, ZoomControl, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useTheme } from '../layout/ThemeProvider'
 
@@ -37,11 +37,13 @@ export default function RouteMap({ points }: { points: RoutePoint[] }) {
       center={[start.lat, start.lon]}
       zoom={14}
       scrollWheelZoom={false}
+      doubleClickZoom={true}
       zoomControl={false}
       attributionControl={false}
       style={{ height: '100%', width: '100%', background: 'var(--surface-bg)' }}
     >
       <TileLayer key={tiles} url={tiles} />
+      <ZoomControl position="bottomright" />
       {points.slice(0, -1).map((p, i) => (
         <Polyline
           key={i}
