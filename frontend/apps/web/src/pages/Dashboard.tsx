@@ -129,9 +129,10 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
                 <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip
-                  contentStyle={{ background: '#1C1F24', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12, fontSize: 12 }}
-                  labelStyle={{ color: '#9CA3AF' }}
+                  contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-secondary)' }}
                   itemStyle={{ color: '#6E56F7' }}
+                  cursor={{ stroke: 'var(--border-medium)', strokeWidth: 1 }}
                 />
                 <Area type="monotone" dataKey="efficiency" stroke="#6E56F7" strokeWidth={2} fill="url(#effGrad)" />
               </AreaChart>
@@ -151,9 +152,10 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip
-                  contentStyle={{ background: '#1C1F24', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12, fontSize: 12 }}
-                  labelStyle={{ color: '#9CA3AF' }}
+                  contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-secondary)' }}
                   itemStyle={{ color: '#6E56F7' }}
+                  cursor={{ fill: 'var(--surface-300)', opacity: 0.5 }}
                 />
                 <Bar dataKey="volume" fill="#6E56F7" radius={[4, 4, 0, 0]} barSize={24} />
               </BarChart>

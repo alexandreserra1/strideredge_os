@@ -115,8 +115,9 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
                 <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} interval={3} />
                 <YAxis domain={[80, 190]} tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip
-                  contentStyle={{ background: '#1C1F24', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12, fontSize: 11 }}
-                  labelStyle={{ color: '#9CA3AF' }}
+                  contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 11, color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-secondary)' }}
+                  cursor={{ stroke: 'var(--border-medium)', strokeWidth: 1 }}
                 />
                 <Area type="monotone" dataKey="hr" stroke="#EF4444" strokeWidth={2} fill="url(#hrGrad)" />
               </AreaChart>
@@ -160,8 +161,9 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
                 <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} interval={3} />
                 <YAxis domain={[140, 185]} tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip
-                  contentStyle={{ background: '#1C1F24', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12, fontSize: 11 }}
-                  labelStyle={{ color: '#9CA3AF' }}
+                  contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 11, color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-secondary)' }}
+                  cursor={{ stroke: 'var(--border-medium)', strokeWidth: 1 }}
                 />
                 <Area type="monotone" dataKey="cadence" stroke="#22C55E" strokeWidth={2} fill="url(#cadGrad)" />
               </AreaChart>
