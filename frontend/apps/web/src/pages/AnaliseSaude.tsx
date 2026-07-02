@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
 import { useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
@@ -115,18 +115,41 @@ export default function AnaliseSaude() {
           <h3 className="text-sm font-semibold mb-4">Prontidão ao longo do tempo</h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                <ReferenceArea y1={0.8} y2={1.3} fill="#34D399" fillOpacity={0.08} />
+              <AreaChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
+                <defs>
+                  <linearGradient id="acwrGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6E56F7" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#6E56F7" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} interval={3} />
                 <YAxis domain={[0.4, 1.8]} tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 11 }} />
-                <Line type="monotone" dataKey="acwr" stroke="#6E56F7" strokeWidth={2} dot={false} />
-              </LineChart>
+                <ReferenceLine y={0.8} stroke="#34D399" strokeDasharray="4 4" strokeOpacity={0.55} />
+                <ReferenceLine y={1.3} stroke="#34D399" strokeDasharray="4 4" strokeOpacity={0.55} />
+                <Tooltip content={<AcwrTooltip />} cursor={{ stroke: 'var(--border-medium)', strokeWidth: 1 }} />
+                <Area type="monotone" dataKey="acwr" stroke="#6E56F7" strokeWidth={2.5} fill="url(#acwrGrad)"
+                  dot={false} activeDot={{ r: 5, fill: '#6E56F7', stroke: 'var(--surface-100)', strokeWidth: 2 }} />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-[11px] text-text-muted mt-2">Faixa verde = zona segura (0.8–1.3).</p>
+          <p className="text-[11px] text-text-muted mt-2">Entre as linhas tracejadas = zona segura (0.8–1.3).</p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function AcwrTooltip({ active, payload }: { active?: boolean; payload?: Array<{ value: number }> }) {
+  if (!active || !payload?.length) return null
+  const v = payload[0].value
+  const [label, color] =
+    v < 0.8 ? ['Leve', '#38BDF8'] :
+    v <= 1.3 ? ['Zona segura', '#34D399'] :
+    v <= 1.5 ? ['Atenção', '#FBBF24'] : ['Risco', '#F87171']
+  return (
+    <div className="glass rounded-lg px-3 py-2 text-xs shadow-lg">
+      <p className="font-bold tabular-nums">{v.toFixed(2)}</p>
+      <p style={{ color }}>{label}</p>
     </div>
   )
 }
