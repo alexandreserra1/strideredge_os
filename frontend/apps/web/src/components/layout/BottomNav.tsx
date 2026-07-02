@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, CalendarDays, Activity, Play, Dumbbell,
+  LayoutDashboard, CalendarDays, Activity, HeartPulse, Play, Dumbbell,
 } from 'lucide-react'
 
 interface BottomNavProps {
@@ -10,7 +10,7 @@ interface BottomNavProps {
 const items = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Início' },
   { id: 'plano', icon: CalendarDays, label: 'Plano' },
-  { id: 'detalhe', icon: Activity, label: 'Treinos' },
+  { id: 'analise', icon: HeartPulse, label: 'Saúde' },
   { id: 'corrida', icon: Play, label: 'Correr' },
   { id: 'hyrox', icon: Dumbbell, label: 'HYROX' },
 ]

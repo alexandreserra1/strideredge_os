@@ -7,16 +7,17 @@ import WorkoutDetail from './pages/WorkoutDetail'
 import PlanScreen from './pages/PlanScreen'
 import RunMode from './pages/RunMode'
 import HyroxScreen from './pages/HyroxScreen'
+import AnaliseSaude from './pages/AnaliseSaude'
 import { mockAcwrCurrent } from './pages/mockData'
 
-type Route = 'landing' | 'dashboard' | 'plano' | 'detalhe' | 'corrida' | 'hyrox'
+type Route = 'landing' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
 
 export default function App() {
   const [route, setRoute] = useState<Route>('dashboard')
   const [acwr] = useState(mockAcwrCurrent.acwr)
 
   const navigate = useCallback((r: string) => {
-    if (['landing', 'dashboard', 'plano', 'detalhe', 'corrida', 'hyrox'].includes(r)) {
+    if (['landing', 'dashboard', 'plano', 'detalhe', 'analise', 'corrida', 'hyrox'].includes(r)) {
       setRoute(r as Route)
     }
   }, [])
@@ -31,6 +32,8 @@ export default function App() {
         return <PlanScreen />
       case 'detalhe':
         return <WorkoutDetail onNavigate={navigate} />
+      case 'analise':
+        return <AnaliseSaude />
       case 'corrida':
         return <RunMode />
       case 'hyrox':
