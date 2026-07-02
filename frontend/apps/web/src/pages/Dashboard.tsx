@@ -2,6 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, A
 import { TrendingUp, Target, Flame, Wind, Footprints, ChevronRight, Play } from 'lucide-react'
 import KpiCard from '../components/ui/KpiCard'
 import AcwrGauge from '../components/ui/AcwrGauge'
+import { useActivities, useTrainingLoad, toWorkoutSession, latestAcwr } from '@strideredge/core'
 import { mockFitness, mockActivities, todayPrescribed, mockAcwrCurrent } from './mockData'
 
 const weeklyVolume = [
@@ -30,6 +31,12 @@ const typeLabels: Record<string, string> = {
 }
 
 export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => void }) {
+  // Dados REAIS quando o backend está no ar; fallback pro mock (a UI nunca quebra).
+  const { data: apiActs } = useActivities()
+  const { data: load } = useTrainingLoad()
+  const activities = apiActs?.length ? apiActs.map(toWorkoutSession) : mockActivities
+  const acwr = latestAcwr(load ?? []) ?? mockAcwrCurrent
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
@@ -48,7 +55,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
 
       {/* KPI Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <AcwrGauge value={mockAcwrCurrent.acwr} status={mockAcwrCurrent.status} />
+        <AcwrGauge value={acwr.acwr} status={acwr.status} />
 
         <KpiCard label="Fitness" value={`CTL ${mockFitness.fitness.pct_change > 0 ? '+' : ''}${mockFitness.fitness.pct_change.toFixed(1)}`}
           sub="Tendência de eficiência" icon={<TrendingUp size={16} />} accent="lime" trend={mockFitness.fitness.trend} />
@@ -161,7 +168,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
           </button>
         </div>
         <div className="space-y-2">
-          {mockActivities.slice(0, 5).map((act) => (
+          {activities.slice(0, 5).map((act) => (
             <button
               key={act.id}
               onClick={() => onNavigate('detalhe')}
