@@ -2,3 +2,13 @@ node_modules/
 dist/
 *.tsbuildinfo
 .vite/
+
+# saída compilada do tsc dentro do src (a fonte real é .ts/.tsx; core resolve pelo .ts)
+apps/web/src/**/*.js
+apps/web/src/**/*.js.map
+apps/web/src/**/*.d.ts
+apps/web/src/**/*.d.ts.map
+packages/core/src/**/*.js
+packages/core/src/**/*.js.map
+packages/core/src/**/*.d.ts
+packages/core/src/**/*.d.ts.map
