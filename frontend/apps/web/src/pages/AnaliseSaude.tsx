@@ -2,6 +2,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceL
 import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
 import { useActivities, useCoachVerdict, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
+import TrainingCalendarStrip, { type TrainingCalendarEntry } from '../components/ui/TrainingCalendarStrip'
 
 type Level = 'ok' | 'warn' | 'risk'
 const levelMeta: Record<Level, { color: string; label: string; chip: string }> = {
@@ -46,6 +47,18 @@ export default function AnaliseSaude() {
   const overall = worst(metrics.map(m => m.level))
   const ov = levelMeta[overall]
 
+  // Strip das últimas 2 semanas (mock por enquanto — wiring real vem depois):
+  // dia com atividade = feito; dia passado sem atividade = pulado se par, nada se ímpar.
+  const doneDays = new Set(mockActivities.map(a => a.date.slice(0, 10)))
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const calendarEntries: TrainingCalendarEntry[] = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(today); d.setDate(today.getDate() - (13 - i))
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const isPast = i < 13
+    const status = doneDays.has(iso) ? 'done' : isPast && d.getDate() % 2 === 0 ? 'skipped' : 'none'
+    return { date: iso, status }
+  })
+
   const trend = timeline.slice(-21).map(t => ({
     day: new Date(t.day + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
     acwr: Math.round((t.acwr ?? 0) * 100) / 100,
@@ -56,6 +69,12 @@ export default function AnaliseSaude() {
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Análise & Saúde</h1>
         <p className="text-text-secondary mt-1">Visão do atleta — risco de lesão e review da IA</p>
+      </div>
+
+      {/* Calendário de treinos — últimas 2 semanas */}
+      <div className="card">
+        <p className="text-xs text-text-secondary uppercase tracking-wider mb-3">Últimas 2 semanas</p>
+        <TrainingCalendarStrip entries={calendarEntries} />
       </div>
 
       {/* Risco geral */}

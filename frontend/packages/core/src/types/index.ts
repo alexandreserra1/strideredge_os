@@ -70,6 +70,52 @@ export interface TelemetryPoint {
   speed_ms: number | null
 }
 
+// ---- Shapes REAIS da API (o contrato do backend; adapters convertem p/ a UI) ----
+
+export interface ApiTrack {
+  activity_id: string
+  points: number
+  raw: { latitude: number[]; longitude: number[] }
+  smooth: { latitude: number[]; longitude: number[] }
+  cadence: (number | null)[]
+}
+
+export interface ApiActivityDetail {
+  activity_id: string
+  name: string
+  type: string                       // 'RUN' | 'CARDIO' | ... (maiúsculo)
+  distance_m: number | null
+  duration_s: number | null
+  avg_hr: number | null
+  avg_cadence: number | null
+  breaking_point: {
+    breaking_point: string | null
+    hr_at_break?: number
+    cadence_at_break?: number
+    cadence_drop_pct?: number
+  }
+  efficiency: {
+    by_terrain: Record<string, { segundos: number; eficiencia: number }>
+    uphill_efficiency_drop_pct: number | null
+  }
+  durability: {
+    applicable: boolean
+    decoupling_pct?: number
+    label?: string
+    eff_first?: number
+    eff_second?: number
+    hr_first?: number
+    hr_second?: number
+  }
+  hr_zones: {
+    hr_max: number | null
+    zones: Array<{ faixa: string; segundos: number; pct: number }>
+    z2_low?: number
+    z2_high?: number
+    hard_from?: number
+  }
+}
+
 export interface CadenceSpectrum {
   dominant_frequency_hz: number
   spectrum: {

@@ -1,6 +1,9 @@
 // Adaptadores backend -> shapes que a UI usa (o backend fala outra "língua":
 // primary_type MAIÚSCULO, status ACWR em português, distância em metros...).
-import type { Activity, ActivityType, WorkoutSession, TrainingLoadItem, AcwrStatus } from '../types'
+import type {
+  Activity, ActivityType, WorkoutSession, TrainingLoadItem, AcwrStatus,
+  ApiActivityDetail, ApiTrack,
+} from '../types'
 
 const TYPE_MAP: Record<string, ActivityType> = {
   RUN: 'run', CARDIO: 'treadmill', HIIT: 'crossfit',
@@ -50,4 +53,42 @@ export function latestAcwr(items: TrainingLoadItem[]): { acwr: number; status: A
   if (!items?.length) return null
   const last = items[items.length - 1]
   return { acwr: last.acwr ?? 0, status: toAcwrStatus(String(last.status)) }
+}
+
+// ---- Detalhe do treino (zonas / durabilidade / track) ----
+
+export interface ZoneBar { label: string; pct: number; loFrac: number }
+
+/** Zonas de FC reais -> barras p/ a UI. loFrac = limite inferior ÷ FCmax (a UI escolhe a cor). */
+export function toZoneBars(detail: ApiActivityDetail): ZoneBar[] {
+  const { zones, hr_max } = detail.hr_zones || { zones: [], hr_max: null }
+  if (!zones?.length || !hr_max) return []
+  return zones.map(z => {
+    const lo = z.faixa.startsWith('<') ? 0
+      : z.faixa.startsWith('>') ? Number(z.faixa.slice(1))
+      : Number(z.faixa.split('-')[0])
+    return { label: `${z.faixa} bpm`, pct: z.pct, loFrac: lo / hr_max }
+  })
+}
+
+export interface DurabilityUi { decoupling_pct: number; first_half_pa: number; second_half_pa: number; label: string }
+
+/** Durabilidade do backend (eff_first/eff_second) -> shape da UI. null se não aplicável. */
+export function toDurability(detail: ApiActivityDetail): DurabilityUi | null {
+  const d = detail.durability
+  if (!d?.applicable || d.decoupling_pct == null) return null
+  return {
+    decoupling_pct: d.decoupling_pct,
+    first_half_pa: d.eff_first ?? 0,
+    second_half_pa: d.eff_second ?? 0,
+    label: d.label ?? '',
+  }
+}
+
+/** Track (listas paralelas) -> pontos {lat, lon, cadence} p/ o mapa. [] = sem GPS (indoor). */
+export function toRoutePoints(track: ApiTrack): Array<{ lat: number; lon: number; cadence: number }> {
+  const { latitude, longitude } = track?.smooth ?? { latitude: [], longitude: [] }
+  return latitude.map((lat, i) => ({
+    lat, lon: longitude[i], cadence: track.cadence[i] ?? 0,
+  }))
 }

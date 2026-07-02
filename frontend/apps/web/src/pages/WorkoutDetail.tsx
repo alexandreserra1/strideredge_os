@@ -2,18 +2,27 @@ import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { Route, Footprints, Heart, Zap, TrendingUp, Play, Sparkles } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
-import { useActivities, useCoachVerdict, toWorkoutSession } from '@strideredge/core'
+import {
+  useActivities, useActivity, useTrack, useTelemetry, useCoachVerdict,
+  toWorkoutSession, toZoneBars, toDurability, toRoutePoints,
+} from '@strideredge/core'
 import {
   mockActivities, mockActivityDetail, mockTrack,
   mockTelemetry, mockCoachVerdict,
 } from './mockData'
 
-const hrZones = [
-  { zone: 'Z1', pct: mockActivityDetail.hr_zones!.zone_1, label: 'Muito leve', color: '#6B7079' },
-  { zone: 'Z2', pct: mockActivityDetail.hr_zones!.zone_2, label: 'Leve', color: '#22C55E' },
-  { zone: 'Z3', pct: mockActivityDetail.hr_zones!.zone_3, label: 'Moderado', color: '#6E56F7' },
-  { zone: 'Z4', pct: mockActivityDetail.hr_zones!.zone_4, label: 'Forte', color: '#F97316' },
-  { zone: 'Z5', pct: mockActivityDetail.hr_zones!.zone_5, label: 'Máximo', color: '#EF4444' },
+// Cor da barra pela intensidade (limite inferior ÷ FCmax) — frio -> quente
+const zoneColor = (loFrac: number) =>
+  loFrac < 0.5 ? '#6B7079' : loFrac < 0.6 ? '#38BDF8' : loFrac < 0.7 ? '#34D399'
+  : loFrac < 0.8 ? '#FBBF24' : loFrac < 0.9 ? '#FF8A4C' : '#F87171'
+
+// Zonas do MOCK no mesmo shape do adapter (fallback qdo o backend está off)
+const mockZoneBars = [
+  { label: 'Z1 · muito leve', pct: mockActivityDetail.hr_zones!.zone_1, loFrac: 0.5 },
+  { label: 'Z2 · leve', pct: mockActivityDetail.hr_zones!.zone_2, loFrac: 0.6 },
+  { label: 'Z3 · moderado', pct: mockActivityDetail.hr_zones!.zone_3, loFrac: 0.7 },
+  { label: 'Z4 · forte', pct: mockActivityDetail.hr_zones!.zone_4, loFrac: 0.8 },
+  { label: 'Z5 · máximo', pct: mockActivityDetail.hr_zones!.zone_5, loFrac: 0.9 },
 ]
 
 export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -27,8 +36,13 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
   const coach = useCoachVerdict()
 
   const activity = activities.find(a => a.id === selectedId) || activities[0]
-  const detail = mockActivityDetail            // próxima passada: adapters de zonas/track/telemetria
-  const track = mockTrack
+
+  // Detalhe/track/telemetria REAIS do treino selecionado (hooks só disparam com id real)
+  const realId = isReal ? activity.id : undefined
+  const { data: apiDetail } = useActivity(realId)
+  const { data: apiTrack } = useTrack(realId)
+  const { data: apiTele } = useTelemetry(realId)
+
   // Review REAL quando gerada; senão o mock (demo)
   const verdict = isReal && coach.data ? coach.data : mockCoachVerdict
   const hasLists = !!(verdict.strengths?.length || verdict.improvements?.length || verdict.actions?.length)
@@ -48,15 +62,28 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
     }
   }
 
-  // Extract HR and cadence data for charts
-  const hrData = mockTelemetry.filter((_, i) => i % 6 === 0).map(t => ({
+  // Séries pros gráficos: telemetria real (downsample ~80 pontos) ou mock
+  const teleSrc = apiTele?.length ? apiTele : mockTelemetry
+  const step = Math.max(1, Math.floor(teleSrc.length / 80))
+  const hrData = teleSrc.filter((_, i) => i % step === 0).map(t => ({
     time: new Date(t.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     hr: t.heart_rate,
     cadence: t.cadence,
   }))
+  const maxHr = apiTele?.length
+    ? Math.max(...apiTele.map(t => t.heart_rate ?? 0))
+    : mockActivityDetail.max_hr ?? 0
 
-  // Pontos da rota (lat/lon reais) pro mapa com tiles
-  const routeLL = track.points.map(p => ({ lat: p.smooth.lat, lon: p.smooth.lon, cadence: p.cadence }))
+  // Zonas + durabilidade: adapter do dado real, fallback mock
+  const zoneBars = apiDetail ? toZoneBars(apiDetail) : mockZoneBars
+  const durability = apiDetail
+    ? toDurability(apiDetail)
+    : { ...mockActivityDetail.durability!, label: '' }
+
+  // Rota: track real ([] = indoor, sem GPS) ou mock
+  const routeLL = apiTrack
+    ? toRoutePoints(apiTrack)
+    : mockTrack.points.map(p => ({ lat: p.smooth.lat, lon: p.smooth.lon, cadence: p.cadence }))
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -125,7 +152,7 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold flex items-center gap-2"><Heart size={14} className="text-accent-red" /> Frequência Cardíaca</h3>
-            <span className="text-xs text-text-secondary">Máx: {detail.max_hr} bpm</span>
+            <span className="text-xs text-text-secondary">Máx: {maxHr || '—'} bpm</span>
           </div>
           <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
@@ -153,16 +180,13 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
         <div className="card">
           <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Zap size={14} className="text-lime" /> Tempo por Zona de FC</h3>
           <div className="space-y-3">
-            {hrZones.map(z => (
-              <div key={z.zone} className="flex items-center gap-3">
-                <span className="text-xs font-semibold w-6 text-text-secondary">{z.zone}</span>
+            {zoneBars.map(z => (
+              <div key={z.label} className="flex items-center gap-3">
+                <span className="text-[10px] font-semibold w-24 text-text-secondary whitespace-nowrap">{z.label}</span>
                 <div className="flex-1 h-3 bg-surface-300 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${z.pct}%`, backgroundColor: z.color }} />
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${z.pct}%`, backgroundColor: zoneColor(z.loFrac) }} />
                 </div>
-                <div className="flex items-center gap-2 w-24 justify-end">
-                  <span className="text-xs text-text-secondary">{z.pct}%</span>
-                  <span className="text-[10px] text-text-secondary">{z.label}</span>
-                </div>
+                <span className="text-xs text-text-secondary w-12 text-right tabular-nums">{z.pct}%</span>
               </div>
             ))}
           </div>
@@ -198,44 +222,57 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
         {/* Durability / Decoupling */}
         <div className="card">
           <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingUp size={14} className="text-accent-blue" /> Durabilidade</h3>
-          <div className="flex items-center gap-6">
-            <div>
-              <p className="text-3xl font-bold text-accent-blue">{detail.durability!.decoupling_pct}%</p>
-              <p className="text-xs text-text-secondary mt-1">Decoupling Pa:FC</p>
+          {durability ? (
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-3xl font-bold text-accent-blue">{durability.decoupling_pct}%</p>
+                <p className="text-xs text-text-secondary mt-1">Decoupling Pa:FC</p>
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Eficiência 1ª metade</span>
+                  <span className="font-medium tabular-nums">{durability.first_half_pa.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Eficiência 2ª metade</span>
+                  <span className="font-medium tabular-nums">{durability.second_half_pa.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Status</span>
+                  <span className={`font-medium ${durability.decoupling_pct < 5 ? 'text-accent-green' : durability.decoupling_pct < 10 ? 'text-accent-yellow' : 'text-accent-red'}`}>
+                    {durability.label || (durability.decoupling_pct < 5 ? 'Boa' : durability.decoupling_pct < 10 ? 'Atenção' : 'Alta')}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-text-secondary">1ª metade</span>
-                <span className="font-medium">{detail.durability!.first_half_pa.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-text-secondary">2ª metade</span>
-                <span className="font-medium">{detail.durability!.second_half_pa.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-text-secondary">Status</span>
-                <span className={`font-medium ${detail.durability!.decoupling_pct < 5 ? 'text-accent-green' : detail.durability!.decoupling_pct < 10 ? 'text-accent-yellow' : 'text-accent-red'}`}>
-                  {detail.durability!.decoupling_pct < 5 ? 'Bom' : detail.durability!.decoupling_pct < 10 ? 'Atenção' : 'Alto'}
-                </span>
-              </div>
-            </div>
-          </div>
+          ) : (
+            <p className="text-xs text-text-muted">Não aplicável a este treino (precisa de ritmo contínuo).</p>
+          )}
         </div>
       </div>
 
       {/* Mapa · semáforo de cadência */}
       <div className="card overflow-hidden">
         <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Route size={14} className="text-brand" /> Percurso · Semáforo de Cadência</h3>
-        <div className="relative w-full h-64 md:h-80 rounded-xl overflow-hidden border border-border-light">
-          <RouteMap points={routeLL} />
-          {/* legenda */}
-          <div className="absolute bottom-3 left-3 z-[1000] flex items-center gap-3 glass rounded-xl px-3 py-2 text-[10px]">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#34D399' }} /> ≥168 spm</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#FBBF24' }} /> 160–168</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#F87171' }} /> &lt;160</span>
+        {routeLL.length > 1 ? (
+          <div className="relative w-full h-64 md:h-80 rounded-xl overflow-hidden border border-border-light">
+            <RouteMap points={routeLL} />
+            {/* legenda */}
+            <div className="absolute bottom-3 left-3 z-[1000] flex items-center gap-3 glass rounded-xl px-3 py-2 text-[10px]">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#34D399' }} /> ≥168 spm</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#FBBF24' }} /> 160–168</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#F87171' }} /> &lt;160</span>
+            </div>
+            <div className="absolute top-2 right-2 z-[1000] text-[9px] text-text-muted glass px-2 py-0.5 rounded">© OpenStreetMap · CARTO</div>
           </div>
-          <div className="absolute top-2 right-2 z-[1000] text-[9px] text-text-muted glass px-2 py-0.5 rounded">© OpenStreetMap · CARTO</div>
-        </div>
+        ) : (
+          <div className="grid place-items-center h-40 rounded-xl border border-dashed border-border-medium text-center">
+            <div>
+              <p className="text-sm font-medium text-text-secondary">Treino indoor — sem GPS</p>
+              <p className="text-xs text-text-muted mt-1">Esteira e treinos de força não geram trilha no mapa.</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Coach Verdict */}

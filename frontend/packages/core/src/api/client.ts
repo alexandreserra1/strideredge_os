@@ -1,7 +1,7 @@
 import type {
   Activity,
-  ActivityDetail,
-  TrackData,
+  ApiActivityDetail,
+  ApiTrack,
   TelemetryPoint,
   CadenceSpectrum,
   CoachVerdict,
@@ -35,8 +35,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   activities: {
     list: () => request<Activity[]>('/activities'),
-    detail: (id: string) => request<ActivityDetail>(`/activities/${id}`),
-    track: (id: string) => request<TrackData>(`/activities/${id}/track`),
+    detail: (id: string) => request<ApiActivityDetail>(`/activities/${id}`),
+    track: (id: string) => request<ApiTrack>(`/activities/${id}/track`),
     telemetry: (id: string) => request<TelemetryPoint[]>(`/activities/${id}/telemetry`),
     spectrum: (id: string) => request<CadenceSpectrum>(`/activities/${id}/cadence-spectrum`),
     coach: (id: string) =>
