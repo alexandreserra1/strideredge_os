@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ---- Tema CLARO ---- */
+  :root {
+    --surface-bg: #F5F6F8;
+    --surface-50: #FFFFFF;
+    --surface-100: #FFFFFF;
+    --surface-200: #FFFFFF;
+    --surface-300: #EDEFF3;
+    --text-primary: #0E1116;
+    --text-secondary: #56606E;
+    --text-muted: #8A93A0;
+    --border-light: rgba(16, 20, 30, 0.07);
+    --border-medium: rgba(16, 20, 30, 0.12);
+    /* acento da marca (índigo-violeta) — troque estes valores p/ re-tematizar tudo */
+    --brand: #6E56F7;
+    --brand-hover: #8371FF;
+    --brand-ink: #FFFFFF;
+    --brand-soft: rgba(110, 86, 247, 0.12);
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    color-scheme: light;
+  }
+
+  /* ---- Tema ESCURO (charcoal azulado, não preto chapado) ---- */
+  .dark {
+    --surface-bg: #0B0D12;
+    --surface-50: #0B0D12;
+    --surface-100: #12151C;
+    --surface-200: #171B23;
+    --surface-300: #212632;
+    --text-primary: #F3F5F9;
+    --text-secondary: #9AA2AE;
+    --text-muted: #626A76;
+    --border-light: rgba(255, 255, 255, 0.06);
+    --border-medium: rgba(255, 255, 255, 0.11);
+    --brand: #6E56F7;
+    --brand-hover: #8371FF;
+    --brand-ink: #FFFFFF;
+    --brand-soft: rgba(124, 107, 255, 0.16);
+    --glass-bg: rgba(18, 21, 28, 0.72);
+    color-scheme: dark;
+  }
+
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body { @apply bg-[var(--surface-bg)] text-[var(--text-primary)] font-sans antialiased; }
+  ::selection { background-color: var(--brand-soft); color: var(--text-primary); }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+}
+
+@layer components {
+  .glass {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-light);
+  }
+  .card {
+    @apply bg-[var(--surface-100)] rounded-2xl border border-[var(--border-light)] p-5;
+  }
+  .card-hover {
+    @apply card transition-all duration-200 hover:border-[var(--border-medium)] hover:-translate-y-0.5
+           hover:shadow-[0_12px_32px_-16px_rgba(0,0,0,0.55)];
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold px-6 py-3
+           bg-[var(--brand)] text-[var(--brand-ink)] transition-all duration-200
+           hover:bg-[var(--brand-hover)] active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed
+           shadow-[0_8px_24px_-10px_var(--brand)];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border-medium)]
+           text-[var(--text-secondary)] font-medium px-4 py-2 transition-all duration-200
+           hover:bg-[var(--surface-200)] hover:text-[var(--text-primary)] active:scale-[0.98];
+  }
+  .kpi-card {
+    @apply bg-[var(--surface-100)] rounded-2xl border border-[var(--border-light)] p-4 md:p-5 flex flex-col gap-1;
+  }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .text-balance { text-wrap: balance; }
+}
+
+@media (max-width: 640px) {
+  .hide-mobile { display: none !important; }
+}

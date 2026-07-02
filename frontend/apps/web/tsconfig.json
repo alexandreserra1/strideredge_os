@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM"],
+    "baseUrl": ".",
+    "types": ["vite/client"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@strideredge/core": ["../../packages/core/src"]
+    }
+  },
+  "include": ["src", "../../packages/core/src"]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@strideredge/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/types/index.ts",
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.50.0",
+    "react": "^18.3.0"
+  }
+}
