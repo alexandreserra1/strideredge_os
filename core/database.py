@@ -1,14 +1,19 @@
 """core/database.py — conexao reutilizavel com o DuckDB e migracoes.
 
-Tudo que toca o banco passa por aqui. Mantemos UMA conexao por processo
+Tudo que toca o banco passa por aqui. Mantemos UMA conexao-RAIZ por processo
 (reutilizada), em vez de abrir/fechar a cada consulta — menos overhead e codigo
 mais limpo. DuckDB e single-writer; uma conexao read-write le e escreve.
 
-Concorrencia entre varios processos (ex: dashboard + API ao mesmo tempo) e um
-tema de Fase 2 (hospedado) — hoje o app roda em um processo por vez.
+THREAD-SAFETY: a conexao do DuckDB NAO e thread-safe. A API (FastAPI) atende
+requisicoes em threadpool — o navegador dispara varias em paralelo — e usar a
+mesma conexao de 2 threads derruba o processo (crash nativo, SIGTRAP). O jeito
+sancionado pelo DuckDB e: UMA conexao-raiz + um CURSOR por thread (cursor()
+compartilha o mesmo banco/catalogo e tem a mesma API). get_connection() devolve
+o cursor da thread atual — quem chama nao muda nada.
 """
 
 import os
+import threading
 from pathlib import Path
 import duckdb
 
@@ -17,8 +22,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "storage" / "strideredge.db"
 MIGRATIONS_DIR = PROJECT_ROOT / "db" / "migrations"
 
-# Conexao compartilhada (uma por processo). Criada sob demanda na 1a chamada.
+# Conexao-raiz compartilhada (uma por processo) + cursores por thread.
+# _generation invalida cursores antigos quando a raiz e fechada/reaberta (testes).
 _connection = None
+_generation = 0
+_local = threading.local()
 
 
 def _resolve_db_path() -> str:
@@ -27,25 +35,31 @@ def _resolve_db_path() -> str:
 
 
 def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
-    """Devolve a conexao reutilizavel (cria na 1a vez). NAO feche — e compartilhada.
+    """Devolve o handle reutilizavel do banco DESTA thread. NAO feche — e compartilhado.
 
-    O parametro read_only e mantido por compatibilidade de assinatura; a conexao
-    unica e read-write (le e escreve). Para encerrar de verdade use close_connection().
+    Por baixo: uma unica conexao-raiz por processo; cada thread recebe um cursor()
+    dela (mesma API, mesmo banco), porque a conexao nao e thread-safe. O parametro
+    read_only e mantido por compatibilidade de assinatura.
     """
     global _connection
     if _connection is None:
         path = _resolve_db_path()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         _connection = duckdb.connect(path)
-    return _connection
+    if getattr(_local, "gen", None) != _generation or getattr(_local, "cursor", None) is None:
+        _local.cursor = _connection.cursor()
+        _local.gen = _generation
+    return _local.cursor
 
 
 def close_connection() -> None:
-    """Fecha a conexao compartilhada (uso em testes/teardown)."""
-    global _connection
+    """Fecha a conexao-raiz compartilhada (uso em testes/teardown)."""
+    global _connection, _generation
     if _connection is not None:
         _connection.close()
         _connection = None
+    _generation += 1          # invalida os cursores cacheados de TODAS as threads
+    _local.cursor = None
 
 
 def run_migrations(con: duckdb.DuckDBPyConnection) -> list:
