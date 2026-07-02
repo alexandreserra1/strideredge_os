@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { Route, Footprints, Heart, Zap, TrendingUp, Play } from 'lucide-react'
+import RouteMap from '../components/ui/RouteMap'
 import {
   mockActivities, mockActivityDetail, mockTrack, mockSpectrum,
   mockTelemetry, mockCoachVerdict,
@@ -30,19 +31,8 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
     cadence: t.cadence,
   }))
 
-  // Rota normalizada pra caber no mapa (viewBox 160x90 com padding), independente do GPS
-  const MW = 160, MH = 90, PAD = 16
-  const lons = track.points.map(p => p.smooth.lon)
-  const lats = track.points.map(p => p.smooth.lat)
-  const minLon = Math.min(...lons), spanLon = (Math.max(...lons) - minLon) || 1e-6
-  const minLat = Math.min(...lats), spanLat = (Math.max(...lats) - minLat) || 1e-6
-  const routePoints = track.points.map(p => ({
-    x: PAD + ((p.smooth.lon - minLon) / spanLon) * (MW - 2 * PAD),
-    y: PAD + (1 - (p.smooth.lat - minLat) / spanLat) * (MH - 2 * PAD),
-    cadence: p.cadence,
-  }))
-  const cadColor = (cad: number) => cad >= 168 ? '#34D399' : cad >= 160 ? '#F5B14C' : '#FB5E7E'
-  const marker = routePoints[Math.floor(routePoints.length * 0.6)] || routePoints[0]
+  // Pontos da rota (lat/lon reais) pro mapa com tiles
+  const routeLL = track.points.map(p => ({ lat: p.smooth.lat, lon: p.smooth.lon, cadence: p.cadence }))
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -210,35 +200,15 @@ export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) 
       {/* Mapa · semáforo de cadência */}
       <div className="card overflow-hidden">
         <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Route size={14} className="text-brand" /> Percurso · Semáforo de Cadência</h3>
-        <div className="relative w-full h-64 md:h-80 rounded-xl overflow-hidden border border-border-light"
-          style={{ background: 'radial-gradient(120% 130% at 50% 0%, var(--surface-300), var(--surface-bg))' }}>
-          <svg viewBox="0 0 160 90" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 w-full h-full">
-            {/* trilha em segmentos coloridos pela cadência */}
-            {routePoints.slice(0, -1).map((p, i) => {
-              const n = routePoints[i + 1]
-              return <line key={i} x1={p.x} y1={p.y} x2={n.x} y2={n.y}
-                stroke={cadColor(p.cadence)} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-            })}
-            {/* largada */}
-            <circle cx={routePoints[0].x} cy={routePoints[0].y} r={3} fill="var(--surface-bg)" stroke="#34D399" strokeWidth={2} />
-            {/* posição do atleta (marcador pulsante) */}
-            <g>
-              <circle cx={marker.x} cy={marker.y} r={4.5} fill="none" stroke="#6E56F7" strokeWidth={1.5}
-                style={{ transformBox: 'fill-box', transformOrigin: 'center' }} className="animate-pulse-ring" />
-              <circle cx={marker.x} cy={marker.y} r={3.6} fill="#6E56F7" />
-              <circle cx={marker.x} cy={marker.y} r={1.4} fill="#fff" />
-            </g>
-            {/* chegada */}
-            <circle cx={routePoints[routePoints.length - 1].x} cy={routePoints[routePoints.length - 1].y} r={3} fill="var(--surface-bg)" stroke="#FB5E7E" strokeWidth={2} />
-          </svg>
-
+        <div className="relative w-full h-64 md:h-80 rounded-xl overflow-hidden border border-border-light">
+          <RouteMap points={routeLL} />
           {/* legenda */}
-          <div className="absolute bottom-3 left-3 flex items-center gap-3 glass rounded-xl px-3 py-2 text-[10px]">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full" style={{ background: '#34D399' }} /> ≥168 spm</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full" style={{ background: '#F5B14C' }} /> 160–168</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full" style={{ background: '#FB5E7E' }} /> &lt;160</span>
+          <div className="absolute bottom-3 left-3 z-[1000] flex items-center gap-3 glass rounded-xl px-3 py-2 text-[10px]">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#34D399' }} /> ≥168 spm</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#FBBF24' }} /> 160–168</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#F87171' }} /> &lt;160</span>
           </div>
-          <div className="absolute top-3 right-3 text-[10px] text-text-muted glass px-2 py-1 rounded-lg">Mapa com tiles chega no app</div>
+          <div className="absolute top-2 right-2 z-[1000] text-[9px] text-text-muted glass px-2 py-0.5 rounded">© OpenStreetMap · CARTO</div>
         </div>
       </div>
 

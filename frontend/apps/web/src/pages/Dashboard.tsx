@@ -57,15 +57,19 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <AcwrGauge value={acwr.acwr} status={acwr.status} />
 
-        <KpiCard label="Fitness" value={`CTL ${mockFitness.fitness.pct_change > 0 ? '+' : ''}${mockFitness.fitness.pct_change.toFixed(1)}`}
-          sub="Tendência de eficiência" icon={<TrendingUp size={16} />} accent="lime" trend={mockFitness.fitness.trend} />
+        <KpiCard label="Fitness" value={`${mockFitness.fitness.pct_change > 0 ? '+' : ''}${mockFitness.fitness.pct_change.toFixed(1)}%`}
+          sub="Eficiência (vel ÷ FC) · 14 dias"
+          hint="Quão em forma você está: eficiência = velocidade por batimento. Sobe quando você corre mais rápido com a mesma FC."
+          icon={<TrendingUp size={16} />} accent="green" trend={mockFitness.fitness.trend} />
 
         <KpiCard label="Previsão 10K" value={mockFitness.predictions['10k'].predicted_pace}
           sub={`${Math.round(mockFitness.predictions['10k'].predicted_seconds / 60)}min`}
+          hint="Tempo estimado de prova (modelo de Riegel), projetado a partir da sua melhor corrida recente."
           icon={<Target size={16} />} accent="blue" />
 
         <KpiCard label="Previsão 21K" value={mockFitness.predictions['21k'].predicted_pace}
           sub={`${Math.round(mockFitness.predictions['21k'].predicted_seconds / 60)}min`}
+          hint="Tempo estimado de prova (modelo de Riegel). Mais preciso perto da distância que você treina."
           icon={<Target size={16} />} accent="orange" />
       </div>
 

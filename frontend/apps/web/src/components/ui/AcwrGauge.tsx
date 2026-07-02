@@ -1,4 +1,9 @@
+import { Info } from 'lucide-react'
 import AnimatedNumber from './AnimatedNumber'
+
+const ACWR_HINT =
+  'Prontidão (ACWR): razão entre a carga aguda (últimos 7 dias) e a crônica (últimos 28 dias). ' +
+  'Entre 0.8 e 1.3 = zona ideal (pode treinar forte). Acima de ~1.5 = pico de risco de lesão.'
 
 interface AcwrGaugeProps {
   value: number
@@ -18,7 +23,12 @@ export default function AcwrGauge({ value, status }: AcwrGaugeProps) {
 
   return (
     <div className="kpi-card">
-      <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">Prontidão · ACWR</span>
+      <span className="flex items-center gap-1.5 text-xs font-medium text-text-secondary uppercase tracking-wider">
+        Prontidão · ACWR
+        <span title={ACWR_HINT} className="cursor-help text-text-muted hover:text-text-secondary transition-colors">
+          <Info size={12} />
+        </span>
+      </span>
       <div className="flex items-center justify-between mt-2">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90">

@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
+import { Info } from 'lucide-react'
 
 interface KpiCardProps {
   label: string
   value: string | number
   sub?: string
+  hint?: string
   icon?: ReactNode
   accent?: 'lime' | 'green' | 'yellow' | 'red' | 'orange' | 'blue'
   trend?: 'up' | 'down' | 'stable'
@@ -11,26 +13,29 @@ interface KpiCardProps {
 }
 
 const accentColors = {
-  lime: 'text-lime border-lime/30',
-  green: 'text-accent-green border-accent-green/30',
-  yellow: 'text-accent-yellow border-accent-yellow/30',
-  red: 'text-accent-red border-accent-red/30',
-  orange: 'text-accent-orange border-accent-orange/30',
-  blue: 'text-accent-blue border-accent-blue/30',
+  lime: 'text-lime',
+  green: 'text-accent-green',
+  yellow: 'text-accent-yellow',
+  red: 'text-accent-red',
+  orange: 'text-accent-orange',
+  blue: 'text-accent-blue',
 }
 
-const trendIcons = {
-  up: '↑',
-  down: '↓',
-  stable: '→',
-}
+const trendIcons = { up: '↑', down: '↓', stable: '→' }
 
-export default function KpiCard({ label, value, sub, icon, accent = 'lime', trend, children }: KpiCardProps) {
+export default function KpiCard({ label, value, sub, hint, icon, accent = 'lime', trend, children }: KpiCardProps) {
   return (
     <div className={`kpi-card relative overflow-hidden ${children ? 'pb-0' : ''}`}>
       <div className="flex items-start justify-between mb-1">
-        <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">{label}</span>
-        {icon && <span className={`${accentColors[accent].split(' ')[0]} opacity-70`}>{icon}</span>}
+        <span className="flex items-center gap-1.5 text-xs font-medium text-text-secondary uppercase tracking-wider">
+          {label}
+          {hint && (
+            <span title={hint} className="cursor-help text-text-muted hover:text-text-secondary transition-colors">
+              <Info size={12} />
+            </span>
+          )}
+        </span>
+        {icon && <span className={`${accentColors[accent]} opacity-70`}>{icon}</span>}
       </div>
       <div className="flex items-baseline gap-2">
         <span className="text-2xl md:text-3xl font-bold tracking-tight text-text-primary">{value}</span>
