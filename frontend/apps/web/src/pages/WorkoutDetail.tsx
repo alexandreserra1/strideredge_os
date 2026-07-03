@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { Route, Footprints, Heart, Zap, TrendingUp, Play, Sparkles } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
@@ -25,15 +25,28 @@ const mockZoneBars = [
   { label: 'Z5 · máximo', pct: mockActivityDetail.hr_zones!.zone_5, loFrac: 0.9 },
 ]
 
-export default function WorkoutDetail({ onNavigate }: { onNavigate: (r: string) => void }) {
+export default function WorkoutDetail({ onNavigate, initialId }: {
+  onNavigate: (r: string) => void
+  initialId?: string | null      // deep-link: treino clicado no calendário/feed
+}) {
   // Treinos REAIS quando o backend está up; fallback pro mock (a UI nunca quebra)
   const { data: apiActs } = useActivities()
   const isReal = !!apiActs?.length
   const activities = isReal ? apiActs!.map(toWorkoutSession) : mockActivities
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null)
   const [showCoach, setShowCoach] = useState(false)
   const coach = useCoachVerdict()
+
+  // se o usuário clicar noutro dia do calendário, adota o novo treino
+  useEffect(() => {
+    if (initialId) {
+      setSelectedId(initialId)
+      setShowCoach(false)
+      coach.reset()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialId])
 
   const activity = activities.find(a => a.id === selectedId) || activities[0]
 

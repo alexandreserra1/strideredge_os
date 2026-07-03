@@ -15,11 +15,18 @@ type Route = 'landing' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrid
 export default function App() {
   const [route, setRoute] = useState<Route>('dashboard')
   const [acwr] = useState(mockAcwrCurrent.acwr)
+  // treino a abrir no detalhe (deep-link do calendário/feed)
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const navigate = useCallback((r: string) => {
     if (['landing', 'dashboard', 'plano', 'detalhe', 'analise', 'corrida', 'hyrox'].includes(r)) {
       setRoute(r as Route)
     }
+  }, [])
+
+  const openWorkout = useCallback((id: string) => {
+    setDetailId(id)
+    setRoute('detalhe')
   }, [])
 
   const renderPage = () => {
@@ -31,9 +38,9 @@ export default function App() {
       case 'plano':
         return <PlanScreen />
       case 'detalhe':
-        return <WorkoutDetail onNavigate={navigate} />
+        return <WorkoutDetail onNavigate={navigate} initialId={detailId} />
       case 'analise':
-        return <AnaliseSaude />
+        return <AnaliseSaude onOpenWorkout={openWorkout} />
       case 'corrida':
         return <RunMode />
       case 'hyrox':
