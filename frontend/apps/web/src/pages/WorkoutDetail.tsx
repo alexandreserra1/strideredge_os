@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, 
 import { Route, Footprints, Heart, Zap, TrendingUp, Play, Sparkles } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
 import {
-  useActivities, useActivity, useTrack, useTelemetry, useCoachVerdict,
+  useActivities, useActivity, useTrack, useTelemetry, useCoachStream,
   toWorkoutSession, toZoneBars, toDurability, toRoutePoints,
 } from '@strideredge/core'
 import {
@@ -36,7 +36,7 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
 
   const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null)
   const [showCoach, setShowCoach] = useState(false)
-  const coach = useCoachVerdict()
+  const coach = useCoachStream()
 
   // se o usuário clicar noutro dia do calendário, adota o novo treino
   useEffect(() => {
@@ -67,8 +67,8 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
   }
 
   const onCoachClick = () => {
-    if (isReal && !coach.data && !coach.isPending) {
-      coach.mutate(activity.id)                // gera a análise real (LLM local, ~5-15s)
+    if (isReal && !coach.data && !coach.isStreaming) {
+      coach.start(activity.id)                 // SSE: o texto nasce token a token
       setShowCoach(true)
     } else {
       setShowCoach(v => !v)
@@ -302,20 +302,33 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
               </p>
             </div>
           </div>
-          <button onClick={onCoachClick} disabled={coach.isPending} className="btn-ghost text-xs shrink-0">
-            {coach.isPending ? 'Analisando…'
-              : isReal && !coach.data ? 'Gerar análise'
-              : showCoach ? 'Ocultar' : 'Ver análise'}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {isReal && coach.data && !coach.isStreaming && (
+              <button onClick={() => { coach.start(activity.id, true); setShowCoach(true) }} className="btn-ghost text-xs">
+                Regerar
+              </button>
+            )}
+            <button onClick={onCoachClick} disabled={coach.isStreaming} className="btn-ghost text-xs">
+              {coach.isStreaming ? 'Analisando…'
+                : isReal && !coach.data ? 'Gerar análise'
+                : showCoach ? 'Ocultar' : 'Ver análise'}
+            </button>
+          </div>
         </div>
 
-        {coach.isPending && (
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-brand/[0.06] border border-brand/20 mb-6 animate-fade-in">
-            <Sparkles size={16} className="text-brand animate-pulse" />
-            <div>
-              <p className="text-sm font-medium">Analisando seu treino…</p>
-              <p className="text-xs text-text-secondary">O coach roda 100% local — leva alguns segundos.</p>
+        {coach.isStreaming && (
+          <div className="p-4 rounded-xl bg-brand/[0.06] border border-brand/20 mb-6 animate-fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={14} className="text-brand animate-pulse" />
+              <p className="text-xs font-medium text-text-secondary">
+                {coach.isCorrecting ? 'Detectei um dado não medido — corrigindo…' : 'Coach escrevendo · 100% local'}
+              </p>
             </div>
+            {coach.text && (
+              <p className="text-sm leading-relaxed whitespace-pre-line">
+                {coach.text}<span className="text-brand animate-pulse">▍</span>
+              </p>
+            )}
           </div>
         )}
         {coach.isError && (
@@ -325,11 +338,11 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
         {!showCoach && !coach.data && (
           <p className="text-sm leading-relaxed text-text-muted mb-6">{mockCoachVerdict.verdict}</p>
         )}
-        {showCoach && !hasLists && !coach.isPending && (
+        {showCoach && !hasLists && !coach.isStreaming && (
           <p className="text-sm leading-relaxed text-text-muted mb-6 whitespace-pre-line">{verdict.verdict}</p>
         )}
 
-        {showCoach && !coach.isPending && (
+        {showCoach && !coach.isStreaming && (
           <div className="grid md:grid-cols-3 gap-4 animate-fade-in">
             <div className="bg-accent-green/5 rounded-xl p-4 border border-accent-green/10">
               <h4 className="text-xs font-semibold text-accent-green uppercase tracking-wider mb-3">Pontos fortes</h4>

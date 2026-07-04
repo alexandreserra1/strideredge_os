@@ -9,7 +9,9 @@ Desenho OOP:
     passar mais um BaseAnalyzer na lista, sem mexer no Coach (aberto/fechado).
 """
 
+import json
 import re
+from typing import Iterator, Optional, Tuple
 
 import httpx
 
@@ -36,22 +38,37 @@ class OllamaClient(BaseLLMClient):
         self.url = url
         self.temperature = temperature   # baixa = mais factual; 0 = deterministico (eval)
 
+    def _payload(self, system_prompt: str, user_prompt: str, stream: bool) -> dict:
+        return {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": stream,
+            "options": {"temperature": self.temperature},
+        }
+
     def chat(self, system_prompt: str, user_prompt: str) -> str:
-        response = httpx.post(
-            self.url,
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "stream": False,
-                "options": {"temperature": self.temperature},
-            },
-            timeout=120.0,
-        )
+        response = httpx.post(self.url, json=self._payload(system_prompt, user_prompt, False),
+                              timeout=120.0)
         response.raise_for_status()
         return response.json()["message"]["content"]
+
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        """Tokens conforme o Ollama gera (NDJSON: um objeto por linha, 'done' no fim)."""
+        with httpx.stream("POST", self.url, json=self._payload(system_prompt, user_prompt, True),
+                          timeout=120.0) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                data = json.loads(line)
+                token = data.get("message", {}).get("content", "")
+                if token:
+                    yield token
+                if data.get("done"):
+                    break
 
 
 class VerdictParser:
@@ -95,6 +112,32 @@ class VerdictParser:
         return out
 
 
+class VerdictStore:
+    """Persistencia do veredito por atividade (cache_coach_verdicts).
+
+    Duas funcoes num so mecanismo: IDEMPOTENCIA (repetir o POST /coach nao paga outros
+    ~30s de LLM) e review INSTANTANEA ao reabrir o treino. 'Regerar' passa force=True.
+    """
+
+    def get(self, activity_id: str) -> Optional[dict]:
+        row = get_connection().execute(
+            "SELECT structured, created_at FROM cache_coach_verdicts WHERE activity_id = ?",
+            [activity_id]).fetchone()
+        if row is None:
+            return None
+        data = json.loads(row[0])
+        data["generated_at"] = str(row[1])
+        return data
+
+    def put(self, activity_id: str, structured: dict, model: str = "") -> None:
+        get_connection().execute(
+            """INSERT OR REPLACE INTO cache_coach_verdicts
+               (activity_id, verdict, structured, model, created_at)
+               VALUES (?, ?, ?, ?, current_timestamp)""",
+            [activity_id, structured["verdict"],
+             json.dumps(structured, ensure_ascii=False), model])
+
+
 # Lista padrao de analises que entram no veredito. Para incluir uma nova,
 # basta adicionar outro BaseAnalyzer aqui — o Coach nao muda.
 DEFAULT_ANALYZERS = [
@@ -132,7 +175,8 @@ class Coach:
 
     def __init__(self, llm: BaseLLMClient, analyzers: list = None,
                  knowledge: BaseRetriever = None, web: BaseRetriever = None, k: int = 3,
-                 guard: BaseGuard = None, parser: "VerdictParser" = None):
+                 guard: BaseGuard = None, parser: "VerdictParser" = None,
+                 store: "VerdictStore" = None):
         self.llm = llm                              # cerebro injetado (composicao)
         self.analyzers = analyzers or DEFAULT_ANALYZERS
         self.knowledge = knowledge                  # base curada (opcional)
@@ -140,6 +184,7 @@ class Coach:
         self.k = k
         self.guard = guard or GroundingGuard()      # guarda de aterramento (composicao)
         self.parser = parser or VerdictParser()     # estrutura o veredito p/ a API (composicao)
+        self.store = store or VerdictStore()        # cache/idempotencia (composicao)
 
     def _header(self, activity_id: str) -> str:
         """Cabecalho do prompt: metadados basicos do treino."""
@@ -198,6 +243,47 @@ class Coach:
     def structured_verdict(self, activity_id: str) -> dict:
         """Veredito ESTRUTURADO p/ a API/UI: texto + fortes/melhorar/fazer + citacoes."""
         return self.parser.parse(self.verdict(activity_id))
+
+    def cached_verdict(self, activity_id: str, force: bool = False) -> dict:
+        """Veredito estruturado COM cache: devolve o persistido se existir (idempotente);
+        senao gera, persiste e devolve. force=True regenera ('Regerar' na UI)."""
+        if not force:
+            hit = self.store.get(activity_id)
+            if hit is not None:
+                return {**hit, "cached": True}
+        result = self.structured_verdict(activity_id)
+        self.store.put(activity_id, result, model=getattr(self.llm, "model", ""))
+        return {**result, "cached": False}
+
+    def stream_verdict(self, activity_id: str, force: bool = False) -> Iterator[Tuple[str, object]]:
+        """Veredito em STREAMING — generator de eventos p/ SSE (a API so serializa):
+
+        ('token', str)        texto conforme o LLM gera (UX: espera percebida ~1s)
+        ('correcting', dict)  a guarda reprovou (numero inventado/causa banida) — a UI avisa
+        ('replace', str)      texto corrigido substitui o streamado
+        ('done', dict)        veredito estruturado final (persistido no cache)
+
+        Cache existente (sem force) -> 'done' imediato. Streaming e guarda convivem:
+        streama a 1a tentativa; se suja, o enforce continua DELA (first=) sem regerar."""
+        if not force:
+            hit = self.store.get(activity_id)
+            if hit is not None:
+                yield ("done", {**hit, "cached": True})
+                return
+        prompt = self.build_user_prompt(activity_id)
+        parts = []
+        for token in self.llm.chat_stream(self.SYSTEM_PROMPT, prompt):
+            parts.append(token)
+            yield ("token", token)
+        text = "".join(parts)
+        found = self.guard.issues(text, prompt)
+        if any(found.values()):
+            yield ("correcting", found)
+            text = self.guard.enforce(self.llm, self.SYSTEM_PROMPT, prompt, first=text)
+            yield ("replace", text)
+        structured = self.parser.parse(text)
+        self.store.put(activity_id, structured, model=getattr(self.llm, "model", ""))
+        yield ("done", {**structured, "cached": False})
 
 
 if __name__ == "__main__":

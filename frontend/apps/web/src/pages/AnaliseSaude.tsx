@@ -1,6 +1,6 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
-import { useActivities, useCoachVerdict, useTrainingLoad, latestAcwr } from '@strideredge/core'
+import { useActivities, useCoachStream, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
 import TrainingCalendarStrip, { type TrainingDayInfo } from '../components/ui/TrainingCalendarStrip'
 
@@ -16,7 +16,7 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
   // ACWR + ramp reais quando o backend está up; fallback pro mock
   const { data: load } = useTrainingLoad()
   const { data: acts } = useActivities()
-  const coach = useCoachVerdict()
+  const coach = useCoachStream()
   const isReal = !!acts?.length
   const review = isReal && coach.data ? coach.data : mockCoachVerdict
   const timeline = load?.length ? load : mockTrainingLoad
@@ -132,22 +132,28 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
             </h3>
             {isReal && (
               <button
-                onClick={() => coach.mutate(acts![0].activity_id)}
-                disabled={coach.isPending}
+                onClick={() => coach.start(acts![0].activity_id, !!coach.data)}
+                disabled={coach.isStreaming}
                 className="btn-ghost text-xs"
               >
-                {coach.isPending ? 'Analisando…' : coach.data ? 'Regerar' : 'Gerar do último treino'}
+                {coach.isStreaming ? 'Analisando…' : coach.data ? 'Regerar' : 'Gerar do último treino'}
               </button>
             )}
           </div>
 
-          {coach.isPending ? (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-brand/[0.06] border border-brand/20 animate-fade-in">
-              <Sparkles size={16} className="text-brand animate-pulse" />
-              <div>
-                <p className="text-sm font-medium">Analisando seu último treino…</p>
-                <p className="text-xs text-text-secondary">O coach roda 100% local — leva alguns segundos.</p>
+          {coach.isStreaming ? (
+            <div className="p-4 rounded-xl bg-brand/[0.06] border border-brand/20 animate-fade-in">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles size={14} className="text-brand animate-pulse" />
+                <p className="text-xs font-medium text-text-secondary">
+                  {coach.isCorrecting ? 'Detectei um dado não medido — corrigindo…' : 'Coach escrevendo · 100% local'}
+                </p>
               </div>
+              {coach.text && (
+                <p className="text-sm leading-relaxed whitespace-pre-line">
+                  {coach.text}<span className="text-brand animate-pulse">▍</span>
+                </p>
+              )}
             </div>
           ) : (
             <>

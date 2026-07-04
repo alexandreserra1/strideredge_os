@@ -6,7 +6,7 @@ formatos de arquivo ou novos modelos preditivos so precisam cumprir o contrato.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import polars as pl
 
@@ -71,6 +71,12 @@ class BaseLLMClient(ABC):
         """Recebe persona (system) + dados (user) e devolve a resposta gerada."""
         ...
 
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        """Gera em STREAMING (tokens conforme nascem). Padrao: a resposta inteira num
+        unico chunk — provedores com suporte real (Ollama) sobrescrevem. Assim fakes de
+        teste e clientes antigos funcionam sem mudar nada."""
+        yield self.chat(system_prompt, user_prompt)
+
 
 class BaseEmbedder(ABC):
     """Contrato para transformar texto em vetor (embedding) para busca semantica.
@@ -124,12 +130,15 @@ class BaseGuard(ABC):
         return not any(self.issues(output, reference).values())
 
     def enforce(self, llm: "BaseLLMClient", system_prompt: str, user_prompt: str,
-                max_retries: int = 2) -> str:
+                max_retries: int = 2, first: Optional[str] = None) -> str:
         """Gera com o LLM e REGENERA enquanto houver problema (ate max_retries). Devolve a
-        melhor tentativa (menos problemas) — enforcement em codigo, sem confiar so no modelo."""
+        melhor tentativa (menos problemas) — enforcement em codigo, sem confiar so no modelo.
+
+        `first` = saida ja gerada fora daqui (ex: streaming): vira a tentativa 0 sem
+        chamar o LLM de novo; o loop de correcao continua identico a partir dela."""
         best, best_score, prompt = None, None, user_prompt
-        for _ in range(max_retries + 1):
-            out = llm.chat(system_prompt, prompt)
+        for attempt in range(max_retries + 1):
+            out = first if attempt == 0 and first is not None else llm.chat(system_prompt, prompt)
             found = self.issues(out, user_prompt)
             score = sum(len(v) for v in found.values())
             if best_score is None or score < best_score:

@@ -5,12 +5,14 @@ Endpoints FINOS (controllers): validam entrada e delegam às classes de serviço
 grandes. Concorrência = async/threadpool do FastAPI; o paralelismo mora no kernel Rust.
 """
 
+import json
 import time
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.logging import Logger
@@ -92,10 +94,26 @@ def activity_spectrum(activity_id: str, svc: ActivityService = Depends(get_activ
 
 
 @app.post("/api/v1/activities/{activity_id}/coach")
-def coach_verdict(activity_id: str, coach: Coach = Depends(get_coach)):
-    """Veredito estruturado: texto integral + fortes/melhorar/fazer + citacoes (PMC)."""
+def coach_verdict(activity_id: str, force: bool = False, coach: Coach = Depends(get_coach)):
+    """Veredito estruturado COM cache (idempotente: repetir devolve o persistido).
+    ?force=true regenera. Resposta inclui cached: bool."""
     _ensure_uuid(activity_id)
-    return {"activity_id": activity_id, **coach.structured_verdict(activity_id)}
+    return {"activity_id": activity_id, **coach.cached_verdict(activity_id, force=force)}
+
+
+@app.get("/api/v1/activities/{activity_id}/coach/stream")
+def coach_verdict_stream(activity_id: str, force: bool = False, coach: Coach = Depends(get_coach)):
+    """Veredito em STREAMING (SSE): 'token' conforme o LLM gera; 'correcting'/'replace' se a
+    guarda de aterramento reprovar; 'done' com o estruturado (persistido). Cache -> 'done' direto."""
+    _ensure_uuid(activity_id)
+
+    def sse():
+        for event, payload in coach.stream_verdict(activity_id, force=force):
+            data = {"text": payload} if isinstance(payload, str) else payload
+            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(sse(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/v1/training-load")
