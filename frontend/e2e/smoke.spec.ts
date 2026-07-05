@@ -1,0 +1,80 @@
+import { test, expect } from '@playwright/test'
+
+// Smoke E2E — os fluxos que um atleta faz de verdade, contra API + Ollama reais.
+// Não é cobertura total de UI (overengineering p/ 1 usuário): é o caminho crítico.
+
+const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+const monthLabel = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+
+test('app carrega: shell + dashboard renderizam', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('StriderEdge').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Treinos' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Análise & Saúde' })).toBeVisible()
+})
+
+test('treinos: mapa leaflet desenha a rota do treino com GPS', async ({ page }) => {
+  // determinístico: acha via API um treino que TEM GPS e o seleciona na faixa,
+  // em vez de torcer pro treino default ter trilha
+  const acts = await (await page.request.get('/api/v1/activities')).json()
+  let withGps: { activity_id: string; activity_name: string } | null = null
+  for (const a of acts.slice(0, 12)) {          // faixa da UI mostra os recentes
+    const t = await (await page.request.get(`/api/v1/activities/${a.activity_id}/track`)).json()
+    if (t.points > 1) { withGps = a; break }
+  }
+  test.skip(!withGps, 'nenhum treino recente com GPS no banco')
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Treinos' }).click()
+  await expect(page.getByText('Percurso · Semáforo de Cadência')).toBeVisible()
+  await page.getByRole('button', { name: withGps!.activity_name.split(' — ')[0].slice(0, 16) })
+    .first().click()
+
+  // a rota real vira MUITOS <path> no overlay (um por segmento colorido de cadência);
+  // cada segmento tem ~1px (bbox zero = "hidden"), então o certo é asserir a contagem
+  await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 20_000 })
+  await expect
+    .poll(() => page.locator('.leaflet-overlay-pane path').count(), { timeout: 20_000 })
+    .toBeGreaterThan(50)
+  await expect(page.locator('.leaflet-control-zoom')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Satélite' })).toBeVisible()
+})
+
+test('coach: gerar análise -> veredito REAL estruturado (streaming ou cache)', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Treinos' }).click()
+  await expect(page.getByText('Veredito do Coach')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Gerar análise' }).click()
+  // cache -> instantâneo; sem cache -> streama ~30s. As listas estruturadas fecham o fluxo.
+  await expect(page.locator('h4', { hasText: 'Pontos fortes' })).toBeVisible({ timeout: 150_000 })
+  // e é dado REAL (não o mock): o subtítulo muda quando coach.data chega da API
+  await expect(page.getByText('Análise real · Qwen 7B + RAG científico')).toBeVisible()
+})
+
+test('análise & saúde: risco, calendário interativo e deep-link pro treino', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Análise & Saúde' }).click()
+  await expect(page.getByRole('heading', { name: 'Análise & Saúde' })).toBeVisible()
+  await expect(page.getByText('Risco geral de lesão')).toBeVisible()
+
+  // strip 2 semanas com legenda
+  await expect(page.getByText('Feito', { exact: true })).toBeVisible()
+  await expect(page.getByText('Sem treino', { exact: true })).toBeVisible()
+
+  // modo Mês: nome do mês atual, > desabilitado (futuro), < navega
+  await page.getByRole('button', { name: 'Mês', exact: true }).click()
+  const now = new Date()
+  await expect(page.getByText(monthLabel(now))).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Próximo mês' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Mês anterior' }).click()
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  await expect(page.getByText(monthLabel(prev))).toBeVisible()
+
+  // deep-link: clicar num dia com treino abre o WorkoutDetail daquele treino
+  const day = page.getByRole('button', { name: /Abrir treino de/ }).first()
+  await expect(day).toBeVisible()
+  await day.click()
+  await expect(page.getByText('Veredito do Coach')).toBeVisible()
+})

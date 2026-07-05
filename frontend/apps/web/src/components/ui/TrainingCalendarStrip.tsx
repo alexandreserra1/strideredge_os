@@ -82,6 +82,7 @@ export default function TrainingCalendarStrip({ days, onSelect }: Props) {
         ) : (
           <div className="flex items-center gap-1">
             <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+              aria-label="Mês anterior"
               className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-300 transition-colors">
               <ChevronLeft size={16} />
             </button>
@@ -89,6 +90,7 @@ export default function TrainingCalendarStrip({ days, onSelect }: Props) {
               {MONTHS[month.getMonth()]} {month.getFullYear()}
             </span>
             <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+              aria-label="Próximo mês"
               disabled={atCurrentMonth}
               className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
               <ChevronRight size={16} />
