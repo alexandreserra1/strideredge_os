@@ -2,19 +2,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, A
 import { TrendingUp, Target, Flame, Wind, Footprints, ChevronRight, Play } from 'lucide-react'
 import KpiCard from '../components/ui/KpiCard'
 import AcwrGauge from '../components/ui/AcwrGauge'
-import { useActivities, useTrainingLoad, toWorkoutSession, latestAcwr } from '@strideredge/core'
+import { useActivities, useTrainingLoad, useFitness, toWorkoutSession, latestAcwr, toFitnessUi, weeklyVolume } from '@strideredge/core'
 import { mockFitness, mockActivities, todayPrescribed, mockAcwrCurrent } from './mockData'
-
-const weeklyVolume = [
-  { name: 'Seg', volume: 0 }, { name: 'Ter', volume: 44 }, { name: 'Qua', volume: 0 },
-  { name: 'Qui', volume: 0 }, { name: 'Sex', volume: 38 }, { name: 'Sáb', volume: 52 },
-  { name: 'Dom', volume: 95 },
-]
-
-const progressPoints = mockFitness.fitness.points.map((p: { day: string; efficiency: number }) => ({
-  day: new Date(p.day).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }),
-  efficiency: Math.round(p.efficiency * 100) / 100,
-}))
 
 const typeColors: Record<string, string> = {
   run: 'bg-accent-green/20 text-accent-green border-accent-green/30',
@@ -30,12 +19,41 @@ const typeLabels: Record<string, string> = {
   crossfit: 'CrossFit', strength: 'Força', recovery: 'Recuperação',
 }
 
-export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => void }) {
+export default function Dashboard({ onNavigate, onOpenWorkout }: {
+  onNavigate: (r: string) => void
+  onOpenWorkout?: (id: string) => void
+}) {
   // Dados REAIS quando o backend está no ar; fallback pro mock (a UI nunca quebra).
   const { data: apiActs } = useActivities()
   const { data: load } = useTrainingLoad()
+  const { data: apiFit } = useFitness()
   const activities = apiActs?.length ? apiActs.map(toWorkoutSession) : mockActivities
   const acwr = latestAcwr(load ?? []) ?? mockAcwrCurrent
+
+  // Fitness real (previsões Riegel + tendência de eficiência) ou mock
+  const fit = (apiFit && toFitnessUi(apiFit)) || {
+    trend: mockFitness.fitness.trend, trendLabel: '',
+    pctChange: mockFitness.fitness.pct_change,
+    points: mockFitness.fitness.points,
+    predictions: {
+      '10k': { pace: mockFitness.predictions['10k'].predicted_pace, minutes: Math.round(mockFitness.predictions['10k'].predicted_seconds / 60) },
+      '21k': { pace: mockFitness.predictions['21k'].predicted_pace, minutes: Math.round(mockFitness.predictions['21k'].predicted_seconds / 60) },
+    },
+  }
+  const progressPoints = fit.points.map(pt => ({
+    day: new Date(pt.day).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }),
+    efficiency: Math.round(pt.efficiency * 100) / 100,
+  }))
+
+  // Volume da semana corrente (min/dia) calculado das sessões
+  const volume = weeklyVolume(activities)
+  const volumeTotal = volume.reduce((acc, v) => acc + v.volume, 0)
+
+  // Saudação honesta (hora local) + data real
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
+  const raw = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const todayLabel = raw.charAt(0).toUpperCase() + raw.slice(1)
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -43,9 +61,9 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Bom dia, <span className="text-brand">Rafa</span>
+            {greeting}, <span className="text-brand">atleta</span>
           </h1>
-          <p className="text-text-secondary mt-1">Terça · 28 jun · Semana 26 do plano</p>
+          <p className="text-text-secondary mt-1">{todayLabel}</p>
         </div>
         <button onClick={() => onNavigate('corrida')} className="btn-primary text-sm">
           <Play size={16} />
@@ -57,18 +75,18 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <AcwrGauge value={acwr.acwr} status={acwr.status} />
 
-        <KpiCard label="Fitness" value={`${mockFitness.fitness.pct_change > 0 ? '+' : ''}${mockFitness.fitness.pct_change.toFixed(1)}%`}
-          sub="Eficiência (vel ÷ FC) · 14 dias"
+        <KpiCard label="Fitness" value={`${fit.pctChange > 0 ? '+' : ''}${fit.pctChange.toFixed(1)}%`}
+          sub={`Eficiência (vel ÷ FC)${fit.trendLabel ? ` · ${fit.trendLabel}` : ' · 14 dias'}`}
           hint="Quão em forma você está: eficiência = velocidade por batimento. Sobe quando você corre mais rápido com a mesma FC."
-          icon={<TrendingUp size={16} />} accent="green" trend={mockFitness.fitness.trend} />
+          icon={<TrendingUp size={16} />} accent="green" trend={fit.trend} />
 
-        <KpiCard label="Previsão 10K" value={mockFitness.predictions['10k'].predicted_pace}
-          sub={`${Math.round(mockFitness.predictions['10k'].predicted_seconds / 60)}min`}
+        <KpiCard label="Previsão 10K" value={fit.predictions['10k']?.pace ?? '—'}
+          sub={fit.predictions['10k'] ? `${fit.predictions['10k'].minutes}min` : 'sem referência'}
           hint="Tempo estimado de prova (modelo de Riegel), projetado a partir da sua melhor corrida recente."
           icon={<Target size={16} />} accent="blue" />
 
-        <KpiCard label="Previsão 21K" value={mockFitness.predictions['21k'].predicted_pace}
-          sub={`${Math.round(mockFitness.predictions['21k'].predicted_seconds / 60)}min`}
+        <KpiCard label="Previsão 21K" value={fit.predictions['21k']?.pace ?? '—'}
+          sub={fit.predictions['21k'] ? `${fit.predictions['21k'].minutes}min` : 'sem referência'}
           hint="Tempo estimado de prova (modelo de Riegel). Mais preciso perto da distância que você treina."
           icon={<Target size={16} />} accent="orange" />
       </div>
@@ -80,11 +98,9 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
             <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">Hoje · Prescrito</span>
             <h3 className="text-lg font-semibold mt-0.5">{todayPrescribed.name}</h3>
           </div>
-          {todayPrescribed.adjusted && (
-            <span className="text-[10px] font-medium bg-lime/10 text-lime px-2 py-1 rounded-full border border-lime/20">
-              🤖 Ajustado à prontidão
-            </span>
-          )}
+          <span className="text-[10px] font-medium bg-surface-300 text-text-secondary px-2 py-1 rounded-full border border-border-light">
+            exemplo · gerador de plano em breve
+          </span>
         </div>
         <div className="flex flex-wrap gap-4 text-sm">
           <span className="text-text-muted">
@@ -114,7 +130,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold">Eficiência (velocidade ÷ FC)</h3>
             <span className="text-xs text-accent-green">
-              {mockFitness.fitness.pct_change > 0 ? '+' : ''}{mockFitness.fitness.pct_change.toFixed(1)}% esta semana
+              {fit.pctChange > 0 ? '+' : ''}{fit.pctChange.toFixed(1)}% na janela
             </span>
           </div>
           <div className="h-36">
@@ -144,11 +160,16 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold">Volume Semanal (min)</h3>
-            <span className="text-xs text-text-secondary">Total: 229 min</span>
+            <span className="text-xs text-text-secondary">Total: {volumeTotal} min</span>
           </div>
-          <div className="h-36">
+          <div className="h-36 relative">
+            {volumeTotal === 0 && (
+              <p className="absolute inset-0 grid place-items-center text-xs text-text-muted z-10">
+                Sem treinos nesta semana — bora começar? 🏃
+              </p>
+            )}
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyVolume}>
+              <BarChart data={volume}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip
@@ -177,7 +198,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
           {activities.slice(0, 5).map((act) => (
             <button
               key={act.id}
-              onClick={() => onNavigate('detalhe')}
+              onClick={() => onOpenWorkout ? onOpenWorkout(act.id) : onNavigate('detalhe')}
               className="w-full card-hover flex items-center gap-4 p-4 text-left"
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold border ${typeColors[act.type]}`}>
@@ -192,7 +213,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (r: string) => v
               <div className="text-right shrink-0">
                 <p className="text-sm font-semibold text-text-primary">{act.distance_km > 0 ? `${act.distance_km} km` : `${act.duration_min} min`}</p>
                 <p className="text-xs text-text-secondary">
-                  {act.pace} · {act.avg_hr} bpm
+                  {act.pace}{act.avg_hr ? ` · ${act.avg_hr} bpm` : ''}
                 </p>
               </div>
             </button>

@@ -14,7 +14,8 @@ from core.framework.interfaces import BaseLLMClient
 
 # Palavras que NUNCA podem aparecer (mutacao/efeitos colaterais).
 _FORBIDDEN = ["insert", "update", "delete", "drop", "alter", "create",
-              "attach", "copy", "pragma", "replace", "truncate"]
+              "attach", "copy", "pragma", "replace", "truncate",
+              "install", "load", "export", "import", "set", "call"]  # extensoes/IO/config do DuckDB
 
 
 class SqlAgent:

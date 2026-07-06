@@ -8,13 +8,16 @@ import PlanScreen from './pages/PlanScreen'
 import RunMode from './pages/RunMode'
 import HyroxScreen from './pages/HyroxScreen'
 import AnaliseSaude from './pages/AnaliseSaude'
+import { useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockAcwrCurrent } from './pages/mockData'
 
 type Route = 'landing' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
 
 export default function App() {
   const [route, setRoute] = useState<Route>('dashboard')
-  const [acwr] = useState(mockAcwrCurrent.acwr)
+  // prontidão do Topbar: ACWR real do backend; mock só quando ele está off
+  const { data: load } = useTrainingLoad()
+  const acwr = (latestAcwr(load ?? []) ?? mockAcwrCurrent).acwr
   // treino a abrir no detalhe (deep-link do calendário/feed)
   const [detailId, setDetailId] = useState<string | null>(null)
 
@@ -34,7 +37,7 @@ export default function App() {
       case 'landing':
         return <Landing onNavigate={navigate} />
       case 'dashboard':
-        return <Dashboard onNavigate={navigate} />
+        return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
       case 'plano':
         return <PlanScreen />
       case 'detalhe':
@@ -46,7 +49,7 @@ export default function App() {
       case 'hyrox':
         return <HyroxScreen />
       default:
-        return <Dashboard onNavigate={navigate} />
+        return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
     }
   }
 

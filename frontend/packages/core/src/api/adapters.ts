@@ -2,7 +2,7 @@
 // primary_type MAIÚSCULO, status ACWR em português, distância em metros...).
 import type {
   Activity, ActivityType, WorkoutSession, TrainingLoadItem, AcwrStatus,
-  ApiActivityDetail, ApiTrack,
+  ApiActivityDetail, ApiTrack, ApiFitness,
 } from '../types'
 
 const TYPE_MAP: Record<string, ActivityType> = {
@@ -91,4 +91,52 @@ export function toRoutePoints(track: ApiTrack): Array<{ lat: number; lon: number
   return latitude.map((lat, i) => ({
     lat, lon: longitude[i], cadence: track.cadence[i] ?? 0,
   }))
+}
+
+// ---- Fitness (previsão de prova + tendência) e volume semanal ----
+
+const paceFromSecKm = (secKm: number) =>
+  `${Math.floor(secKm / 60)}:${String(Math.round(secKm % 60)).padStart(2, '0')}`
+
+export interface FitnessUi {
+  trend: 'up' | 'down' | 'stable'
+  trendLabel: string
+  pctChange: number                                     // 1º -> último ponto da janela (14)
+  points: Array<{ day: string; efficiency: number }>
+  predictions: Record<string, { pace: string; minutes: number }>
+}
+
+/** /fitness real -> shape da UI. Previsões viram mapa por prova ('5k'/'10k'/'21k'). */
+export function toFitnessUi(api: ApiFitness): FitnessUi | null {
+  if (!api?.predictions?.length) return null
+  const predictions: FitnessUi['predictions'] = {}
+  for (const p of api.predictions) {
+    const key = p.race.split(' ')[0]           // '21k (meia)' -> '21k'
+    predictions[key] = { pace: paceFromSecKm(p.pace_s_km), minutes: Math.round(p.time_s / 60) }
+  }
+  const points = (api.fitness?.points ?? []).slice(-14).map(p => ({ day: p.day, efficiency: p.efficiency }))
+  const first = points[0]?.efficiency ?? 0
+  const last = points[points.length - 1]?.efficiency ?? 0
+  const pctChange = first ? Math.round(((last - first) / first) * 1000) / 10 : 0
+  const t = (api.fitness?.trend || '').toLowerCase()
+  return {
+    trend: t.startsWith('melhor') ? 'up' : t.startsWith('pior') ? 'down' : 'stable',
+    trendLabel: api.fitness?.trend ?? '',
+    pctChange, points, predictions,
+  }
+}
+
+/** Minutos treinados por dia da semana corrente (seg..dom) a partir das sessões. */
+export function weeklyVolume(sessions: WorkoutSession[]): Array<{ name: string; volume: number }> {
+  const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7))   // getDay: dom=0
+  const bars = labels.map(name => ({ name, volume: 0 }))
+  for (const s of sessions) {
+    const d = new Date(s.date); d.setHours(0, 0, 0, 0)
+    const idx = Math.floor((d.getTime() - monday.getTime()) / 86_400_000)
+    if (idx >= 0 && idx < 7) bars[idx].volume += s.duration_min
+  }
+  return bars
 }

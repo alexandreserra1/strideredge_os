@@ -40,7 +40,12 @@ export default function PlanScreen() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Plano de Treino</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            Plano de Treino
+            <span className="align-middle ml-2 text-[10px] font-medium bg-surface-300 text-text-secondary px-2 py-1 rounded-full border border-border-light">
+              exemplo · gerador adaptativo em breve
+            </span>
+          </h1>
           <p className="text-sm text-text-secondary mt-1">Preparação para {race.name}</p>
         </div>
       </div>

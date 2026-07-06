@@ -14,6 +14,7 @@ rust_kernel/target/
 
 # Bancos DuckDB (gerados — não versionar)
 storage/*.db
+storage/*.wal
 
 # Dados pessoais de telemetria (.FIT) — privacidade / LGPD
 *.fit

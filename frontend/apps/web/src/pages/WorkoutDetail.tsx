@@ -139,7 +139,9 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="kpi-card">
           <span className="text-xs text-text-secondary uppercase tracking-wider">Distância</span>
-          <span className="text-xl md:text-2xl font-bold">{activity.distance_km} <span className="text-sm font-medium text-text-secondary">km</span></span>
+          <span className="text-xl md:text-2xl font-bold">
+            {activity.distance_km || '—'}{activity.distance_km ? <span className="text-sm font-medium text-text-secondary"> km</span> : null}
+          </span>
         </div>
         <div className="kpi-card">
           <span className="text-xs text-text-secondary uppercase tracking-wider">Duração</span>
@@ -151,11 +153,15 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
         </div>
         <div className="kpi-card">
           <span className="text-xs text-text-secondary uppercase tracking-wider">FC média</span>
-          <span className="text-xl md:text-2xl font-bold text-accent-red">{activity.avg_hr} <span className="text-sm font-medium text-text-secondary">bpm</span></span>
+          <span className="text-xl md:text-2xl font-bold text-accent-red">
+            {activity.avg_hr || '—'}{activity.avg_hr ? <span className="text-sm font-medium text-text-secondary"> bpm</span> : null}
+          </span>
         </div>
         <div className="kpi-card">
           <span className="text-xs text-text-secondary uppercase tracking-wider">Cadência</span>
-          <span className="text-xl md:text-2xl font-bold text-accent-green">{activity.cadence} <span className="text-sm font-medium text-text-secondary">spm</span></span>
+          <span className="text-xl md:text-2xl font-bold text-accent-green">
+            {activity.cadence || '—'}{activity.cadence ? <span className="text-sm font-medium text-text-secondary"> spm</span> : null}
+          </span>
         </div>
       </div>
 

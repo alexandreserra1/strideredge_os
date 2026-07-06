@@ -6,7 +6,7 @@ import type {
   CadenceSpectrum,
   CoachVerdict,
   TrainingLoadItem,
-  FitnessData,
+  ApiFitness,
   AskResponse,
 } from '../types'
 
@@ -46,7 +46,7 @@ export const api = {
     list: () => request<TrainingLoadItem[]>('/training-load'),
   },
   fitness: {
-    get: () => request<FitnessData>('/fitness'),
+    get: () => request<ApiFitness>('/fitness'),
   },
   ask: (question: string) =>
     request<AskResponse>('/ask', {

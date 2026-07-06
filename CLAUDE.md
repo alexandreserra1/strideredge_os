@@ -9,6 +9,8 @@ Ecossistema local de biotelemetria e analytics esportivo (corrida / Hyrox): inge
   decisão técnica (Rust só p/ compute pesado, dado validado, conclusão-pronta pro LLM,
   sem overengineering, conexão reutilizável, fontes citáveis, etc.). Respeite-os sempre.
 - **`plan.md`** — blueprint de arquitetura e fatias de construção.
+- **`frontend-spec.md`** — spec do frontend web (produto, não Streamlit) + identidade/mascote
+  StrideFox. Ler ao trabalhar em `web/` ou na UI.
 - **`app-spec.md`** — spec do app mobile (**Fase C**: insights + voz em tempo real, BLE/GPS,
   motor Rust no celular). Ler só ao trabalhar no app.
 - **`device-spec.md`** — spec do wearable próprio (**Fase 3**: firmware, IMU, BLE). Ler só ao

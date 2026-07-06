@@ -72,6 +72,15 @@ export interface TelemetryPoint {
 
 // ---- Shapes REAIS da API (o contrato do backend; adapters convertem p/ a UI) ----
 
+export interface ApiFitness {
+  reference: { activity_id: string; day: string; distance_m: number; duration_s: number } | null
+  predictions: Array<{ race: string; distance_km: number; time_s: number; pace_s_km: number }>
+  fitness: {
+    trend: string                      // 'melhorando' | 'estável' | 'piorando'…
+    points: Array<{ day: string; activity_name: string; efficiency: number }>
+  }
+}
+
 export interface ApiTrack {
   activity_id: string
   points: number
