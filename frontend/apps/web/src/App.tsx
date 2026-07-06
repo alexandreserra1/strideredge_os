@@ -8,13 +8,16 @@ import PlanScreen from './pages/PlanScreen'
 import RunMode from './pages/RunMode'
 import HyroxScreen from './pages/HyroxScreen'
 import AnaliseSaude from './pages/AnaliseSaude'
-import { useTrainingLoad, latestAcwr } from '@strideredge/core'
+import Login from './pages/Login'
+import { session, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockAcwrCurrent } from './pages/mockData'
 
-type Route = 'landing' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
+type Route = 'landing' | 'login' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
 
 export default function App() {
-  const [route, setRoute] = useState<Route>('dashboard')
+  // Sessão: token (conta) ou modo convidado (local). Sem sessão -> landing pública.
+  const [authed, setAuthed] = useState(() => !!(session.get() || localStorage.getItem('se_guest')))
+  const [route, setRoute] = useState<Route>(authed ? 'dashboard' : 'landing')
   // prontidão do Topbar: ACWR real do backend; mock só quando ele está off
   const { data: load } = useTrainingLoad()
   const acwr = (latestAcwr(load ?? []) ?? mockAcwrCurrent).acwr
@@ -22,9 +25,23 @@ export default function App() {
   const [detailId, setDetailId] = useState<string | null>(null)
 
   const navigate = useCallback((r: string) => {
-    if (['landing', 'dashboard', 'plano', 'detalhe', 'analise', 'corrida', 'hyrox'].includes(r)) {
-      setRoute(r as Route)
-    }
+    if (!['landing', 'login', 'dashboard', 'plano', 'detalhe', 'analise', 'corrida', 'hyrox'].includes(r)) return
+    // visitante só circula entre landing e login; o app pede sessão
+    if (!authed && r !== 'landing' && r !== 'login') { setRoute('login'); return }
+    setRoute(r as Route)
+  }, [authed])
+
+  const onAuthed = useCallback((user: { name: string } | null) => {
+    if (user === null) localStorage.setItem('se_guest', '1')   // modo local
+    setAuthed(true)
+    setRoute('dashboard')
+  }, [])
+
+  const onLogout = useCallback(() => {
+    session.clear()
+    localStorage.removeItem('se_guest')
+    setAuthed(false)
+    setRoute('landing')
   }, [])
 
   const openWorkout = useCallback((id: string) => {
@@ -36,6 +53,8 @@ export default function App() {
     switch (route) {
       case 'landing':
         return <Landing onNavigate={navigate} />
+      case 'login':
+        return <Login onAuthed={onAuthed} onBack={() => setRoute('landing')} />
       case 'dashboard':
         return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
       case 'plano':
@@ -54,6 +73,7 @@ export default function App() {
   }
 
   const isLanding = route === 'landing'
+  if (route === 'login') return <ThemeProvider><Login onAuthed={onAuthed} onBack={() => setRoute('landing')} /></ThemeProvider>
 
   return (
     <ThemeProvider>
@@ -68,10 +88,10 @@ export default function App() {
                 </span>
               </button>
               <div className="flex items-center gap-3">
-                <button onClick={() => navigate('dashboard')} className="btn-ghost text-sm">
+                <button onClick={() => navigate('login')} className="btn-ghost text-sm">
                   Login
                 </button>
-                <button onClick={() => navigate('dashboard')} className="btn-primary text-sm">
+                <button onClick={() => navigate('login')} className="btn-primary text-sm">
                   Começar
                 </button>
               </div>
@@ -80,7 +100,7 @@ export default function App() {
           <Landing onNavigate={navigate} />
         </div>
       ) : (
-        <Layout currentRoute={route} onNavigate={navigate} acwr={acwr}>
+        <Layout currentRoute={route} onNavigate={navigate} acwr={acwr} onLogout={onLogout}>
           {renderPage()}
         </Layout>
       )}

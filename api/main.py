@@ -20,13 +20,29 @@ from analytics.coach import Coach
 from analytics.fitness import RunningFitness
 from analytics.sql_agent import SqlAgent
 from analytics.training_load import TrainingLoad
+from api.auth import AuthError, AuthService
 from api.services import ActivityService
-from api.deps import (get_activity_service, get_coach, get_running_fitness,
-                      get_sql_agent, get_training_load)
+from api.deps import (get_activity_service, get_auth_service, get_coach,
+                      get_running_fitness, get_sql_agent, get_training_load)
 
 
 class AskRequest(BaseModel):
     question: str
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class GoogleRequest(BaseModel):
+    credential: str
 
 app = FastAPI(title="StriderEdge OS API", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # compacta payloads grandes (telemetria)
@@ -59,6 +75,39 @@ def _ensure_uuid(activity_id: str) -> None:
         UUID(activity_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Atividade não encontrada")
+
+
+# ---------- Auth (contas) ----------
+
+def _auth_call(fn, *args):
+    """Traduz AuthError -> HTTPException (controllers finos, regra no serviço)."""
+    try:
+        return fn(*args)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status, detail=e.detail)
+
+
+@app.post("/api/v1/auth/register", status_code=201)
+def auth_register(req: RegisterRequest, auth: AuthService = Depends(get_auth_service)):
+    """Cadastro único por e-mail; senha vira scrypt+salt (nunca em claro)."""
+    return _auth_call(auth.register, req.name, req.email, req.password)
+
+
+@app.post("/api/v1/auth/login")
+def auth_login(req: LoginRequest, auth: AuthService = Depends(get_auth_service)):
+    return _auth_call(auth.login, req.email, req.password)
+
+
+@app.post("/api/v1/auth/google")
+def auth_google(req: GoogleRequest, auth: AuthService = Depends(get_auth_service)):
+    """Login/cadastro com o ID token do Google (exige GOOGLE_CLIENT_ID no ambiente)."""
+    return _auth_call(auth.login_google, req.credential)
+
+
+@app.get("/api/v1/auth/me")
+def auth_me(request: Request, auth: AuthService = Depends(get_auth_service)):
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    return _auth_call(auth.me, token)
 
 
 @app.get("/api/v1/activities")

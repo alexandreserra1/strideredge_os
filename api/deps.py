@@ -4,6 +4,7 @@ Centraliza a construção dos serviços. Nos testes, sobrescrevemos via
 app.dependency_overrides para injetar fakes (ex: LLM falso) sem tocar o Ollama.
 """
 
+from api.auth import AuthService
 from api.services import ActivityService
 from analytics.coach import Coach, OllamaClient
 from analytics.fitness import RunningFitness
@@ -15,6 +16,10 @@ from rag.web_search import WebSearchRetriever
 
 def get_activity_service() -> ActivityService:
     return ActivityService()
+
+
+def get_auth_service() -> AuthService:
+    return AuthService()
 
 
 def get_training_load() -> TrainingLoad:

@@ -1,9 +1,10 @@
-import { Moon, Sun, Bell } from 'lucide-react'
+import { Moon, Sun, Bell, LogOut } from 'lucide-react'
 import { useTheme } from './ThemeProvider'
 
 interface TopbarProps {
   acwr?: number
   onNotifications?: () => void
+  onLogout?: () => void
 }
 
 // Cor da prontidão a partir do ACWR (sweet spot 0.8–1.3)
@@ -15,7 +16,7 @@ function readiness(acwr?: number) {
   return { color: '#FB5E7E', label: 'Alta' }
 }
 
-export default function Topbar({ acwr, onNotifications }: TopbarProps) {
+export default function Topbar({ acwr, onNotifications, onLogout }: TopbarProps) {
   const { theme, setTheme } = useTheme()
   const r = readiness(acwr)
 
@@ -49,6 +50,16 @@ export default function Topbar({ acwr, onNotifications }: TopbarProps) {
           <Bell size={18} />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand rounded-full" />
         </button>
+
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            title="Sair"
+            className="p-2 rounded-xl text-text-secondary hover:text-accent-red hover:bg-surface-200 transition-all duration-200"
+          >
+            <LogOut size={18} />
+          </button>
+        )}
       </div>
     </header>
   )

@@ -70,6 +70,11 @@ export interface TelemetryPoint {
   speed_ms: number | null
 }
 
+// ---- Auth ----
+
+export interface AuthUser { user_id: string; name: string; email: string }
+export interface AuthResponse { token: string; user: AuthUser }
+
 // ---- Shapes REAIS da API (o contrato do backend; adapters convertem p/ a UI) ----
 
 export interface ApiFitness {

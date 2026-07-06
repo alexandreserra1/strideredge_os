@@ -1,4 +1,6 @@
 import type {
+  AuthResponse,
+  AuthUser,
   Activity,
   ApiActivityDetail,
   ApiTrack,
@@ -19,10 +21,23 @@ class ApiError extends Error {
   }
 }
 
+// Sessão: token guardado pelo app (localStorage) e anexado em toda chamada
+const TOKEN_KEY = 'se_token'
+export const session = {
+  get: () => (typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null),
+  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path}`
+  const token = session.get()
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
     ...options,
   })
   if (!res.ok) {
@@ -33,6 +48,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  auth: {
+    register: (name: string, email: string, password: string) =>
+      request<AuthResponse>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password }) }),
+    login: (email: string, password: string) =>
+      request<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    google: (credential: string) =>
+      request<AuthResponse>('/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
+    me: () => request<AuthUser>('/auth/me'),
+  },
   activities: {
     list: () => request<Activity[]>('/activities'),
     detail: (id: string) => request<ApiActivityDetail>(`/activities/${id}`),
