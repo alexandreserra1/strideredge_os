@@ -3,22 +3,20 @@ import { ArrowLeft, Sparkles, Moon, Sun } from 'lucide-react'
 import { api, session } from '@strideredge/core'
 import type { AuthUser } from '@strideredge/core'
 import { useTheme } from '../components/layout/ThemeProvider'
-import AppFrame from '../components/ui/AppFrame'
-import shotDashboard from '../assets/screens/dashboard.png'
-import shotMapa from '../assets/screens/mapa.png'
-import shotAnalise from '../assets/screens/analise.png'
+// Fotos: Unsplash (licença livre p/ uso comercial) — escolhidas pelo dono da marca.
+// corrida: unsplash.com/photos/TVTwrKyM0ik · hyrox: v1pRzleDk2M · crossfit: AzX5iNFYBMY
+import fotoCorrida from '../assets/photos/corrida.jpg'
+import fotoHyrox from '../assets/photos/hyrox.jpg'
+import fotoCrossfit from '../assets/photos/crossfit.jpg'
 
-// O produto é a imagem: prints REAIS do app (autêntico > foto de banco de imagem)
+// Atletas de verdade no momento da conta; o produto (prints) fica na landing.
 const SLIDES = [
-  { img: shotDashboard, alt: 'Dashboard com prontidão e previsões',
-    title: 'Seu desempenho num olhar', line: 'Prontidão diária, previsão de prova e volume — calculados dos seus treinos reais.',
-    from: '#6E56F7', to: '#38BDF8' },
-  { img: shotMapa, alt: 'Mapa com a rota colorida pela cadência',
-    title: 'Sua rota, metro a metro', line: 'O mapa mostra onde a passada segurou firme e onde a fadiga chegou.',
-    from: '#FF8A4C', to: '#FB5E7E' },
-  { img: shotAnalise, alt: 'Painel de risco de lesão',
-    title: 'Saúde antes de recorde', line: 'Risco de lesão monitorado com ciência — saiba quando acelerar e quando recuperar.',
-    from: '#34D399', to: '#38BDF8' },
+  { img: fotoCorrida, alt: 'Corredor em movimento',
+    title: 'Corrida', line: 'Sua rota, sua passada, seu ritmo — analisados metro a metro.' },
+  { img: fotoHyrox, alt: 'Atleta treinando em banco',
+    title: 'HYROX', line: 'Força e corrida no mesmo motor — cada station vira dado.' },
+  { img: fotoCrossfit, alt: 'Barra e anilhas no box',
+    title: 'CrossFit & Força', line: 'Da barra ao box: carga, séries e coração no seu histórico.' },
 ]
 
 declare global {
@@ -44,7 +42,7 @@ export default function Login({ onAuthed, onBack }: {
 
   // carrossel: troca de esporte a cada 3.5s
   useEffect(() => {
-    const t = setInterval(() => setSlide(s => (s + 1) % SLIDES.length), 3500)
+    const t = setInterval(() => setSlide(s => (s + 1) % SLIDES.length), 5000)
     return () => clearInterval(t)
   }, [])
 
@@ -108,25 +106,37 @@ export default function Login({ onAuthed, onBack }: {
 
   return (
     <div className="min-h-screen bg-surface grid lg:grid-cols-2">
-      {/* Painel esquerdo: o PRODUTO de verdade, um print por slide */}
-      <div className="hidden lg:flex flex-col justify-between p-10 relative overflow-hidden"
-        style={{ background: `linear-gradient(135deg, ${slideData.from}, ${slideData.to})`, transition: 'background 900ms ease' }}>
-        <button onClick={onBack} className="flex items-center gap-2 text-sm text-white/80 hover:text-white transition-colors w-fit">
+      {/* Painel esquerdo: atletas de verdade (crossfade), estilo Strava */}
+      <div className="hidden lg:flex flex-col justify-between p-10 relative overflow-hidden bg-black">
+        {SLIDES.map((sl, i) => (
+          <img key={sl.title} src={sl.img} alt={sl.alt}
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000"
+            style={{ opacity: i === slide ? 1 : 0 }} />
+        ))}
+        {/* overlay: legibilidade do texto sobre qualquer foto */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/40" />
+
+        <button onClick={onBack}
+          className="relative flex items-center gap-2 text-sm text-white/80 hover:text-white transition-colors w-fit">
           <ArrowLeft size={16} /> Voltar
         </button>
 
-        <div key={slide} className="animate-fade-in">
-          <AppFrame src={slideData.img} alt={slideData.alt} className="shadow-2xl mb-8 max-w-lg" />
-          <h2 className="text-3xl font-black tracking-tight mb-2 text-white">{slideData.title}</h2>
-          <p className="text-base text-white/85 max-w-md leading-relaxed">{slideData.line}</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {SLIDES.map((_, i) => (
-            <button key={i} onClick={() => setSlide(i)} aria-label={`Slide ${i + 1}`}
-              className="h-1.5 rounded-full transition-all duration-500"
-              style={{ width: i === slide ? 28 : 10, background: i === slide ? '#fff' : 'rgba(255,255,255,0.4)' }} />
-          ))}
+        <div className="relative">
+          <div key={slide} className="animate-fade-in mb-6">
+            <span className="inline-flex items-center gap-2 text-[11px] font-semibold text-white/90 uppercase tracking-widest mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand" /> {slideData.title}
+            </span>
+            <p className="text-2xl xl:text-3xl font-black tracking-tight text-white leading-snug max-w-md text-balance">
+              {slideData.line}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {SLIDES.map((_, i) => (
+              <button key={i} onClick={() => setSlide(i)} aria-label={`Slide ${i + 1}`}
+                className="h-1.5 rounded-full transition-all duration-500"
+                style={{ width: i === slide ? 28 : 10, background: i === slide ? '#fff' : 'rgba(255,255,255,0.4)' }} />
+            ))}
+          </div>
         </div>
       </div>
 
