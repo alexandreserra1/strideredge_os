@@ -1,4 +1,8 @@
-import { ArrowRight, Brain, Trophy, Map, Zap, Play } from 'lucide-react'
+import { ArrowRight, Brain, Trophy, Map, Zap, Play, Sparkles } from 'lucide-react'
+import AppFrame from '../components/ui/AppFrame'
+import shotDashboard from '../assets/screens/dashboard.png'
+import shotMapa from '../assets/screens/mapa.png'
+import shotAnalise from '../assets/screens/analise.png'
 
 const features = [
   { icon: Brain, title: 'Coach que explica o porquê', desc: 'Análise com embasamento científico — e a fonte citada. Nada de dica genérica de rede social.' },
@@ -38,39 +42,24 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
             </div>
           </div>
 
-          {/* Preview do produto (no lugar do mascote) */}
-          <div className="flex-1 w-full max-w-md">
-            <div className="glass rounded-3xl p-5 border border-border-light shadow-2xl animate-slide-up">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-text-secondary uppercase tracking-wider font-medium">Prontidão · ACWR</p>
-                  <p className="text-4xl font-black tabular-nums leading-none mt-1">0.96</p>
-                </div>
-                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-accent-green/15 text-accent-green">Ótima</span>
-              </div>
-              <div className="mt-3 h-2 rounded-full bg-surface-300 overflow-hidden">
-                <div className="h-full w-[62%] rounded-full bg-gradient-to-r from-accent-green to-brand" />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 mt-5">
-                {[['5K', '25:55'], ['10K', '54:01'], ['21K', '2:00']].map(([k, v]) => (
-                  <div key={k} className="rounded-xl bg-surface-200 border border-border-light p-3 text-center">
-                    <p className="text-[10px] text-text-secondary">{k}</p>
-                    <p className="text-sm font-bold tabular-nums">{v}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-4 rounded-2xl bg-surface-200 border border-border-light p-4">
-                <p className="text-[10px] text-text-secondary uppercase tracking-wider mb-2">Percurso · cadência</p>
-                <svg viewBox="0 0 160 40" className="w-full h-16">
-                  <path d={routeD} fill="none" stroke="#34D399" strokeWidth={3} strokeLinecap="round" />
-                  <path d="M 70 22 S 110 40, 134 16" fill="none" stroke="#FB5E7E" strokeWidth={3} strokeLinecap="round" />
-                  <circle cx={100} cy={31} r={4} fill="#6E56F7" className="animate-pulse-ring"
-                    style={{ transformBox: 'fill-box', transformOrigin: 'center' } as React.CSSProperties} />
-                  <circle cx={100} cy={31} r={3} fill="#6E56F7" />
-                </svg>
-              </div>
+          {/* Preview: PRINT REAL do produto (o app é o marketing) */}
+          <div className="flex-1 w-full max-w-2xl relative">
+            <div className="absolute -inset-8 -z-10 rounded-[40px] opacity-60"
+              style={{ background: 'radial-gradient(50% 50% at 50% 50%, var(--brand-soft), transparent 70%)' }} />
+            <AppFrame src={shotDashboard} alt="Dashboard do StriderEdge com prontidão, previsões e volume"
+              className="animate-slide-up" />
+            {/* chips flutuantes por cima do print */}
+            <div className="absolute -left-4 top-16 glass rounded-2xl px-4 py-3 shadow-xl animate-float hidden md:block">
+              <p className="text-[10px] text-text-secondary uppercase tracking-wider">Prontidão</p>
+              <p className="text-xl font-black tabular-nums">0.96 <span className="text-xs font-semibold text-accent-green">Ótima</span></p>
+            </div>
+            <div className="absolute -right-3 bottom-10 glass rounded-2xl px-4 py-3 shadow-xl max-w-[240px] hidden md:block">
+              <p className="text-[10px] text-brand uppercase tracking-wider font-semibold flex items-center gap-1">
+                <Sparkles size={10} /> Coach
+              </p>
+              <p className="text-xs text-text-secondary leading-snug mt-1">
+                "Pacing consistente até o km 6 — inclui tiros na cadência alvo."
+              </p>
             </div>
           </div>
         </div>
@@ -89,6 +78,27 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
               <p className="text-sm text-text-secondary leading-relaxed">{desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Vitrine: o produto de verdade, sem mock */}
+      <section className="max-w-6xl mx-auto px-4 py-16">
+        <h2 className="text-2xl md:text-3xl font-bold text-center mb-3">Você por dentro, de verdade</h2>
+        <p className="text-text-secondary text-center mb-12 max-w-xl mx-auto">
+          Telas reais do produto — cada treino vira mapa, análise e um plano de ação.
+        </p>
+        <AppFrame src={shotMapa} alt="Mapa real com a rota colorida pela cadência" />
+        <div className="grid md:grid-cols-2 gap-6 mt-6 items-center">
+          <AppFrame src={shotAnalise} alt="Painel de risco de lesão e calendário de treinos" />
+          <div className="px-2">
+            <h3 className="text-xl font-bold mb-4">Saúde antes de recorde</h3>
+            <ul className="space-y-3 text-sm text-text-secondary">
+              <li className="flex gap-3"><span className="text-accent-green mt-0.5">✓</span> Risco de lesão monitorado todos os dias — carga, cadência, fadiga e progressão.</li>
+              <li className="flex gap-3"><span className="text-accent-green mt-0.5">✓</span> Calendário de treinos interativo: o mês inteiro num olhar.</li>
+              <li className="flex gap-3"><span className="text-accent-green mt-0.5">✓</span> Review do coach por treino, com recomendação e fonte científica.</li>
+              <li className="flex gap-3"><span className="text-accent-green mt-0.5">✓</span> Tudo privado: seus dados não saem da sua máquina.</li>
+            </ul>
+          </div>
         </div>
       </section>
 

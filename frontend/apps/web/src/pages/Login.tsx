@@ -3,68 +3,22 @@ import { ArrowLeft, Sparkles, Moon, Sun } from 'lucide-react'
 import { api, session } from '@strideredge/core'
 import type { AuthUser } from '@strideredge/core'
 import { useTheme } from '../components/layout/ThemeProvider'
+import AppFrame from '../components/ui/AppFrame'
+import shotDashboard from '../assets/screens/dashboard.png'
+import shotMapa from '../assets/screens/mapa.png'
+import shotAnalise from '../assets/screens/analise.png'
 
-// Pictogramas de atletas (estilo olímpico: traço grosso, poses dinâmicas).
-// Sem foto externa: SVG inline = zero dependência, nítido em qualquer tamanho/tema.
-type Pose = 'run' | 'lift' | 'lpo' | 'sled'
-
-function AthleteFigure({ pose }: { pose: Pose }) {
-  const stroke = { stroke: '#fff', strokeWidth: 8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' }
-  return (
-    <svg viewBox="0 0 120 120" className="w-44 h-44 md:w-52 md:h-52 drop-shadow-2xl">
-      {pose === 'run' && (<g>
-        <circle cx="74" cy="18" r="9" fill="#fff" />
-        <path d="M68 30 L54 58" {...stroke} />
-        <path d="M64 36 L80 44 L94 34" {...stroke} />
-        <path d="M62 38 L46 44 L36 32" {...stroke} />
-        <path d="M54 58 L72 70 L70 94" {...stroke} />
-        <path d="M54 58 L38 74 L26 90" {...stroke} />
-      </g>)}
-      {pose === 'lift' && (<g>
-        {/* levantamento terra (vista frontal): barra carregada na altura dos joelhos */}
-        <circle cx="60" cy="24" r="9" fill="#fff" />
-        <path d="M60 34 L60 56" {...stroke} />
-        <path d="M53 38 L45 72" {...stroke} />
-        <path d="M67 38 L75 72" {...stroke} />
-        <path d="M60 56 L43 64 L41 92" {...stroke} />
-        <path d="M60 56 L77 64 L79 92" {...stroke} />
-        <path d="M18 76 L102 76" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
-        <circle cx="21" cy="76" r="9" fill="#fff" />
-        <circle cx="99" cy="76" r="9" fill="#fff" />
-      </g>)}
-      {pose === 'lpo' && (<g>
-        {/* arranco (snatch): barra acima da cabeça, agachamento profundo */}
-        <path d="M16 16 L104 16" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
-        <circle cx="18" cy="16" r="8" fill="#fff" />
-        <circle cx="102" cy="16" r="8" fill="#fff" />
-        <circle cx="60" cy="36" r="9" fill="#fff" />
-        <path d="M52 48 L34 20" {...stroke} />
-        <path d="M68 48 L86 20" {...stroke} />
-        <path d="M60 48 L60 66" {...stroke} />
-        <path d="M60 66 L36 72 L34 94" {...stroke} />
-        <path d="M60 66 L84 72 L86 94" {...stroke} />
-      </g>)}
-      {pose === 'sled' && (<g>
-        {/* sled push: corpo em diagonal, trenó carregado */}
-        <circle cx="28" cy="34" r="9" fill="#fff" />
-        <path d="M34 42 L56 62" {...stroke} />
-        <path d="M40 46 L68 52" {...stroke} />
-        <path d="M38 52 L66 60" {...stroke} />
-        <path d="M56 62 L66 78 L56 94" {...stroke} />
-        <path d="M56 62 L42 78 L28 90" {...stroke} />
-        <path d="M80 34 L80 82" stroke="#fff" strokeWidth="6" strokeLinecap="round" />
-        <path d="M68 88 L108 88" stroke="#fff" strokeWidth="6" strokeLinecap="round" />
-        <rect x="76" y="50" width="28" height="26" rx="5" fill="#fff" opacity="0.85" />
-      </g>)}
-    </svg>
-  )
-}
-
-const SPORTS: Array<{ pose: Pose; title: string; line: string; from: string; to: string }> = [
-  { pose: 'run', title: 'Corrida', line: 'Sua rota real, sua passada metro a metro — e o ponto exato onde a fadiga chega.', from: '#6E56F7', to: '#38BDF8' },
-  { pose: 'sled', title: 'HYROX', line: 'Das corridas ao sled: cada station vira dado, cada transição vira estratégia.', from: '#FF8A4C', to: '#FB5E7E' },
-  { pose: 'lift', title: 'Força', line: 'Séries, repetições e coração — direto do relógio pro seu histórico.', from: '#34D399', to: '#38BDF8' },
-  { pose: 'lpo', title: 'LPO', line: 'Técnica sob fadiga é tudo. Saiba quando o corpo está pronto pra barra.', from: '#FB5E7E', to: '#6E56F7' },
+// O produto é a imagem: prints REAIS do app (autêntico > foto de banco de imagem)
+const SLIDES = [
+  { img: shotDashboard, alt: 'Dashboard com prontidão e previsões',
+    title: 'Seu desempenho num olhar', line: 'Prontidão diária, previsão de prova e volume — calculados dos seus treinos reais.',
+    from: '#6E56F7', to: '#38BDF8' },
+  { img: shotMapa, alt: 'Mapa com a rota colorida pela cadência',
+    title: 'Sua rota, metro a metro', line: 'O mapa mostra onde a passada segurou firme e onde a fadiga chegou.',
+    from: '#FF8A4C', to: '#FB5E7E' },
+  { img: shotAnalise, alt: 'Painel de risco de lesão',
+    title: 'Saúde antes de recorde', line: 'Risco de lesão monitorado com ciência — saiba quando acelerar e quando recuperar.',
+    from: '#34D399', to: '#38BDF8' },
 ]
 
 declare global {
@@ -90,7 +44,7 @@ export default function Login({ onAuthed, onBack }: {
 
   // carrossel: troca de esporte a cada 3.5s
   useEffect(() => {
-    const t = setInterval(() => setSlide(s => (s + 1) % SPORTS.length), 3500)
+    const t = setInterval(() => setSlide(s => (s + 1) % SLIDES.length), 3500)
     return () => clearInterval(t)
   }, [])
 
@@ -150,27 +104,25 @@ export default function Login({ onAuthed, onBack }: {
     }
   }
 
-  const sport = SPORTS[slide]
+  const slideData = SLIDES[slide]
 
   return (
     <div className="min-h-screen bg-surface grid lg:grid-cols-2">
-      {/* Painel esquerdo: atletas em pictograma, um esporte por vez */}
+      {/* Painel esquerdo: o PRODUTO de verdade, um print por slide */}
       <div className="hidden lg:flex flex-col justify-between p-10 relative overflow-hidden"
-        style={{ background: `linear-gradient(135deg, ${sport.from}, ${sport.to})`, transition: 'background 900ms ease' }}>
+        style={{ background: `linear-gradient(135deg, ${slideData.from}, ${slideData.to})`, transition: 'background 900ms ease' }}>
         <button onClick={onBack} className="flex items-center gap-2 text-sm text-white/80 hover:text-white transition-colors w-fit">
           <ArrowLeft size={16} /> Voltar
         </button>
 
-        <div key={slide} className="animate-fade-in flex flex-col items-start gap-6">
-          <AthleteFigure pose={sport.pose} />
-          <div>
-            <h2 className="text-4xl font-black tracking-tight mb-3 text-white">{sport.title}</h2>
-            <p className="text-lg text-white/85 max-w-sm leading-relaxed">{sport.line}</p>
-          </div>
+        <div key={slide} className="animate-fade-in">
+          <AppFrame src={slideData.img} alt={slideData.alt} className="shadow-2xl mb-8 max-w-lg" />
+          <h2 className="text-3xl font-black tracking-tight mb-2 text-white">{slideData.title}</h2>
+          <p className="text-base text-white/85 max-w-md leading-relaxed">{slideData.line}</p>
         </div>
 
         <div className="flex items-center gap-2">
-          {SPORTS.map((_, i) => (
+          {SLIDES.map((_, i) => (
             <button key={i} onClick={() => setSlide(i)} aria-label={`Slide ${i + 1}`}
               className="h-1.5 rounded-full transition-all duration-500"
               style={{ width: i === slide ? 28 : 10, background: i === slide ? '#fff' : 'rgba(255,255,255,0.4)' }} />
@@ -243,10 +195,12 @@ export default function Login({ onAuthed, onBack }: {
             </button>
           )}
 
-          <button onClick={() => onAuthed(null)}
-            className="w-full mt-3 py-3 rounded-xl border border-dashed border-border-medium text-sm text-text-secondary hover:text-text-primary hover:border-border-medium transition-colors flex items-center justify-center gap-2">
-            <Sparkles size={14} /> Continuar sem conta (modo local)
-          </button>
+          {import.meta.env.DEV && (
+            <button onClick={() => onAuthed(null)}
+              className="w-full mt-3 py-3 rounded-xl border border-dashed border-border-medium text-sm text-text-secondary hover:text-text-primary hover:border-border-medium transition-colors flex items-center justify-center gap-2">
+              <Sparkles size={14} /> Continuar sem conta (só em desenvolvimento)
+            </button>
+          )}
 
           <p className="text-xs text-text-secondary text-center mt-6">
             {mode === 'login' ? 'Ainda não tem conta?' : 'Já tem conta?'}{' '}
