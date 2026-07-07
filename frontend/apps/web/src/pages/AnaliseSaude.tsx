@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
-import { useActivities, useCoachStream, useTrainingLoad, latestAcwr } from '@strideredge/core'
+import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles, CalendarDays, ArrowRight } from 'lucide-react'
+import { useActivities, useActivity, useCoachStream, useTrainingLoad, latestAcwr, toDurability, toWorkoutSession } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
 import TrainingCalendarStrip, { type TrainingDayInfo } from '../components/ui/TrainingCalendarStrip'
 
@@ -22,8 +23,14 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
   const timeline = load?.length ? load : mockTrainingLoad
   const acwr = latestAcwr(load ?? []) ?? mockAcwrCurrent
   const ramp = (load?.[load.length - 1]?.ramp_pct) ?? mockAcwrCurrent.ramp_pct ?? 0
-  const cadence = mockActivities[0].cadence
-  const decoupling = mockActivityDetail.durability!.decoupling_pct
+  // cadência/durabilidade REAIS da última corrida (não do mock)
+  const latestRun = acts?.find(a => String(a.primary_type).toUpperCase() === 'RUN')
+  const { data: runDetail } = useActivity(latestRun?.activity_id)
+  const cadence = latestRun?.avg_cadence ? Math.round(latestRun.avg_cadence) : mockActivities[0].cadence
+  const realDur = runDetail ? toDurability(runDetail) : null
+  const decoupling = realDur?.decoupling_pct ?? (isReal ? 0 : mockActivityDetail.durability!.decoupling_pct)
+  // dia selecionado no calendário -> análise inline (aqui, não na tela de Treinos)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
   const acwrLevel: Level = acwr.acwr < 0.8 ? 'warn' : acwr.acwr <= 1.3 ? 'ok' : acwr.acwr <= 1.5 ? 'warn' : 'risk'
   const cadLevel: Level = cadence >= 178 ? 'ok' : cadence >= 166 ? 'warn' : 'risk'
@@ -78,9 +85,57 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
         <p className="text-text-secondary mt-1">Visão do atleta — risco de lesão e review da IA</p>
       </div>
 
-      {/* Calendário de treinos — strip 2 semanas / mês navegável, dias clicáveis */}
+      {/* Calendário — clicar num dia abre a ANÁLISE DO DIA aqui embaixo (treino completo é na tela Treinos) */}
       <div className="card">
-        <TrainingCalendarStrip days={calendarDays} onSelect={onOpenWorkout} />
+        <TrainingCalendarStrip days={calendarDays} selected={selectedDay}
+          onSelectDay={iso => setSelectedDay(d => d === iso ? null : iso)} />
+        {selectedDay && (() => {
+          const info = calendarDays[selectedDay]
+          const act = acts?.find(a => a.activity_id === info?.activityId)
+          const session = act ? toWorkoutSession(act) : null
+          const dayLoad = timeline.find(t => String(t.day).slice(0, 10) === selectedDay)
+          const raw = new Date(selectedDay + 'T00:00:00')
+            .toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+          const dayLabel = raw.charAt(0).toUpperCase() + raw.slice(1)
+          return (
+            <div className="mt-4 pt-4 border-t border-border-light animate-fade-in">
+              <p className="text-xs text-text-secondary uppercase tracking-wider flex items-center gap-2 mb-3">
+                <CalendarDays size={12} /> Análise do dia · <span>{dayLabel}</span>
+              </p>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div className="rounded-xl bg-surface-200 border border-border-light p-3">
+                  <p className="text-[10px] text-text-secondary uppercase tracking-wider">Treino</p>
+                  {session ? (
+                    <>
+                      <p className="text-sm font-semibold mt-1 truncate">{session.name.split(' — ')[0]}</p>
+                      <p className="text-xs text-text-secondary mt-0.5">
+                        {session.duration_min} min{session.distance_km ? ` · ${session.distance_km} km` : ''}{session.avg_hr ? ` · ${session.avg_hr} bpm` : ''}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-text-muted mt-1">Descanso — também constrói. 😴</p>
+                  )}
+                </div>
+                <div className="rounded-xl bg-surface-200 border border-border-light p-3">
+                  <p className="text-[10px] text-text-secondary uppercase tracking-wider">Carga do dia</p>
+                  <p className="text-xl font-bold tabular-nums mt-1">{dayLoad ? Math.round(dayLoad.daily_load) : 0}</p>
+                  <p className="text-xs text-text-secondary">TRIMP (esforço × duração)</p>
+                </div>
+                <div className="rounded-xl bg-surface-200 border border-border-light p-3">
+                  <p className="text-[10px] text-text-secondary uppercase tracking-wider">Prontidão no dia</p>
+                  <p className="text-xl font-bold tabular-nums mt-1">{dayLoad?.acwr != null ? Number(dayLoad.acwr).toFixed(2) : '—'}</p>
+                  <p className="text-xs text-text-secondary capitalize">{dayLoad ? String(dayLoad.status) : 'sem dado de carga'}</p>
+                </div>
+              </div>
+              {session && onOpenWorkout && (
+                <button onClick={() => onOpenWorkout(act!.activity_id)}
+                  className="mt-3 text-xs text-brand font-medium flex items-center gap-1 hover:gap-2 transition-all">
+                  Ver treino completo (mapa, zonas, coach) <ArrowRight size={12} />
+                </button>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Risco geral */}
@@ -92,9 +147,14 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
           <p className="text-xs text-text-secondary uppercase tracking-wider">Risco geral de lesão</p>
           <p className="text-2xl font-bold" style={{ color: ov.color }}>{ov.label}</p>
         </div>
-        <p className="hidden sm:block text-sm text-text-secondary max-w-xs text-right">
-          Combinação de carga, cadência, durabilidade e ramp semanal.
-        </p>
+        <div className="hidden sm:flex flex-wrap gap-2 justify-end max-w-sm">
+          {metrics.map(m => (
+            <span key={m.label} className="flex items-center gap-1.5 text-[11px] text-text-secondary bg-surface-200 border border-border-light rounded-full px-2.5 py-1">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: levelMeta[m.level].color }} />
+              {m.label.split(' (')[0]}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Painel de métricas de risco */}

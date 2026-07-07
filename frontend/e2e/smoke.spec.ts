@@ -145,10 +145,14 @@ test.describe('app do atleta', () => {
     const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     await expect(page.getByText(monthLabel(prev))).toBeVisible()
 
-    // deep-link: clicar num dia com treino abre o WorkoutDetail daquele treino
-    const day = page.getByRole('button', { name: /Abrir treino de/ }).first()
+    // clicar num dia com treino abre a ANÁLISE DO DIA aqui na página (não navega)
+    const day = page.getByRole('button', { name: /treino feito/ }).first()
     await expect(day).toBeVisible()
     await day.click()
+    await expect(page.getByText('Análise do dia')).toBeVisible()
+    await expect(page.getByText('Carga do dia')).toBeVisible()
+    // e o aprofundamento (mapa/zonas/coach) fica na tela de Treinos, via botão explícito
+    await page.getByRole('button', { name: /Ver treino completo/ }).click()
     await expect(page.getByText('Veredito do Coach')).toBeVisible()
   })
 })

@@ -150,11 +150,32 @@ DEFAULT_ANALYZERS = [
 
 
 class Coach:
-    """Gera o veredito de um treino. COMPOE um LLM + uma lista de analisadores."""
+    """Gera o veredito de um treino. COMPOE um LLM + uma lista de analisadores.
+
+    MODALIDADE-CONSCIENTE: a persona do system prompt e os analisadores mudam com o
+    primary_type — treino de forca nao ganha conselho de passada/pace (e vice-versa).
+    """
+
+    # Persona por modalidade (a 1a linha do system prompt). Default = corrida.
+    PERSONAS = {
+        "RUN": ("Voce e um treinador de CORRIDA experiente e DIDATICO. Foque em: ritmo, "
+                "cadencia, zonas de FC, fadiga e durabilidade."),
+        "CARDIO": ("Voce e um treinador de resistencia experiente e DIDATICO (treino "
+                   "cardiovascular indoor). Foque em: esforco pelas zonas de FC e consistencia. "
+                   "NAO fale de passada, cadencia ou pace — nao se aplicam aqui."),
+        "STRENGTH": ("Voce e um treinador de FORCA experiente e DIDATICO. Foque em: esforco "
+                     "(FC como proxy de intensidade), consistencia entre series, recuperacao "
+                     "entre sessoes de forca e equilibrio com os treinos de corrida da semana. "
+                     "NAO fale de passada, cadencia ou pace — isso e treino de forca."),
+        "HIIT": ("Voce e um treinador de CONDICIONAMENTO METABOLICO (HIIT/CrossFit/HYROX) "
+                 "experiente e DIDATICO. Foque em: intensidade dos picos de FC, capacidade de "
+                 "repetir esforcos, recuperacao entre intervalos e carga da semana. "
+                 "NAO fale de passada, cadencia ou pace de corrida."),
+    }
+    PERSONAS["CROSSFIT"] = PERSONAS["HYROX"] = PERSONAS["HIIT"]
 
     SYSTEM_PROMPT = (
-        "Voce e um treinador de corrida experiente e DIDATICO. Ensine o atleta: explique o porque "
-        "em linguagem simples, sem jargao e sem platitude.\n"
+        "Ensine o atleta: explique o porque em linguagem simples, sem jargao e sem platitude.\n"
         "ESTRUTURE em 3 partes, cada uma com UMA ou DUAS frases (a explicacao vai JUNTO, nunca em "
         "secao separada de 'explicacao'):\n"
         "1. Pontos fortes — o que foi bem, com o dado que mostra.\n"
@@ -186,6 +207,22 @@ class Coach:
         self.parser = parser or VerdictParser()     # estrutura o veredito p/ a API (composicao)
         self.store = store or VerdictStore()        # cache/idempotencia (composicao)
 
+    def activity_type(self, activity_id: str) -> str:
+        """Modalidade do treino (RUN/STRENGTH/HIIT...) — decide persona e analisadores."""
+        row = get_connection().execute(
+            "SELECT primary_type FROM dim_activities WHERE activity_id = ?",
+            [activity_id]).fetchone()
+        return (row[0] or "RUN").upper() if row else "RUN"
+
+    def system_prompt(self, ptype: str) -> str:
+        """Persona da modalidade + regras comuns (grounding, formato, concisao)."""
+        persona = self.PERSONAS.get(ptype, self.PERSONAS["RUN"])
+        return f"{persona}\n{self.SYSTEM_PROMPT}"
+
+    def analyzers_for(self, ptype: str) -> list:
+        """So os analisadores que fazem sentido pra modalidade (types=None -> todas)."""
+        return [a for a in self.analyzers if a.types is None or ptype in a.types]
+
     def _header(self, activity_id: str) -> str:
         """Cabecalho do prompt: metadados basicos do treino."""
         con = get_connection()
@@ -198,19 +235,20 @@ class Coach:
             [activity_id],
         ).fetchone()
         name, ptype, dist, dur, avg_hr, avg_cad = row
-        return (
-            f"Treino: {name} ({ptype})\n"
-            f"Distancia: {round((dist or 0)/1000, 2)} km | "
-            f"Duracao: {round((dur or 0)/60, 1)} min\n"
-            f"FC media: {round(avg_hr) if avg_hr else '-'} bpm | "
-            f"Cadencia media: {round(avg_cad) if avg_cad else '-'} passos/min"
-        )
+        linhas = [f"Treino: {name} ({ptype})",
+                  f"Distancia: {round((dist or 0)/1000, 2)} km | "
+                  f"Duracao: {round((dur or 0)/60, 1)} min",
+                  f"FC media: {round(avg_hr) if avg_hr else '-'} bpm"]
+        if (ptype or "").upper() == "RUN":     # cadencia so faz sentido correndo
+            linhas[-1] += f" | Cadencia media: {round(avg_cad) if avg_cad else '-'} passos/min"
+        return "\n".join(linhas)
 
     def build_user_prompt(self, activity_id: str) -> str:
-        """Cabecalho + linhas dos analisadores + evidencias do RAG (se houver)."""
+        """Cabecalho + linhas dos analisadores DA MODALIDADE + evidencias do RAG."""
+        ptype = self.activity_type(activity_id)
         linhas = [self._header(activity_id)]
         metricas = []
-        for analyzer in self.analyzers:
+        for analyzer in self.analyzers_for(ptype):
             linha = analyzer.to_prompt(analyzer.analyze(activity_id))
             if linha:
                 linhas.append(linha)
@@ -238,7 +276,8 @@ class Coach:
     def verdict(self, activity_id: str) -> str:
         """Monta o prompt e gera o veredito com a guarda de aterramento (retry se inventar)."""
         prompt = self.build_user_prompt(activity_id)
-        return self.guard.enforce(self.llm, self.SYSTEM_PROMPT, prompt)
+        system = self.system_prompt(self.activity_type(activity_id))
+        return self.guard.enforce(self.llm, system, prompt)
 
     def structured_verdict(self, activity_id: str) -> dict:
         """Veredito ESTRUTURADO p/ a API/UI: texto + fortes/melhorar/fazer + citacoes."""
@@ -271,15 +310,16 @@ class Coach:
                 yield ("done", {**hit, "cached": True})
                 return
         prompt = self.build_user_prompt(activity_id)
+        system = self.system_prompt(self.activity_type(activity_id))
         parts = []
-        for token in self.llm.chat_stream(self.SYSTEM_PROMPT, prompt):
+        for token in self.llm.chat_stream(system, prompt):
             parts.append(token)
             yield ("token", token)
         text = "".join(parts)
         found = self.guard.issues(text, prompt)
         if any(found.values()):
             yield ("correcting", found)
-            text = self.guard.enforce(self.llm, self.SYSTEM_PROMPT, prompt, first=text)
+            text = self.guard.enforce(self.llm, system, prompt, first=text)
             yield ("replace", text)
         structured = self.parser.parse(text)
         self.store.put(activity_id, structured, model=getattr(self.llm, "model", ""))

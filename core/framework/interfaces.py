@@ -215,6 +215,9 @@ class BaseAnalyzer(ABC):
     """
 
     label: str = "analise"   # nome legivel da analise
+    # Modalidades onde a analise faz sentido (None = todas). Analises de corrida
+    # (pace/cadencia/terreno) marcam {"RUN"} — treino de forca nao ganha conselho de passada.
+    types = None
 
     @abstractmethod
     def analyze(self, activity_id: str) -> dict:

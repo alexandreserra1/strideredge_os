@@ -176,6 +176,8 @@ def aerobic_decoupling(activity_id: str, min_points: int = 60) -> dict:
 class BreakingPointAnalyzer(BaseAnalyzer):
     """Ponto de quebra mecanica (§6.1) como analyzer polimorfico."""
 
+    types = {"RUN"}
+
     label = "Ponto de quebra"
 
     def analyze(self, activity_id: str) -> dict:
@@ -194,6 +196,8 @@ class BreakingPointAnalyzer(BaseAnalyzer):
 
 class EfficiencyAnalyzer(BaseAnalyzer):
     """Eficiencia metabolica por terreno (§6.2) como analyzer polimorfico."""
+
+    types = {"RUN"}
 
     label = "Eficiencia por terreno"
 
@@ -215,6 +219,8 @@ class EfficiencyAnalyzer(BaseAnalyzer):
 class DurabilityAnalyzer(BaseAnalyzer):
     """Durabilidade aerobica (decoupling Pa:FC) — 'segura o ritmo sob fadiga?'. Modulo Corrida."""
 
+    types = {"RUN"}
+
     label = "Durabilidade aerobica"
 
     def analyze(self, activity_id: str) -> dict:
@@ -234,6 +240,8 @@ class DurabilityAnalyzer(BaseAnalyzer):
 class TerrainContextAnalyzer(BaseAnalyzer):
     """Contextualiza a queda de ritmo pelo terreno: foi por SUBIDA (esperado) ou
     no PLANO (sugere fadiga/quebra de forma)? Degrada gracioso sem altitude."""
+
+    types = {"RUN"}
 
     label = "Contexto de terreno"
 
@@ -296,6 +304,8 @@ class CadenceReferenceAnalyzer(BaseAnalyzer):
     O codigo faz a comparacao (deterministica); o LLM so redige — sem recalcular
     'acima/abaixo' e errar (como ja aconteceu com 162 vs 166).
     """
+
+    types = {"RUN"}
 
     label = "Cadencia vs. limiar"
 

@@ -9,12 +9,6 @@ const WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
-const STATUS_META: Record<TrainingDayStatus, { title: string; color: string }> = {
-  done:    { title: 'Treino feito — clique para abrir', color: '#34D399' },
-  skipped: { title: 'Pulado', color: '#F87171' },
-  none:    { title: 'Sem treino', color: 'transparent' },
-}
-
 function localISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -22,35 +16,46 @@ function localISO(d: Date): string {
 interface Props {
   /** status/atividade por dia (ISO yyyy-mm-dd) — cobre o histórico todo */
   days: Record<string, TrainingDayInfo>
-  /** clique num dia com treino abre a atividade */
-  onSelect?: (activityId: string) => void
+  /** dia selecionado (a página mostra a análise dele inline) */
+  selected?: string | null
+  /** clicar num dia (passado/hoje) seleciona — análise acontece NA página, não navega */
+  onSelectDay?: (iso: string) => void
 }
 
-/** Quadradinho de status de um dia (compartilhado pelos dois modos). Clicável quando há treino. */
-function DaySquare({ iso, info, isToday, onSelect, size = 'w-3.5 h-3.5' }: {
-  iso: string; info: TrainingDayInfo; isToday: boolean
-  onSelect?: (id: string) => void; size?: string
+/** Célula de dia: número dentro de um chip colorido pelo status; hoje = anel; selecionado = brand. */
+function DayCell({ d, info, isToday, isFuture, selected, onSelect, compact = false }: {
+  d: Date; info: TrainingDayInfo; isToday: boolean; isFuture: boolean
+  selected: boolean; onSelect?: (iso: string) => void; compact?: boolean
 }) {
-  const meta = STATUS_META[info.status]
-  const clickable = !!(info.activityId && onSelect)
-  const style = {
-    background: meta.color,
-    border: info.status === 'none' ? '1px solid var(--border-medium)' : 'none',
-    boxShadow: isToday ? '0 0 0 1.5px var(--brand)' : undefined,
-  }
-  if (!clickable) return <span title={meta.title} className={`${size} rounded-md block`} style={style} />
+  const iso = localISO(d)
+  const status = info.status
+  const label = status === 'done' ? 'treino feito' : status === 'skipped' ? 'treino pulado' : 'sem treino'
+  const palette = status === 'done'
+    ? 'bg-accent-green/15 text-accent-green border-accent-green/30'
+    : status === 'skipped'
+    ? 'bg-accent-red/10 text-accent-red border-accent-red/25'
+    : 'bg-transparent text-text-muted border-border-light'
   return (
     <button
-      title={meta.title}
-      aria-label={`Abrir treino de ${iso}`}
-      onClick={() => onSelect!(info.activityId!)}
-      className={`${size} rounded-md block transition-transform hover:scale-125 hover:ring-2 hover:ring-[var(--brand)] cursor-pointer`}
-      style={style}
-    />
+      aria-label={`Dia ${iso} — ${label}`}
+      disabled={isFuture || !onSelect}
+      onClick={() => onSelect?.(iso)}
+      className={`flex flex-col items-center justify-center rounded-xl border transition-all duration-200
+        ${compact ? 'w-9 h-11' : 'w-11 h-14 shrink-0'}
+        ${palette}
+        ${isFuture ? 'opacity-30 cursor-default' : 'hover:scale-105 hover:border-brand/40 cursor-pointer'}
+        ${selected ? 'ring-2 ring-brand scale-105' : ''}`}
+      style={isToday && !selected ? { boxShadow: '0 0 0 1.5px var(--brand)' } : undefined}
+    >
+      {!compact && <span className="text-[9px] uppercase opacity-70">{WEEKDAY_LABELS[d.getDay()]}</span>}
+      <span className={`tabular-nums font-semibold ${compact ? 'text-[12px]' : 'text-sm'}`}>{d.getDate()}</span>
+      <span className="w-1 h-1 rounded-full"
+        style={{ background: status === 'done' ? '#34D399' : status === 'skipped' ? '#F87171' : 'transparent' }} />
+    </button>
   )
 }
 
-export default function TrainingCalendarStrip({ days, onSelect }: Props) {
+export default function TrainingCalendarStrip({ days, selected, onSelectDay }: Props) {
   const [view, setView] = useState<'strip' | 'month'>('strip')
   const now = new Date(); now.setHours(0, 0, 0, 0)
   const todayISO = localISO(now)
@@ -76,7 +81,7 @@ export default function TrainingCalendarStrip({ days, onSelect }: Props) {
   return (
     <div>
       {/* header: título/navegação + toggle de visão */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         {view === 'strip' ? (
           <p className="text-xs text-text-secondary uppercase tracking-wider">Últimas 2 semanas</p>
         ) : (
@@ -109,42 +114,32 @@ export default function TrainingCalendarStrip({ days, onSelect }: Props) {
       </div>
 
       {view === 'strip' ? (
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:justify-between">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide sm:justify-between pb-1">
           {stripDays.map(d => {
             const iso = localISO(d)
             return (
-              <div key={iso} className="flex flex-col items-center gap-1 shrink-0 min-w-[28px] sm:flex-1">
-                <span className="text-[10px] text-text-secondary">{WEEKDAY_LABELS[d.getDay()]}</span>
-                <span className={`text-[12px] tabular-nums ${iso === todayISO ? 'font-bold text-text-primary' : 'text-text-muted'}`}>
-                  {d.getDate()}
-                </span>
-                <DaySquare iso={iso} info={info(iso)} isToday={iso === todayISO} onSelect={onSelect} />
-              </div>
+              <DayCell key={iso} d={d} info={info(iso)} isToday={iso === todayISO}
+                isFuture={false} selected={iso === selected} onSelect={onSelectDay} />
             )
           })}
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-y-2 animate-fade-in">
+        <div className="grid grid-cols-7 gap-1.5 animate-fade-in justify-items-center">
           {WEEKDAY_LABELS.map((l, i) => (
-            <span key={i} className="text-[10px] text-text-secondary text-center">{l}</span>
+            <span key={i} className="text-[10px] text-text-secondary">{l}</span>
           ))}
           {cells.map((d, i) => {
             if (!d) return <span key={`pad-${i}`} />
             const iso = localISO(d)
-            const future = d > now
             return (
-              <div key={iso} className={`flex flex-col items-center gap-1 ${future ? 'opacity-35' : ''}`}>
-                <span className={`text-[11px] tabular-nums ${iso === todayISO ? 'font-bold text-text-primary' : 'text-text-muted'}`}>
-                  {d.getDate()}
-                </span>
-                <DaySquare iso={iso} info={info(iso)} isToday={iso === todayISO} onSelect={onSelect} size="w-4 h-4" />
-              </div>
+              <DayCell key={iso} d={d} info={info(iso)} isToday={iso === todayISO} compact
+                isFuture={d > now} selected={iso === selected} onSelect={onSelectDay} />
             )
           })}
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3 mt-2.5">
+      <div className="flex items-center justify-end gap-3 mt-3">
         <LegendItem label="Feito" color="#34D399" />
         <LegendItem label="Pulado" color="#F87171" />
         <LegendItem label="Sem treino" />
