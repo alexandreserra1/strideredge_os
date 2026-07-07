@@ -31,7 +31,8 @@ test.describe('landing pública + auth', () => {
 
     await page.getByPlaceholder('Nome').fill('Atleta E2E')
     await page.getByPlaceholder('E-mail').fill(email)
-    await page.getByPlaceholder(/Senha/).fill('corrida12345')
+    await page.getByPlaceholder('Senha (8+ caracteres)').fill('corrida12345')
+    await page.getByPlaceholder('Confirmar senha').fill('corrida12345')
     await page.getByRole('button', { name: 'Criar conta' }).click()
     await expect(page.getByRole('button', { name: 'Análise & Saúde' })).toBeVisible({ timeout: 10_000 })
 
@@ -42,9 +43,33 @@ test.describe('landing pública + auth', () => {
     await page.getByRole('button', { name: 'Criar agora' }).click()
     await page.getByPlaceholder('Nome').fill('Clone')
     await page.getByPlaceholder('E-mail').fill(email)
-    await page.getByPlaceholder(/Senha/).fill('corrida12345')
+    await page.getByPlaceholder('Senha (8+ caracteres)').fill('corrida12345')
+    await page.getByPlaceholder('Confirmar senha').fill('corrida12345')
     await page.getByRole('button', { name: 'Criar conta' }).click()
     await expect(page.getByText('já tem cadastro')).toBeVisible()
+  })
+
+  test('senhas diferentes no cadastro são recusadas na hora', async ({ page }) => {
+    await page.goto('/login')
+    await page.getByRole('button', { name: 'Criar agora' }).click()
+    await page.getByPlaceholder('Nome').fill('X')
+    await page.getByPlaceholder('E-mail').fill('x@teste.local')
+    await page.getByPlaceholder('Senha (8+ caracteres)').fill('corrida12345')
+    await page.getByPlaceholder('Confirmar senha').fill('outra-senha99')
+    await page.getByRole('button', { name: 'Criar conta' }).click()
+    await expect(page.getByText('As senhas não conferem.')).toBeVisible()
+  })
+
+  test('URL protegida sem sessão cai no login (nada de entrar pela URL)', async ({ page }) => {
+    for (const path of ['/dashboard', '/analise', '/treinos']) {
+      await page.goto(path)
+      await expect(page.getByRole('heading', { name: 'Bem-vindo de volta' })).toBeVisible()
+      expect(new URL(page.url()).pathname).toBe('/login')
+    }
+    // com sessão, a MESMA URL abre o app
+    await page.addInitScript(() => localStorage.setItem('se_guest', '1'))
+    await page.goto('/analise')
+    await expect(page.getByRole('heading', { name: 'Análise & Saúde' })).toBeVisible()
   })
 })
 
@@ -98,7 +123,7 @@ test.describe('app do atleta', () => {
     // cache -> instantâneo; sem cache -> streama ~30s. As listas estruturadas fecham o fluxo.
     await expect(page.locator('h4', { hasText: 'Pontos fortes' })).toBeVisible({ timeout: 150_000 })
     // e é dado REAL (não o mock): o subtítulo muda quando coach.data chega da API
-    await expect(page.getByText('Análise real · Qwen 7B + RAG científico')).toBeVisible()
+    await expect(page.getByText('Análise real · IA local + ciência citada')).toBeVisible()
   })
 
   test('análise & saúde: risco, calendário interativo e deep-link pro treino', async ({ page }) => {

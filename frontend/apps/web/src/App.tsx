@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { ThemeProvider } from './components/layout/ThemeProvider'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
@@ -9,15 +9,41 @@ import RunMode from './pages/RunMode'
 import HyroxScreen from './pages/HyroxScreen'
 import AnaliseSaude from './pages/AnaliseSaude'
 import Login from './pages/Login'
-import { session, useTrainingLoad, latestAcwr } from '@strideredge/core'
+import ThemeToggle from './components/layout/ThemeToggle'
+import { api, session, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockAcwrCurrent } from './pages/mockData'
 
 type Route = 'landing' | 'login' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
 
+// Rota <-> URL: digitar/copiar /dashboard, /analise etc. passa pela MESMA guarda —
+// sem sessão, qualquer caminho protegido cai no /login (nada de entrar pela URL).
+const PATHS: Record<Route, string> = {
+  landing: '/', login: '/login', dashboard: '/dashboard', plano: '/plano',
+  detalhe: '/treinos', analise: '/analise', corrida: '/correr', hyrox: '/hyrox',
+}
+const PUBLIC: Route[] = ['landing', 'login']
+const routeFromPath = (path: string): Route =>
+  (Object.entries(PATHS).find(([, p]) => p === path)?.[0] as Route) ?? 'landing'
+
 export default function App() {
   // Sessão: token (conta) ou modo convidado (local). Sem sessão -> landing pública.
   const [authed, setAuthed] = useState(() => !!(session.get() || localStorage.getItem('se_guest')))
-  const [route, setRoute] = useState<Route>(authed ? 'dashboard' : 'landing')
+
+  // Guarda de entrada: resolve a rota INICIAL a partir da URL digitada/colada
+  const [route, setRouteState] = useState<Route>(() => {
+    const wanted = routeFromPath(window.location.pathname)
+    const initial = !authed && !PUBLIC.includes(wanted) ? 'login'
+      : authed && PUBLIC.includes(wanted) ? 'dashboard'   // logado não volta pro marketing
+      : wanted
+    window.history.replaceState(null, '', PATHS[initial])
+    return initial
+  })
+
+  const setRoute = useCallback((r: Route) => {
+    setRouteState(r)
+    if (window.location.pathname !== PATHS[r]) window.history.pushState(null, '', PATHS[r])
+  }, [])
+
   // prontidão do Topbar: ACWR real do backend; mock só quando ele está off
   const { data: load } = useTrainingLoad()
   const acwr = (latestAcwr(load ?? []) ?? mockAcwrCurrent).acwr
@@ -25,24 +51,48 @@ export default function App() {
   const [detailId, setDetailId] = useState<string | null>(null)
 
   const navigate = useCallback((r: string) => {
-    if (!['landing', 'login', 'dashboard', 'plano', 'detalhe', 'analise', 'corrida', 'hyrox'].includes(r)) return
+    if (!Object.keys(PATHS).includes(r)) return
     // visitante só circula entre landing e login; o app pede sessão
-    if (!authed && r !== 'landing' && r !== 'login') { setRoute('login'); return }
+    if (!authed && !PUBLIC.includes(r as Route)) { setRoute('login'); return }
     setRoute(r as Route)
-  }, [authed])
+  }, [authed, setRoute])
+
+  // Voltar/avançar do navegador passam pela mesma guarda
+  useEffect(() => {
+    const onPop = () => {
+      const wanted = routeFromPath(window.location.pathname)
+      if (!authed && !PUBLIC.includes(wanted)) { setRoute('login'); return }
+      setRouteState(wanted)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [authed, setRoute])
+
+  // Credencial de verdade, não só cache: token no localStorage é validado no backend
+  // (/auth/me). Token forjado/expirado -> sessão derrubada -> login.
+  useEffect(() => {
+    if (!session.get()) return
+    api.auth.me().catch(() => {
+      session.clear()
+      if (!localStorage.getItem('se_guest')) {
+        setAuthed(false)
+        setRoute('login')
+      }
+    })
+  }, [setRoute])
 
   const onAuthed = useCallback((user: { name: string } | null) => {
     if (user === null) localStorage.setItem('se_guest', '1')   // modo local
     setAuthed(true)
     setRoute('dashboard')
-  }, [])
+  }, [setRoute])
 
   const onLogout = useCallback(() => {
     session.clear()
     localStorage.removeItem('se_guest')
     setAuthed(false)
     setRoute('landing')
-  }, [])
+  }, [setRoute])
 
   const openWorkout = useCallback((id: string) => {
     setDetailId(id)
@@ -88,6 +138,7 @@ export default function App() {
                 </span>
               </button>
               <div className="flex items-center gap-3">
+                <ThemeToggle />
                 <button onClick={() => navigate('login')} className="btn-ghost text-sm">
                   Login
                 </button>

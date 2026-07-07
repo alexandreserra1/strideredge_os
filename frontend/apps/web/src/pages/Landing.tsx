@@ -1,10 +1,10 @@
 import { ArrowRight, Brain, Trophy, Map, Zap, Play } from 'lucide-react'
 
 const features = [
-  { icon: Brain, title: 'Coach IA Local', desc: 'LLM local (Qwen 7B) + RAG com literatura científica. Dados seus, privados, sem nuvem.' },
-  { icon: Map, title: 'Análise da Passada', desc: 'Kalman suaviza o GPS, FFT detecta irregularidade de cadência, semáforo no mapa.' },
-  { icon: Trophy, title: 'Previsão de Prova', desc: 'Modelo de Riegel prediz seu potencial em 5K, 10K, meia e maratona.' },
-  { icon: Zap, title: 'ACWR & Prontidão', desc: 'Carga aguda/crônica com semáforo — saiba quando treinar forte ou recuperar.' },
+  { icon: Brain, title: 'Coach que explica o porquê', desc: 'Análise com embasamento científico — e a fonte citada. Nada de dica genérica de rede social.' },
+  { icon: Map, title: 'Sua passada no mapa', desc: 'Veja metro a metro onde você segurou firme e onde a fadiga chegou — em cores, na sua rota real.' },
+  { icon: Trophy, title: 'Previsão de prova', desc: 'Descubra do que você é capaz hoje nos 5K, 10K, meia e maratona — e veja esse teto subir.' },
+  { icon: Zap, title: 'Prontidão diária', desc: 'Um semáforo simples diz se hoje é dia de acelerar ou de recuperar — antes que a lesão avise.' },
 ]
 
 // mini-rota (preview do hero)
@@ -27,8 +27,8 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
               O coach de IA<br />que <span className="text-brand">corre com você</span>
             </h1>
             <p className="mt-6 text-lg md:text-xl text-text-muted max-w-xl mx-auto md:mx-0 text-balance">
-              Transforme seus treinos em insights acionáveis — coach de IA local, feedback de voz
-              em tempo real e planos adaptativos. Privacidade total, sem assinatura obrigatória.
+              Seu relógio coleta os dados. A gente transforma em evolução: um coach de IA que
+              analisa cada treino, aponta o que travou e diz o próximo passo. Privado de verdade.
             </p>
             <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-9">
               <button onClick={() => onNavigate('dashboard')} className="btn-primary text-base px-8 py-4">
@@ -97,10 +97,10 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">Como funciona</h2>
         <div className="space-y-6">
           {[
-            { step: '01', title: 'Conecte', desc: 'Importe seus .FIT da Garmin ou sincronize automaticamente. Tudo local.' },
-            { step: '02', title: 'Analise', desc: 'Kalman + DTW + FFT no kernel Rust. DuckDB processa em milissegundos.' },
-            { step: '03', title: 'Receba o veredito', desc: 'O coach IA (Qwen 7B + RAG) aponta fortes, fracos e o que fazer.' },
-            { step: '04', title: 'Evolua', desc: 'ACWR, previsões e plano adaptativo guiam cada passo.' },
+            { step: '01', title: 'Conecte', desc: 'Traga os treinos do seu relógio em um clique. Tudo fica com você — nada vai pra nuvem.' },
+            { step: '02', title: 'A gente disseca', desc: 'Cada segundo do treino vira leitura: passada, coração, subidas, fadiga. Sem planilha, sem esforço.' },
+            { step: '03', title: 'Receba o veredito', desc: 'O que foi bem, o que travou e exatamente o que fazer no próximo treino — direto ao ponto.' },
+            { step: '04', title: 'Evolua com segurança', desc: 'Prontidão diária e previsões de prova guiam o ritmo: forte na hora certa, descanso antes da lesão.' },
           ].map(({ step, title, desc }) => (
             <div key={step} className="flex items-start gap-4 p-4">
               <span className="text-2xl font-black text-brand shrink-0 w-10">{step}</span>

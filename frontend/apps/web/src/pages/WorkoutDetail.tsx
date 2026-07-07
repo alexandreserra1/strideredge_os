@@ -304,7 +304,7 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
             <div>
               <h3 className="text-lg font-bold">Veredito do Coach</h3>
               <p className="text-xs text-text-secondary">
-                {isReal && coach.data ? 'Análise real · Qwen 7B + RAG científico' : 'IA local · Qwen 7B + RAG'}
+                {isReal && coach.data ? 'Análise real · IA local + ciência citada' : 'IA local · privado por padrão'}
               </p>
             </div>
           </div>
