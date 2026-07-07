@@ -111,6 +111,16 @@ def ingest_fit_file(
             ],
         )
 
+    # 5) Séries de força (só existem em treino gravado no modo Força do relógio)
+    for j, st in enumerate(parser.strength_sets()):
+        con.execute(
+            """INSERT OR REPLACE INTO fact_strength_sets
+               (activity_id, set_index, exercise, reps, weight_kg, duration_s, start_time)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [activity_id, j, st["exercise"], st["reps"], st["weight_kg"],
+             st["duration_s"], st["start_time"]],
+        )
+
     log.info("activity_imported", garmin_id=garmin_activity_id,
              primary_type=primary_type, records=df.height)
     return {

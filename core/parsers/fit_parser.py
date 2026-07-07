@@ -75,6 +75,25 @@ class FitParser(BaseTelemetryParser):
         # quebra a inferencia baseada nas primeiras linhas.
         return pl.DataFrame(rows, infer_schema_length=None)
 
+    def strength_sets(self) -> list:
+        """Séries de força (set_mesgs ATIVAS) — só existem em treino gravado no modo
+        Força do relogio. Devolve [{exercise, reps, weight_kg, duration_s, start_time}]."""
+        messages, _ = Decoder(Stream.from_file(self.file_path)).read()
+        sets = []
+        for m in messages.get("set_mesgs", []):
+            if str(m.get("set_type")) != "active":
+                continue                      # descarta descansos
+            cats = m.get("category") or []
+            exercise = next((str(c) for c in cats if str(c) != "unknown"), None)
+            sets.append({
+                "exercise": exercise,
+                "reps": m.get("repetitions"),
+                "weight_kg": m.get("weight"),
+                "duration_s": m.get("duration"),
+                "start_time": m.get("start_time"),
+            })
+        return sets
+
     def session_metadata(self) -> dict:
         """Le a mensagem de sessao (resumo da atividade calculado pelo relogio).
 

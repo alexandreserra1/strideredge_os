@@ -136,6 +136,14 @@ def activity_telemetry(activity_id: str, svc: ActivityService = Depends(get_acti
     return svc.telemetry(activity_id)
 
 
+@app.get("/api/v1/activities/{activity_id}/sets")
+def activity_sets(activity_id: str):
+    """Séries de força + músculos trabalhados (vazio fora do modo Força — gracioso)."""
+    _ensure_uuid(activity_id)
+    from analytics.strength import StrengthSets
+    return {"activity_id": activity_id, **StrengthSets().summary(activity_id)}
+
+
 @app.get("/api/v1/activities/{activity_id}/cadence-spectrum")
 def activity_spectrum(activity_id: str, svc: ActivityService = Depends(get_activity_service)):
     _ensure_uuid(activity_id)

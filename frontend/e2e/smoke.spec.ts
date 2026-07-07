@@ -134,7 +134,7 @@ test.describe('app do atleta', () => {
 
     // strip 2 semanas com legenda
     await expect(page.getByText('Feito', { exact: true })).toBeVisible()
-    await expect(page.getByText('Sem treino', { exact: true })).toBeVisible()
+    await expect(page.getByText('Não treinado', { exact: true })).toBeVisible()
 
     // modo Mês: nome do mês atual, > desabilitado (futuro), < navega
     await page.getByRole('button', { name: 'Mês', exact: true }).click()

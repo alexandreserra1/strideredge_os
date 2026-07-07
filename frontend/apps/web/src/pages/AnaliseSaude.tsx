@@ -51,25 +51,28 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
       why: 'Variação da carga semana a semana. Acima de 10% = aumento de carga arriscado.',
       source: 'Regra dos 10%' },
   ]
-  const overall = worst(metrics.map(m => m.level))
+  // Índice de risco PONDERADO (0-100). Pesos pela força da evidência:
+  // ACWR 40% (Gabbett/PMC7047972), ramp 25%, durabilidade 20%, cadência 15%.
+  const W: Record<string, number> = { 'Prontidão (ACWR)': 0.4, 'Ramp semanal': 0.25, 'Durabilidade': 0.2, 'Cadência': 0.15 }
+  const pts: Record<Level, number> = { ok: 0, warn: 50, risk: 100 }
+  const riskScore = Math.round(metrics.reduce((acc, m) => acc + pts[m.level] * (W[m.label] ?? 0.15), 0))
+  const overall: Level = riskScore < 25 ? 'ok' : riskScore < 55 ? 'warn' : 'risk'
   const ov = levelMeta[overall]
 
   // Calendário: mapa dia -> {status, atividade} cobrindo o HISTÓRICO TODO (o modo mês navega
   // por qualquer mês). Treino real = 'done' clicável; sem plano gerado ainda, dia sem treino =
   // 'none' (não inventamos 'pulado' — isso vem com o gerador de plano; simulado só no mock).
   const calendarDays: Record<string, TrainingDayInfo> = {}
-  if (isReal) {
-    acts!.forEach(a => {
-      const k = a.start_time.slice(0, 10)
-      if (!calendarDays[k]) calendarDays[k] = { status: 'done', activityId: a.activity_id }
-    })
-  } else {
-    mockActivities.forEach(a => { calendarDays[a.date.slice(0, 10)] = { status: 'done', activityId: a.id } })
+  const src = isReal ? acts!.map(a => ({ day: String(a.start_time).slice(0, 10), id: a.activity_id }))
+                     : mockActivities.map(a => ({ day: a.date.slice(0, 10), id: a.id }))
+  src.forEach(({ day, id }) => { if (!calendarDays[day]) calendarDays[day] = { status: 'done', activityId: id } })
+  // dia PASSADO sem treino = vermelho ('não treinado'); futuro fica neutro
+  if (src.length) {
+    const first = new Date(src.map(x => x.day).sort()[0] + 'T00:00:00')
     const today = new Date(); today.setHours(0, 0, 0, 0)
-    for (let i = 1; i <= 13; i++) {   // 'pulado' simulado nos últimos dias do mock
-      const d = new Date(today); d.setDate(today.getDate() - i)
+    for (let d = new Date(first); d < today; d.setDate(d.getDate() + 1)) {
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      if (!calendarDays[iso] && d.getDate() % 2 === 0) calendarDays[iso] = { status: 'skipped' }
+      if (!calendarDays[iso]) calendarDays[iso] = { status: 'skipped' }
     }
   }
 
@@ -145,7 +148,9 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
         </div>
         <div className="flex-1">
           <p className="text-xs text-text-secondary uppercase tracking-wider">Risco geral de lesão</p>
-          <p className="text-2xl font-bold" style={{ color: ov.color }}>{ov.label}</p>
+          <p className="text-2xl font-bold" style={{ color: ov.color }}>
+            {ov.label} <span className="text-sm font-semibold text-text-secondary">· índice {riskScore}/100</span>
+          </p>
         </div>
         <div className="hidden sm:flex flex-wrap gap-2 justify-end max-w-sm">
           {metrics.map(m => (

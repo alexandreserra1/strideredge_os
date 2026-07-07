@@ -29,7 +29,7 @@ function DayCell({ d, info, isToday, isFuture, selected, onSelect, compact = fal
 }) {
   const iso = localISO(d)
   const status = info.status
-  const label = status === 'done' ? 'treino feito' : status === 'skipped' ? 'treino pulado' : 'sem treino'
+  const label = status === 'done' ? 'treino feito' : status === 'skipped' ? 'não treinado' : 'sem dado'
   const palette = status === 'done'
     ? 'bg-accent-green/15 text-accent-green border-accent-green/30'
     : status === 'skipped'
@@ -41,7 +41,7 @@ function DayCell({ d, info, isToday, isFuture, selected, onSelect, compact = fal
       disabled={isFuture || !onSelect}
       onClick={() => onSelect?.(iso)}
       className={`flex flex-col items-center justify-center rounded-xl border transition-all duration-200
-        ${compact ? 'w-9 h-11' : 'w-11 h-14 shrink-0'}
+        ${compact ? 'w-full h-11' : 'flex-1 min-w-[42px] h-14'}
         ${palette}
         ${isFuture ? 'opacity-30 cursor-default' : 'hover:scale-105 hover:border-brand/40 cursor-pointer'}
         ${selected ? 'ring-2 ring-brand scale-105' : ''}`}
@@ -57,6 +57,7 @@ function DayCell({ d, info, isToday, isFuture, selected, onSelect, compact = fal
 
 export default function TrainingCalendarStrip({ days, selected, onSelectDay }: Props) {
   const [view, setView] = useState<'strip' | 'month'>('strip')
+  const [offset, setOffset] = useState(0)          // janelas de 14 dias pra trás
   const now = new Date(); now.setHours(0, 0, 0, 0)
   const todayISO = localISO(now)
   const [month, setMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1))
@@ -66,9 +67,11 @@ export default function TrainingCalendarStrip({ days, selected, onSelectDay }: P
 
   // ---- modo strip: últimos 14 dias ----
   const stripDays = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(now); d.setDate(now.getDate() - (13 - i))
+    const d = new Date(now); d.setDate(now.getDate() - (13 - i) - offset * 14)
     return d
   })
+  const stripLabel = offset === 0 ? 'Últimas 2 semanas'
+    : `${stripDays[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} – ${stripDays[13].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`
 
   // ---- modo mês: grade 7 colunas do mês selecionado ----
   const firstWeekday = month.getDay()
@@ -83,7 +86,18 @@ export default function TrainingCalendarStrip({ days, selected, onSelectDay }: P
       {/* header: título/navegação + toggle de visão */}
       <div className="flex items-center justify-between mb-4">
         {view === 'strip' ? (
-          <p className="text-xs text-text-secondary uppercase tracking-wider">Últimas 2 semanas</p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setOffset(o => o + 1)} aria-label="Duas semanas anteriores"
+              className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-300 transition-colors">
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-xs text-text-secondary uppercase tracking-wider min-w-[150px] text-center">{stripLabel}</span>
+            <button onClick={() => setOffset(o => Math.max(0, o - 1))} aria-label="Duas semanas seguintes"
+              disabled={offset === 0}
+              className="p-1 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+              <ChevronRight size={16} />
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-1">
             <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
@@ -124,9 +138,9 @@ export default function TrainingCalendarStrip({ days, selected, onSelectDay }: P
           })}
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-1.5 animate-fade-in justify-items-center">
+        <div className="grid grid-cols-7 gap-1.5 animate-fade-in">
           {WEEKDAY_LABELS.map((l, i) => (
-            <span key={i} className="text-[10px] text-text-secondary">{l}</span>
+            <span key={i} className="text-[10px] text-text-secondary text-center">{l}</span>
           ))}
           {cells.map((d, i) => {
             if (!d) return <span key={`pad-${i}`} />
@@ -141,8 +155,8 @@ export default function TrainingCalendarStrip({ days, selected, onSelectDay }: P
 
       <div className="flex items-center justify-end gap-3 mt-3">
         <LegendItem label="Feito" color="#34D399" />
-        <LegendItem label="Pulado" color="#F87171" />
-        <LegendItem label="Sem treino" />
+        <LegendItem label="Não treinado" color="#F87171" />
+        <LegendItem label="Futuro" />
       </div>
     </div>
   )
