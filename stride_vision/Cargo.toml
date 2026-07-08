@@ -1,0 +1,13 @@
+[package]
+name = "stride-vision"
+version = "0.1.0"
+edition = "2021"
+description = "Motor de análise de movimento esportivo on-device: pose estimation (ONNX) -> biomecânica"
+
+[dependencies]
+ort = { version = "=2.0.0-rc.12", features = ["tls-native", "ndarray"] }
+ndarray = "0.17"
+image = "0.25"
+imageproc = "0.25"
+rustfft = "6"
+anyhow = "1"
