@@ -70,6 +70,29 @@ export interface TelemetryPoint {
   speed_ms: number | null
 }
 
+// ---- Análise de Forma (stride-vision) ----
+
+export interface FormMetrics {
+  frames: number
+  fps: number
+  detection_rate_pct: number
+  cadence_spm: number | null
+  cadence_left: number | null
+  cadence_right: number | null
+  asymmetry_pct: number | null
+  vertical_oscillation_pct: number | null
+}
+
+export interface FormAnalysis {
+  analysis_id: string
+  activity_id: string | null
+  status: 'processing' | 'done' | 'failed'
+  video_path: string | null
+  metrics: FormMetrics | null
+  error: string | null
+  created_at: string
+}
+
 // ---- Auth ----
 
 export interface AuthUser { user_id: string; name: string; email: string }

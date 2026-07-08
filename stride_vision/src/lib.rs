@@ -130,3 +130,98 @@ pub fn cadence_spm(ankle_y: &[f32], fps: f32) -> Option<f32> {
     if bi == 0 { return None; }
     Some(hz(bi) * 2.0 * 60.0)
 }
+
+// ---------- métricas de forma (biomecânica feita na mão) ----------
+
+/// Métricas extraídas das séries temporais dos keypoints (JSON p/ o backend).
+#[derive(Debug, serde::Serialize)]
+pub struct FormMetrics {
+    pub frames: usize,
+    pub fps: f32,
+    /// % de frames com pessoa detectada (qualidade do vídeo p/ análise)
+    pub detection_rate_pct: f32,
+    pub cadence_spm: Option<f32>,
+    pub cadence_left: Option<f32>,
+    pub cadence_right: Option<f32>,
+    /// diferença de amplitude entre tornozelos E/D (0% = simétrico)
+    pub asymmetry_pct: Option<f32>,
+    /// oscilação vertical do quadril como % do comprimento da perna
+    /// (invariante à distância da câmera)
+    pub vertical_oscillation_pct: Option<f32>,
+}
+
+/// amplitude robusta de uma série (p95 - p5; ignora outliers de detecção)
+fn amplitude(series: &[f32]) -> Option<f32> {
+    if series.len() < 8 { return None; }
+    let mut v: Vec<f32> = series.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let p = |q: f32| v[((v.len() - 1) as f32 * q) as usize];
+    Some(p(0.95) - p(0.05))
+}
+
+/// Consolida as séries por frame em métricas de forma.
+/// `leg_len_px` = mediana da distância quadril->tornozelo (escala do corpo).
+pub fn analyze_form(
+    ankle_l: &[f32], ankle_r: &[f32], hip_y: &[f32],
+    leg_len_px: f32, fps: f32, total_frames: usize,
+) -> FormMetrics {
+    let (cl, cr) = (cadence_spm(ankle_l, fps), cadence_spm(ankle_r, fps));
+    let cadence = match (cl, cr) {
+        (Some(l), Some(r)) => Some((l + r) / 2.0),
+        (a, b) => a.or(b),
+    };
+    let asymmetry = match (amplitude(ankle_l), amplitude(ankle_r)) {
+        (Some(a), Some(b)) if a.max(b) > 0.0 => Some((a - b).abs() / a.max(b) * 100.0),
+        _ => None,
+    };
+    let vert_osc = amplitude(hip_y)
+        .filter(|_| leg_len_px > 0.0)
+        .map(|a| a / leg_len_px * 100.0);
+    FormMetrics {
+        frames: total_frames,
+        fps,
+        detection_rate_pct: if total_frames > 0 {
+            ankle_l.len() as f32 / total_frames as f32 * 100.0
+        } else { 0.0 },
+        cadence_spm: cadence,
+        cadence_left: cl,
+        cadence_right: cr,
+        asymmetry_pct: asymmetry.map(|v| (v * 10.0).round() / 10.0),
+        vertical_oscillation_pct: vert_osc.map(|v| (v * 10.0).round() / 10.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// série senoidal: pé oscilando a 1.4 Hz filmado a 30 fps
+    fn sine(hz: f32, fps: f32, secs: f32, amp: f32) -> Vec<f32> {
+        (0..(fps * secs) as usize)
+            .map(|i| amp * (2.0 * std::f32::consts::PI * hz * i as f32 / fps).sin())
+            .collect()
+    }
+
+    #[test]
+    fn cadencia_de_uma_senoide_conhecida() {
+        // 1.4 Hz por pé -> 1.4*2*60 = 168 spm
+        let c = cadence_spm(&sine(1.4, 30.0, 10.0, 20.0), 30.0).unwrap();
+        assert!((c - 168.0).abs() < 6.0, "cadência {c} fora do esperado");
+    }
+
+    #[test]
+    fn assimetria_detecta_diferenca_de_amplitude() {
+        let l = sine(1.4, 30.0, 10.0, 20.0);
+        let r = sine(1.4, 30.0, 10.0, 14.0);          // perna direita 30% mais curta
+        let m = analyze_form(&l, &r, &sine(2.8, 30.0, 10.0, 4.0), 100.0, 30.0, 300);
+        let asym = m.asymmetry_pct.unwrap();
+        assert!(asym > 20.0 && asym < 40.0, "assimetria {asym}");
+        assert!(m.vertical_oscillation_pct.unwrap() > 5.0);
+    }
+
+    #[test]
+    fn series_curtas_degradam_gracioso() {
+        let m = analyze_form(&[1.0; 4], &[1.0; 4], &[1.0; 4], 100.0, 30.0, 4);
+        assert!(m.cadence_spm.is_none() && m.asymmetry_pct.is_none());
+    }
+}

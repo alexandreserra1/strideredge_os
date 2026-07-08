@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use image::RgbImage;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
-use stride_vision::{cadence_spm, draw_pose, PoseEngine, KP_NAMES};
+use stride_vision::{analyze_form, cadence_spm, draw_pose, PoseEngine, KP_NAMES};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -66,6 +66,7 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     let mut dst = enc.stdin.take().unwrap();
     let mut buf = vec![0u8; (w * h * 3) as usize];
     let (mut frames, mut ankle_l, mut ankle_r) = (0u32, Vec::new(), Vec::new());
+    let (mut hip_y, mut leg_lens) = (Vec::new(), Vec::new());
     let t = std::time::Instant::now();
 
     loop {
@@ -74,8 +75,12 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
         }
         let mut img: RgbImage = RgbImage::from_raw(w, h, buf.clone()).unwrap();
         if let Some(pose) = engine.infer(&img)? {
-            ankle_l.push(pose.keypoints[15].1);
-            ankle_r.push(pose.keypoints[16].1);
+            let kp = &pose.keypoints;
+            ankle_l.push(kp[15].1);
+            ankle_r.push(kp[16].1);
+            hip_y.push((kp[11].1 + kp[12].1) / 2.0);          // centro do quadril
+            // comprimento da perna (quadril->tornozelo) = escala do corpo no vídeo
+            leg_lens.push(((kp[11].0 - kp[15].0).powi(2) + (kp[11].1 - kp[15].1).powi(2)).sqrt());
             draw_pose(&mut img, &pose);
         }
         dst.write_all(img.as_raw())?;
@@ -86,12 +91,19 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     let el = t.elapsed().as_secs_f32();
     println!("{frames} frames em {el:.1}s ({:.1} fps de processamento)", frames as f32 / el);
 
-    match (cadence_spm(&ankle_l, fps), cadence_spm(&ankle_r, fps)) {
-        (Some(l), Some(r)) => println!("CADÊNCIA estimada: {:.0} spm (E {l:.0} / D {r:.0})", (l + r) / 2.0),
-        (Some(c), None) | (None, Some(c)) => println!("CADÊNCIA estimada: {c:.0} spm (um tornozelo)"),
-        _ => println!("cadência: série curta demais (filme >5s)"),
+    // métricas consolidadas -> JSON ao lado do vídeo (o backend lê daqui)
+    leg_lens.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let leg_len = leg_lens.get(leg_lens.len() / 2).copied().unwrap_or(0.0);
+    let metrics = analyze_form(&ankle_l, &ankle_r, &hip_y, leg_len, fps, frames as usize);
+    let mpath = format!("{}.metrics.json", out.trim_end_matches(".mp4"));
+    std::fs::write(&mpath, serde_json::to_string_pretty(&metrics)?)?;
+
+    match metrics.cadence_spm {
+        Some(c) => println!("CADÊNCIA: {c:.0} spm | assimetria: {:?}% | osc. vertical: {:?}%",
+                            metrics.asymmetry_pct, metrics.vertical_oscillation_pct),
+        None => println!("cadência: série curta demais (filme >5s)"),
     }
-    println!("vídeo com esqueleto salvo em {out}");
+    println!("vídeo: {out}\nmétricas: {mpath}");
     Ok(())
 }
 

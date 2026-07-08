@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { Route, Footprints, Heart, Zap, TrendingUp, Play, Sparkles } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
+import FormAnalysisCard from '../components/ui/FormAnalysis'
 import {
   useActivities, useActivity, useTrack, useTelemetry, useCoachStream,
   toWorkoutSession, toZoneBars, toDurability, toRoutePoints,
@@ -293,6 +294,9 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
           </div>
         )}
       </div>
+
+      {/* Análise de Forma: vídeo -> esqueleto + métricas (motor Rust local) */}
+      {isReal && <FormAnalysisCard activityId={activity.id} watchCadence={activity.cadence || undefined} />}
 
       {/* Coach Verdict */}
       <div className="card-hover border-brand/10" id="coach-verdict">

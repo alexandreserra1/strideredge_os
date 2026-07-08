@@ -1,6 +1,7 @@
 import type {
   AuthResponse,
   AuthUser,
+  FormAnalysis,
   Activity,
   ApiActivityDetail,
   ApiTrack,
@@ -65,6 +66,25 @@ export const api = {
     spectrum: (id: string) => request<CadenceSpectrum>(`/activities/${id}/cadence-spectrum`),
     coach: (id: string) =>
       request<CoachVerdict>(`/activities/${id}/coach`, { method: 'POST' }),
+  },
+  form: {
+    list: (activityId?: string) =>
+      request<FormAnalysis[]>(`/form${activityId ? `?activity_id=${activityId}` : ''}`),
+    get: (id: string) => request<FormAnalysis>(`/form/${id}`),
+    // multipart: fetch próprio (o request() força JSON)
+    upload: async (file: File, activityId?: string) => {
+      const fd = new FormData()
+      fd.append('video', file)
+      if (activityId) fd.append('activity_id', activityId)
+      const token = session.get()
+      const res = await fetch(`${BASE_URL}/form`, {
+        method: 'POST', body: fd,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ''))
+      return res.json() as Promise<{ analysis_id: string; status: string }>
+    },
+    videoUrl: (id: string) => `${BASE_URL}/form/${id}/video`,
   },
   trainingLoad: {
     list: () => request<TrainingLoadItem[]>('/training-load'),

@@ -9,10 +9,10 @@ import json
 import time
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from core.logging import Logger
@@ -21,8 +21,9 @@ from analytics.fitness import RunningFitness
 from analytics.sql_agent import SqlAgent
 from analytics.training_load import TrainingLoad
 from api.auth import AuthError, AuthService
+from api.form import FormService
 from api.services import ActivityService
-from api.deps import (get_activity_service, get_auth_service, get_coach,
+from api.deps import (get_activity_service, get_auth_service, get_coach, get_form_service,
                       get_running_fitness, get_sql_agent, get_training_load)
 
 
@@ -171,6 +172,46 @@ def coach_verdict_stream(activity_id: str, force: bool = False, coach: Coach = D
 
     return StreamingResponse(sse(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------- Análise de Forma (stride-vision) ----------
+
+@app.post("/api/v1/form", status_code=201)
+async def form_upload(video: UploadFile = File(...), activity_id: str = Form(None),
+                      svc: FormService = Depends(get_form_service)):
+    """Recebe o vídeo, salva no filesystem e processa em background (motor Rust)."""
+    if activity_id:
+        _ensure_uuid(activity_id)
+    data = await video.read()
+    if len(data) > 300 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Vídeo grande demais (max 300MB)")
+    return svc.create(data, video.filename or "video.mp4", activity_id)
+
+
+@app.get("/api/v1/form")
+def form_list(activity_id: str = None, svc: FormService = Depends(get_form_service)):
+    if activity_id:
+        _ensure_uuid(activity_id)
+    return svc.list(activity_id)
+
+
+@app.get("/api/v1/form/{analysis_id}")
+def form_get(analysis_id: str, svc: FormService = Depends(get_form_service)):
+    _ensure_uuid(analysis_id)
+    row = svc.get(analysis_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
+    return row
+
+
+@app.get("/api/v1/form/{analysis_id}/video")
+def form_video(analysis_id: str, svc: FormService = Depends(get_form_service)):
+    """Serve o overlay.mp4 (esqueleto desenhado) direto do filesystem."""
+    _ensure_uuid(analysis_id)
+    path = svc.video_path(analysis_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Vídeo não disponível")
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/api/v1/training-load")
