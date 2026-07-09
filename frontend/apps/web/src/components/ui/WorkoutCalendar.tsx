@@ -38,7 +38,7 @@ export default function WorkoutCalendar({ days, onOpenWorkout }: {
   const monthDone = cells.filter(d => d && days[iso(d)]?.activityId).length
 
   return (
-    <div className="card max-w-sm">
+    <div className="card">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-base font-semibold capitalize">{MONTHS[month.getMonth()]} {month.getFullYear()}</h2>

@@ -84,8 +84,9 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
           icon={<Target size={16} />} accent="orange" />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid md:grid-cols-2 gap-4">
+      {/* Gráficos (empilhados) à esquerda + calendário no rail direito */}
+      <div className="grid lg:grid-cols-3 gap-4 items-start">
+        <div className="lg:col-span-2 space-y-4">
         {/* Fitness Trend */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
@@ -147,10 +148,11 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Calendário de treinos — o log da home; clicar num dia abre o treino */}
-      <WorkoutCalendar days={calendarDays} onOpenWorkout={onOpenWorkout} />
+        {/* Calendário de treinos — rail direito; clicar num dia abre o treino */}
+        <WorkoutCalendar days={calendarDays} onOpenWorkout={onOpenWorkout} />
+      </div>
     </div>
   )
 }
