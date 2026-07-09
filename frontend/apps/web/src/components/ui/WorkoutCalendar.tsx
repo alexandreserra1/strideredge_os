@@ -38,27 +38,27 @@ export default function WorkoutCalendar({ days, onOpenWorkout }: {
   const monthDone = cells.filter(d => d && days[iso(d)]?.activityId).length
 
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card max-w-sm">
+      <div className="flex items-center justify-between mb-3">
         <div>
-          <h2 className="text-lg font-semibold capitalize">{MONTHS[month.getMonth()]} {month.getFullYear()}</h2>
-          <p className="text-xs text-text-secondary mt-0.5">{monthDone} treino{monthDone === 1 ? '' : 's'} no mês</p>
+          <h2 className="text-base font-semibold capitalize">{MONTHS[month.getMonth()]} {month.getFullYear()}</h2>
+          <p className="text-[11px] text-text-secondary mt-0.5">{monthDone} treino{monthDone === 1 ? '' : 's'} no mês</p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
             aria-label="Mês anterior"
             className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-300 transition-colors">
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
           </button>
           <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
             aria-label="Próximo mês" disabled={atCurrent}
             className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="grid grid-cols-7 gap-0.5">
         {WEEKDAYS.map((l, i) => (
           <span key={i} className="text-[10px] text-text-muted text-center pb-1">{l}</span>
         ))}
@@ -69,46 +69,47 @@ export default function WorkoutCalendar({ days, onOpenWorkout }: {
           const done = !!day?.activityId
           const future = d > now
           const missed = !done && !future && key !== todayISO
-          const color = done ? (TYPE_COLOR[day!.type ?? 'run'] ?? TYPE_COLOR.run) : undefined
+          const isToday = key === todayISO
+          // UMA semântica de cor: feito=verde da marca · não treinado=vermelho suave · futuro=neutro.
+          // A modalidade é só um pontinho discreto embaixo (não pinta o dia inteiro).
           return (
             <button
               key={key}
               disabled={!done || !onOpenWorkout}
               onClick={() => done && onOpenWorkout?.(day!.activityId!)}
               aria-label={`Dia ${d.getDate()}${done ? ' — treino feito' : missed ? ' — sem treino' : ''}`}
-              className={`aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 transition-all duration-200
-                ${done ? 'cursor-pointer hover:scale-[1.06]' : 'cursor-default'}
-                ${future ? 'opacity-35 border-transparent' : ''}`}
-              style={{
-                background: done ? `${color}1f` : missed ? 'rgba(248,113,113,0.06)' : 'transparent',
-                borderColor: done ? `${color}55` : missed ? 'rgba(248,113,113,0.20)' : 'var(--border-light)',
-                boxShadow: key === todayISO ? '0 0 0 1.5px var(--brand)' : undefined,
-              }}
+              className={`relative aspect-square rounded-lg flex items-center justify-center text-[12px] tabular-nums transition-colors duration-150
+                ${done
+                  ? 'cursor-pointer font-semibold text-accent-green bg-accent-green/10 hover:bg-accent-green/20'
+                  : missed
+                  ? 'text-accent-red/60 bg-accent-red/[0.04]'
+                  : future ? 'text-text-muted/40' : 'text-text-secondary'}
+                ${isToday ? 'ring-1 ring-brand ring-inset font-semibold' : ''}`}
             >
-              <span className={`text-sm tabular-nums ${done ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
-                {d.getDate()}
-              </span>
-              <span className="h-1.5 w-1.5 rounded-full"
-                style={{ background: done ? color : missed ? 'rgba(248,113,113,0.5)' : 'transparent' }} />
+              {d.getDate()}
+              {done && (
+                <span className="absolute bottom-1 h-1 w-1 rounded-full"
+                  style={{ background: TYPE_COLOR[day!.type ?? 'run'] ?? TYPE_COLOR.run }} />
+              )}
             </button>
           )
         })}
       </div>
 
-      <div className="flex items-center justify-end gap-3 mt-4">
-        <Legend label="Treino" color="#34D399" />
-        <Legend label="Sem treino" color="rgba(248,113,113,0.6)" />
+      <div className="flex items-center justify-between gap-3 mt-3">
+        <Legend label="Feito" swatch="bg-accent-green/30" />
+        <Legend label="Sem treino" swatch="bg-accent-red/20" />
         <Legend label="Hoje" ring />
       </div>
     </div>
   )
 }
 
-function Legend({ label, color, ring }: { label: string; color?: string; ring?: boolean }) {
+function Legend({ label, swatch, ring }: { label: string; swatch?: string; ring?: boolean }) {
   return (
     <span className="flex items-center gap-1.5 text-[10px] text-text-muted">
-      <span className="w-2.5 h-2.5 rounded-[4px]"
-        style={ring ? { boxShadow: '0 0 0 1.5px var(--brand)' } : { background: color }} />
+      <span className={`w-2.5 h-2.5 rounded-[4px] ${swatch ?? ''}`}
+        style={ring ? { boxShadow: 'inset 0 0 0 1.5px var(--brand)' } : undefined} />
       {label}
     </span>
   )
