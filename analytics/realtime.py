@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from core.database import get_connection
+from core.repository import TelemetryRepository
 from core.framework.interfaces import BaseCueRule, BaseAnnouncer
 from analytics.intensity import HrZoneAnalyzer
 from analytics.run_analysis import CADENCE_PROTECTIVE_MIN
@@ -230,11 +231,8 @@ class ReplayDriver:
         self.coach = coach
 
     def run(self, activity_id: str) -> List[Cue]:
-        rows = get_connection().execute(
-            """SELECT speed_ms, heart_rate, cadence FROM fact_telemetry
-               WHERE activity_id = ? AND speed_ms IS NOT NULL ORDER BY timestamp""",
-            [activity_id],
-        ).fetchall()
+        rows = TelemetryRepository().series(
+            activity_id, ["speed_ms", "heart_rate", "cadence"], non_null="speed_ms")
         cues = []
         for t, (sp, hr, cad) in enumerate(rows):   # t = segundos (telemetria ~1 Hz)
             cue = self.coach.on_sample(Sample(float(t), sp, hr, cad))

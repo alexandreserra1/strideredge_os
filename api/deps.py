@@ -4,6 +4,7 @@ Centraliza a construção dos serviços. Nos testes, sobrescrevemos via
 app.dependency_overrides para injetar fakes (ex: LLM falso) sem tocar o Ollama.
 """
 
+from analytics.strength import StrengthSets
 from api.auth import AuthService
 from api.form import FormService
 from api.services import ActivityService
@@ -25,6 +26,10 @@ def get_auth_service() -> AuthService:
 
 def get_form_service() -> FormService:
     return FormService()
+
+
+def get_strength_sets() -> StrengthSets:
+    return StrengthSets()
 
 
 def get_training_load() -> TrainingLoad:

@@ -5,7 +5,9 @@ precisa saber de parametros de Kalman nem de como falar com o Rust.
 """
 
 import rust_kernel
-from core.database import get_connection
+from core.repository import TelemetryRepository
+
+_telemetry = TelemetryRepository()
 
 # Calibracao padrao do filtro de Kalman para trilhas de GPS (graus, amostras 1s).
 # q pequeno = confia no modelo de movimento; R = ruido tipico do GPS (~5m).
@@ -20,13 +22,7 @@ def smooth_track(activity_id: str) -> dict:
 
     Retorna um dict com listas paralelas, pronto para plotar (raw vs. smooth).
     """
-    con = get_connection()
-    rows = con.execute(
-        """SELECT latitude, longitude, cadence FROM fact_telemetry
-           WHERE activity_id = ? AND latitude IS NOT NULL
-           ORDER BY timestamp""",
-        [activity_id],
-    ).fetchall()
+    rows = _telemetry.series(activity_id, ["latitude", "longitude", "cadence"], non_null="latitude")
 
     raw_lat = [r[0] for r in rows]
     raw_lon = [r[1] for r in rows]
@@ -58,19 +54,8 @@ def compare_activities(activity_id_a: str, activity_id_b: str, metric: str = "he
     if metric not in _COMPARABLE_METRICS:
         raise ValueError(f"metrica invalida: {metric}")
 
-    con = get_connection()
-
-    def load(activity_id: str) -> list[float]:
-        rows = con.execute(
-            f"""SELECT {metric} FROM fact_telemetry
-                WHERE activity_id = ? AND {metric} IS NOT NULL
-                ORDER BY timestamp""",
-            [activity_id],
-        ).fetchall()
-        return [float(r[0]) for r in rows]
-
-    series_a = load(activity_id_a)
-    series_b = load(activity_id_b)
+    series_a = _telemetry.column(activity_id_a, metric)
+    series_b = _telemetry.column(activity_id_b, metric)
 
     # >>> fronteira Python -> Rust: o O(n*m) roda no kernel nativo <<<
     distance, path = rust_kernel.compare_efforts(series_a, series_b)
@@ -90,16 +75,7 @@ def cadence_analysis(activity_id: str, sample_rate_hz: float = 1.0) -> dict:
     Devolve o espectro (pra plotar) e a frequencia dominante da oscilacao de
     cadencia. Razao pico/media alta = ritmo de passada mais regular.
     """
-    con = get_connection()
-    cadence = [
-        float(r[0])
-        for r in con.execute(
-            """SELECT cadence FROM fact_telemetry
-               WHERE activity_id = ? AND cadence IS NOT NULL
-               ORDER BY timestamp""",
-            [activity_id],
-        ).fetchall()
-    ]
+    cadence = _telemetry.column(activity_id, "cadence")
 
     # >>> fronteira Python -> Rust: a FFT roda no kernel nativo <<<
     frequencies, magnitudes, dominant = rust_kernel.cadence_spectrum(cadence, sample_rate_hz)

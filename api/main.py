@@ -19,12 +19,13 @@ from core.logging import Logger
 from analytics.coach import Coach
 from analytics.fitness import RunningFitness
 from analytics.sql_agent import SqlAgent
+from analytics.strength import StrengthSets
 from analytics.training_load import TrainingLoad
 from api.auth import AuthError, AuthService
 from api.form import FormService
 from api.services import ActivityService
 from api.deps import (get_activity_service, get_auth_service, get_coach, get_form_service,
-                      get_running_fitness, get_sql_agent, get_training_load)
+                      get_running_fitness, get_sql_agent, get_strength_sets, get_training_load)
 
 
 class AskRequest(BaseModel):
@@ -138,11 +139,10 @@ def activity_telemetry(activity_id: str, svc: ActivityService = Depends(get_acti
 
 
 @app.get("/api/v1/activities/{activity_id}/sets")
-def activity_sets(activity_id: str):
+def activity_sets(activity_id: str, strength: StrengthSets = Depends(get_strength_sets)):
     """Séries de força + músculos trabalhados (vazio fora do modo Força — gracioso)."""
     _ensure_uuid(activity_id)
-    from analytics.strength import StrengthSets
-    return {"activity_id": activity_id, **StrengthSets().summary(activity_id)}
+    return {"activity_id": activity_id, **strength.summary(activity_id)}
 
 
 @app.get("/api/v1/activities/{activity_id}/cadence-spectrum")
