@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, CalendarDays, Activity, HeartPulse, Play, Dumbbell, Settings,
+  LayoutDashboard, Activity, HeartPulse, Play, Dumbbell, Settings,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -9,7 +9,6 @@ interface SidebarProps {
 
 const menu = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'plano', label: 'Plano', icon: CalendarDays },
   { id: 'detalhe', label: 'Treinos', icon: Activity },
   { id: 'analise', label: 'Análise & Saúde', icon: HeartPulse },
   { id: 'corrida', label: 'Correr', icon: Play },

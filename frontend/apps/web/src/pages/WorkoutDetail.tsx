@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
-import { Route, Footprints, Heart, Zap, TrendingUp, Play, Sparkles } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { Route, Footprints, Heart, Zap, TrendingUp, Play } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
 import FormAnalysisCard from '../components/ui/FormAnalysis'
+import InfoHint from '../components/ui/InfoHint'
 import {
-  useActivities, useActivity, useTrack, useTelemetry, useCoachStream,
+  useActivities, useActivity, useTrack, useTelemetry,
   toWorkoutSession, toZoneBars, toDurability, toRoutePoints,
 } from '@strideredge/core'
 import {
-  mockActivities, mockActivityDetail, mockTrack,
-  mockTelemetry, mockCoachVerdict,
+  mockActivities, mockActivityDetail, mockTrack, mockTelemetry,
 } from './mockData'
 
 // Cor da barra pela intensidade (limite inferior ÷ FCmax) — frio -> quente
@@ -36,17 +36,10 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
   const activities = isReal ? apiActs!.map(toWorkoutSession) : mockActivities
 
   const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null)
-  const [showCoach, setShowCoach] = useState(false)
-  const coach = useCoachStream()
 
-  // se o usuário clicar noutro dia do calendário, adota o novo treino
+  // deep-link: o calendário/feed manda o treino a abrir
   useEffect(() => {
-    if (initialId) {
-      setSelectedId(initialId)
-      setShowCoach(false)
-      coach.reset()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (initialId) setSelectedId(initialId)
   }, [initialId])
 
   const activity = activities.find(a => a.id === selectedId) || activities[0]
@@ -56,25 +49,6 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
   const { data: apiDetail } = useActivity(realId)
   const { data: apiTrack } = useTrack(realId)
   const { data: apiTele } = useTelemetry(realId)
-
-  // Review REAL quando gerada; senão o mock (demo)
-  const verdict = isReal && coach.data ? coach.data : mockCoachVerdict
-  const hasLists = !!(verdict.strengths?.length || verdict.improvements?.length || verdict.actions?.length)
-
-  const selectActivity = (id: string) => {
-    setSelectedId(id)
-    setShowCoach(false)
-    coach.reset()                              // review é por treino — limpa ao trocar
-  }
-
-  const onCoachClick = () => {
-    if (isReal && !coach.data && !coach.isStreaming) {
-      coach.start(activity.id)                 // SSE: o texto nasce token a token
-      setShowCoach(true)
-    } else {
-      setShowCoach(v => !v)
-    }
-  }
 
   // Séries pros gráficos: telemetria real (downsample ~80 pontos) ou mock
   const teleSrc = apiTele?.length ? apiTele : mockTelemetry
@@ -118,24 +92,6 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
         </div>
       </div>
 
-      {/* Activity Strip */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-        {activities.map(act => (
-          <button
-            key={act.id}
-            onClick={() => selectActivity(act.id)}
-            className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-medium border transition-all duration-200 whitespace-nowrap
-              ${activity.id === act.id
-                ? 'bg-brand/10 text-brand border-brand/25'
-                : 'bg-surface-200 text-text-secondary border-border-light hover:border-border-medium hover:text-text-primary'
-              }`}
-          >
-            <span className="block font-semibold">{act.name.split(' — ')[0]}</span>
-            <span className="block mt-0.5 opacity-60">{act.distance_km} km · {act.pace}</span>
-          </button>
-        ))}
-      </div>
-
       {/* Hero Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="kpi-card">
@@ -171,7 +127,10 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
         {/* HR Chart */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold flex items-center gap-2"><Heart size={14} className="text-accent-red" /> Frequência Cardíaca</h3>
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <Heart size={14} className="text-accent-red" /> Frequência Cardíaca
+              <InfoHint text="Batimentos por minuto ao longo do treino. É a medida direta do esforço do coração — sobe com a intensidade e com a fadiga." />
+            </h3>
             <span className="text-xs text-text-secondary">Máx: {maxHr || '—'} bpm</span>
           </div>
           <div className="h-44">
@@ -198,7 +157,10 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
 
         {/* HR Zones */}
         <div className="card">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Zap size={14} className="text-lime" /> Tempo por Zona de FC</h3>
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
+            <Zap size={14} className="text-lime" /> Tempo por Zona de FC
+            <InfoHint text="Quanto tempo você passou em cada faixa de esforço (das zonas de FC do relógio). Muito tempo nas zonas altas = treino intenso; a base aeróbia se constrói nas zonas baixas." />
+          </h3>
           <div className="space-y-3">
             {zoneBars.map(z => (
               <div key={z.label} className="flex items-center gap-3">
@@ -216,7 +178,10 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
       {/* Cadence + Spectrum */}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="card">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Footprints size={14} className="text-accent-green" /> Cadência</h3>
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
+            <Footprints size={14} className="text-accent-green" /> Cadência
+            <InfoHint text="Passos por minuto (spm). Passada mais curta e rápida reduz o impacto por passo — abaixo de ~166 spm associa-se a mais risco de lesão na canela. Alvo protetor: ≥178 spm." />
+          </h3>
           <div className="h-36">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={hrData}>
@@ -241,12 +206,18 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
 
         {/* Durability / Decoupling */}
         <div className="card">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingUp size={14} className="text-accent-blue" /> Durabilidade</h3>
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
+            <TrendingUp size={14} className="text-accent-blue" /> Durabilidade
+            <InfoHint text="Mede se você segura o ritmo quando cansa. Compara a eficiência (pace por batimento) da 1ª e 2ª metade do treino: quanto menor a queda, mais durável você é sob fadiga." />
+          </h3>
           {durability ? (
             <div className="flex items-center gap-6">
               <div>
                 <p className="text-3xl font-bold text-accent-blue">{durability.decoupling_pct}%</p>
-                <p className="text-xs text-text-secondary mt-1">Decoupling Pa:FC</p>
+                <p className="text-xs text-text-secondary mt-1 flex items-center gap-1">
+                  Decoupling Pa:FC
+                  <InfoHint text="Desacoplamento entre pace e FC. <5% = você segurou bem o ritmo sob fadiga; >10% = o corpo 'rachou' e a FC subiu sem o pace acompanhar." />
+                </p>
               </div>
               <div className="flex-1 space-y-2">
                 <div className="flex items-center justify-between text-xs">
@@ -298,110 +269,15 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
       {/* Análise de Forma: vídeo -> esqueleto + métricas (motor Rust local) */}
       {isReal && <FormAnalysisCard activityId={activity.id} watchCadence={activity.cadence || undefined} />}
 
-      {/* Coach Verdict */}
-      <div className="card-hover border-brand/10" id="coach-verdict">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="grid place-items-center w-10 h-10 rounded-xl bg-brand/12 text-brand shrink-0">
-              <Sparkles size={18} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold">Veredito do Coach</h3>
-              <p className="text-xs text-text-secondary">
-                {isReal && coach.data ? 'Análise real · IA local + ciência citada' : 'IA local · privado por padrão'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isReal && coach.data && !coach.isStreaming && (
-              <button onClick={() => { coach.start(activity.id, true); setShowCoach(true) }} className="btn-ghost text-xs">
-                Regerar
-              </button>
-            )}
-            <button onClick={onCoachClick} disabled={coach.isStreaming} className="btn-ghost text-xs">
-              {coach.isStreaming ? 'Analisando…'
-                : isReal && !coach.data ? 'Gerar análise'
-                : showCoach ? 'Ocultar' : 'Ver análise'}
-            </button>
-          </div>
+      {/* O veredito do Coach vive em Análise & Saúde — atalho pra não duplicar aqui */}
+      <button onClick={() => onNavigate('analise')}
+        className="card-hover w-full flex items-center justify-between text-left">
+        <div>
+          <p className="text-sm font-semibold">Quer a leitura do coach?</p>
+          <p className="text-xs text-text-secondary mt-0.5">O veredito da IA e o risco de lesão ficam em Análise & Saúde.</p>
         </div>
-
-        {coach.isStreaming && (
-          <div className="p-4 rounded-xl bg-brand/[0.06] border border-brand/20 mb-6 animate-fade-in">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles size={14} className="text-brand animate-pulse" />
-              <p className="text-xs font-medium text-text-secondary">
-                {coach.isCorrecting ? 'Detectei um dado não medido — corrigindo…' : 'Coach escrevendo · 100% local'}
-              </p>
-            </div>
-            {coach.text && (
-              <p className="text-sm leading-relaxed whitespace-pre-line">
-                {coach.text}<span className="text-brand animate-pulse">▍</span>
-              </p>
-            )}
-          </div>
-        )}
-        {coach.isError && (
-          <p className="text-xs text-accent-red mb-4">Não consegui gerar a análise — o backend/Ollama está no ar?</p>
-        )}
-
-        {!showCoach && !coach.data && (
-          <p className="text-sm leading-relaxed text-text-muted mb-6">{mockCoachVerdict.verdict}</p>
-        )}
-        {showCoach && !hasLists && !coach.isStreaming && (
-          <p className="text-sm leading-relaxed text-text-muted mb-6 whitespace-pre-line">{verdict.verdict}</p>
-        )}
-
-        {showCoach && !coach.isStreaming && (
-          <div className="grid md:grid-cols-3 gap-4 animate-fade-in">
-            <div className="bg-accent-green/5 rounded-xl p-4 border border-accent-green/10">
-              <h4 className="text-xs font-semibold text-accent-green uppercase tracking-wider mb-3">Pontos fortes</h4>
-              <ul className="space-y-2">
-                {(verdict.strengths ?? []).map((s, i) => (
-                  <li key={i} className="text-xs text-text-muted flex items-start gap-2">
-                    <span className="text-accent-green mt-0.5 shrink-0">✓</span>
-                    {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="bg-accent-orange/5 rounded-xl p-4 border border-accent-orange/10">
-              <h4 className="text-xs font-semibold text-accent-orange uppercase tracking-wider mb-3">A melhorar</h4>
-              <ul className="space-y-2">
-                {(verdict.improvements ?? []).map((s, i) => (
-                  <li key={i} className="text-xs text-text-muted flex items-start gap-2">
-                    <span className="text-accent-orange mt-0.5 shrink-0">!</span>
-                    {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="bg-accent-blue/5 rounded-xl p-4 border border-accent-blue/10">
-              <h4 className="text-xs font-semibold text-accent-blue uppercase tracking-wider mb-3">O que fazer</h4>
-              <ul className="space-y-2">
-                {(verdict.actions ?? []).map((s, i) => (
-                  <li key={i} className="text-xs text-text-muted flex items-start gap-2">
-                    <span className="text-accent-blue mt-0.5 shrink-0">→</span>
-                    {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* Citations */}
-        {showCoach && (
-          <div className="mt-4 pt-4 border-t border-border-light">
-            <p className="text-[10px] text-text-secondary font-medium uppercase tracking-wider mb-2">Fontes</p>
-            <div className="flex flex-wrap gap-2">
-              {(verdict.citations ?? []).map((c, i) => (
-                <span key={i} className="text-[10px] bg-white/5 text-text-secondary px-2 py-1 rounded-md">{c}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        <span className="text-brand text-sm font-medium shrink-0">Abrir →</span>
+      </button>
     </div>
   )
 }

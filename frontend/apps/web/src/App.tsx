@@ -4,7 +4,6 @@ import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
 import Landing from './pages/Landing'
 import WorkoutDetail from './pages/WorkoutDetail'
-import PlanScreen from './pages/PlanScreen'
 import RunMode from './pages/RunMode'
 import HyroxScreen from './pages/HyroxScreen'
 import AnaliseSaude from './pages/AnaliseSaude'
@@ -13,12 +12,12 @@ import ThemeToggle from './components/layout/ThemeToggle'
 import { api, session, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockAcwrCurrent } from './pages/mockData'
 
-type Route = 'landing' | 'login' | 'dashboard' | 'plano' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
+type Route = 'landing' | 'login' | 'dashboard' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
 
 // Rota <-> URL: digitar/copiar /dashboard, /analise etc. passa pela MESMA guarda —
 // sem sessão, qualquer caminho protegido cai no /login (nada de entrar pela URL).
 const PATHS: Record<Route, string> = {
-  landing: '/', login: '/login', dashboard: '/dashboard', plano: '/plano',
+  landing: '/', login: '/login', dashboard: '/dashboard',
   detalhe: '/treinos', analise: '/analise', corrida: '/correr', hyrox: '/hyrox',
 }
 const PUBLIC: Route[] = ['landing', 'login']
@@ -107,12 +106,10 @@ export default function App() {
         return <Login onAuthed={onAuthed} onBack={() => setRoute('landing')} />
       case 'dashboard':
         return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
-      case 'plano':
-        return <PlanScreen />
       case 'detalhe':
         return <WorkoutDetail onNavigate={navigate} initialId={detailId} />
       case 'analise':
-        return <AnaliseSaude onOpenWorkout={openWorkout} />
+        return <AnaliseSaude />
       case 'corrida':
         return <RunMode />
       case 'hyrox':

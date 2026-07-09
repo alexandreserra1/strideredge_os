@@ -1,6 +1,6 @@
 import type {
   Activity, ActivityDetail, TrainingLoadItem, FitnessData,
-  TrackData, CadenceSpectrum, WeeklyPlan, WorkoutSession,
+  TrackData, CadenceSpectrum, WorkoutSession,
 } from '@strideredge/core'
 
 // ─── Activity Feed ───────────────────────────────────────
@@ -14,17 +14,6 @@ export const mockActivities: WorkoutSession[] = [
   { id: '7', type: 'recovery', name: 'Recuperação Ativa', distance_km: 3.5, duration_min: 25, pace: '7:08', avg_hr: 128, cadence: 155, calories: 178, elevation_gain: 18, date: '2026-06-19T17:00' },
   { id: '8', type: 'run', name: 'Tiro — 5x1000m', distance_km: 7.0, duration_min: 34, pace: '4:51', avg_hr: 172, cadence: 176, calories: 498, elevation_gain: 22, date: '2026-06-18T06:30' },
 ]
-
-export const todayPrescribed = {
-  type: 'run' as const,
-  name: 'Ritmo — 10km progressivo',
-  description: '10km começando a 5:30/km, finalizando a 4:45/km. Últimos 2km em ritmo de prova.',
-  target_pace: '5:00/km',
-  target_hr: '155-165 bpm',
-  duration_min: 55,
-  distance_km: 10,
-  adjusted: true,
-}
 
 // ─── ACWR / Training Load ─────────────────────────────────
 export const mockTrainingLoad: TrainingLoadItem[] = Array.from({ length: 28 }, (_, i) => {
@@ -140,21 +129,6 @@ export const mockSpectrum: CadenceSpectrum = {
     magnitudes: [2.1, 4.3, 8.2, 12.5, 9.8, 6.4, 3.2, 1.8, 0.9, 0.5, 0.3, 0.2, 0.1, 0.08, 0.05, 0.03, 0.02, 0.01, 0.01, 0.005],
   },
 }
-
-// ─── Plan / Calendar ──────────────────────────────────────
-export const mockPlan: WeeklyPlan[] = Array.from({ length: 8 }, (_, w): WeeklyPlan => ({
-  week: w + 1,
-  label: `Semana ${w + 1}${w === 0 ? ' (atual)' : ''}`,
-  days: [
-    { day: `2026-07-${String(6 + w * 7 + 0).padStart(2, '0')}`, type: 'run' as const, name: 'Corrida Leve', description: '8 km Z2', target_pace: '5:30/km', target_hr: '145-155', duration_min: 44, distance_km: 8 },
-    { day: `2026-07-${String(6 + w * 7 + 1).padStart(2, '0')}`, type: 'strength' as const, name: 'Força — Superior', description: 'Circuito funcional, 4 séries', duration_min: 40 },
-    { day: `2026-07-${String(6 + w * 7 + 2).padStart(2, '0')}`, type: 'run' as const, name: 'Intervalados 5x1km', description: 'Tiro a 4:30, recuperação 2min', target_pace: '4:30/km', target_hr: '172+', duration_min: 38, distance_km: 7 },
-    { day: `2026-07-${String(6 + w * 7 + 3).padStart(2, '0')}`, type: 'run' as const, name: 'Recuperação Ativa', description: '5 km leve, soltar', target_pace: '6:00/km', target_hr: '130-140', duration_min: 30, distance_km: 5 },
-    { day: `2026-07-${String(6 + w * 7 + 4).padStart(2, '0')}`, type: 'hyrox' as const, name: 'HYROX — Estações', description: 'Simulação 2 estações x3', duration_min: 45 },
-    { day: `2026-07-${String(6 + w * 7 + 5).padStart(2, '0')}`, type: 'crossfit' as const, name: 'WOD CrossFit', description: 'AMRAP 20min', duration_min: 45 },
-    { day: `2026-07-${String(6 + w * 7 + 6).padStart(2, '0')}`, type: 'run' as const, name: 'Longão', description: '16-18 km progressivo', target_pace: '5:20→4:50/km', target_hr: '150-165', duration_min: 95, distance_km: 17 },
-  ].filter(Boolean) as WeeklyPlan['days'],
-}))
 
 // ─── Coach Verdict ──────────────────────────────────────────
 export const mockCoachVerdict = {

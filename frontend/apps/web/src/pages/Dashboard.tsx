@@ -1,23 +1,11 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
-import { TrendingUp, Target, Flame, Wind, Footprints, ChevronRight, Play } from 'lucide-react'
+import { TrendingUp, Target, Play } from 'lucide-react'
 import KpiCard from '../components/ui/KpiCard'
 import AcwrGauge from '../components/ui/AcwrGauge'
-import { useActivities, useTrainingLoad, useFitness, toWorkoutSession, latestAcwr, toFitnessUi, weeklyVolume } from '@strideredge/core'
-import { mockFitness, mockActivities, todayPrescribed, mockAcwrCurrent } from './mockData'
-
-const typeColors: Record<string, string> = {
-  run: 'bg-accent-green/20 text-accent-green border-accent-green/30',
-  treadmill: 'bg-accent-blue/20 text-accent-blue border-accent-blue/30',
-  hyrox: 'bg-accent-orange/20 text-accent-orange border-accent-orange/30',
-  crossfit: 'bg-accent-yellow/20 text-accent-yellow border-accent-yellow/30',
-  strength: 'bg-accent-red/20 text-accent-red border-accent-red/30',
-  recovery: 'bg-[#6B7079]/20 text-text-secondary border-[#6B7079]/30',
-}
-
-const typeLabels: Record<string, string> = {
-  run: 'Corrida', treadmill: 'Esteira', hyrox: 'HYROX',
-  crossfit: 'CrossFit', strength: 'Força', recovery: 'Recuperação',
-}
+import InfoHint from '../components/ui/InfoHint'
+import WorkoutCalendar from '../components/ui/WorkoutCalendar'
+import { useActivities, useTrainingLoad, useFitness, toWorkoutSession, latestAcwr, toFitnessUi, weeklyVolume, toCalendarDays } from '@strideredge/core'
+import { mockFitness, mockActivities, mockAcwrCurrent } from './mockData'
 
 export default function Dashboard({ onNavigate, onOpenWorkout }: {
   onNavigate: (r: string) => void
@@ -48,6 +36,11 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
   // Volume da semana corrente (min/dia) calculado das sessões
   const volume = weeklyVolume(activities)
   const volumeTotal = volume.reduce((acc, v) => acc + v.volume, 0)
+
+  // Calendário de treinos (a home é o log; clicar num dia abre o treino)
+  const calendarDays = apiActs?.length
+    ? toCalendarDays(apiActs)
+    : Object.fromEntries(mockActivities.map(a => [a.date.slice(0, 10), { activityId: a.id, type: a.type }]))
 
   // Saudação honesta (hora local) + data real
   const hour = new Date().getHours()
@@ -91,44 +84,15 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
           icon={<Target size={16} />} accent="orange" />
       </div>
 
-      {/* Today's Prescribed Workout */}
-      <div className="card-hover">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">Hoje · Prescrito</span>
-            <h3 className="text-lg font-semibold mt-0.5">{todayPrescribed.name}</h3>
-          </div>
-          <span className="text-[10px] font-medium bg-surface-300 text-text-secondary px-2 py-1 rounded-full border border-border-light">
-            exemplo · gerador de plano em breve
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-4 text-sm">
-          <span className="text-text-muted">
-            <span className="text-text-primary font-medium">{todayPrescribed.distance_km} km</span> · {todayPrescribed.duration_min} min
-          </span>
-          <span className="text-text-muted">
-            Alvo: <span className="text-text-primary font-medium">{todayPrescribed.target_pace}</span>
-          </span>
-          <span className="text-text-muted">
-            FC: <span className="text-text-primary font-medium">{todayPrescribed.target_hr}</span>
-          </span>
-        </div>
-        <p className="text-sm text-text-secondary mt-2">{todayPrescribed.description}</p>
-        <div className="flex gap-3 mt-4">
-          <button className="btn-primary text-sm">
-            <Play size={16} />
-            Iniciar treino
-          </button>
-          <button className="btn-ghost text-sm">Adiar</button>
-        </div>
-      </div>
-
       {/* Charts Row */}
       <div className="grid md:grid-cols-2 gap-4">
         {/* Fitness Trend */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold">Eficiência (velocidade ÷ FC)</h3>
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              Eficiência (velocidade ÷ FC)
+              <InfoHint text="Velocidade dividida pela frequência cardíaca. Sobe quando você corre mais rápido com o mesmo esforço — o melhor sinal de que a base aeróbia está melhorando." />
+            </h3>
             <span className="text-xs text-accent-green">
               {fit.pctChange > 0 ? '+' : ''}{fit.pctChange.toFixed(1)}% na janela
             </span>
@@ -185,41 +149,8 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
         </div>
       </div>
 
-      {/* Activity Feed */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Atividades Recentes</h2>
-          <button onClick={() => onNavigate('detalhe')}
-            className="text-xs text-text-secondary hover:text-text-primary flex items-center gap-1 transition-colors">
-            Ver todos <ChevronRight size={14} />
-          </button>
-        </div>
-        <div className="space-y-2">
-          {activities.slice(0, 5).map((act) => (
-            <button
-              key={act.id}
-              onClick={() => onOpenWorkout ? onOpenWorkout(act.id) : onNavigate('detalhe')}
-              className="w-full card-hover flex items-center gap-4 p-4 text-left"
-            >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold border ${typeColors[act.type]}`}>
-                {act.type === 'run' ? <Footprints size={18} /> :
-                 act.type === 'hyrox' ? <Flame size={18} /> :
-                 act.type === 'strength' ? <Wind size={18} /> : <TrendingUp size={18} />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-text-primary truncate">{act.name}</p>
-                <p className="text-xs text-text-secondary">{typeLabels[act.type]} · {new Date(act.date).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-sm font-semibold text-text-primary">{act.distance_km > 0 ? `${act.distance_km} km` : `${act.duration_min} min`}</p>
-                <p className="text-xs text-text-secondary">
-                  {act.pace}{act.avg_hr ? ` · ${act.avg_hr} bpm` : ''}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Calendário de treinos — o log da home; clicar num dia abre o treino */}
+      <WorkoutCalendar days={calendarDays} onOpenWorkout={onOpenWorkout} />
     </div>
   )
 }

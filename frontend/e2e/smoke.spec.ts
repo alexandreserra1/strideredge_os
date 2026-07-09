@@ -87,72 +87,57 @@ test.describe('app do atleta', () => {
     await expect(page.getByRole('button', { name: 'Análise & Saúde' })).toBeVisible()
   })
 
-  test('treinos: mapa leaflet desenha a rota do treino com GPS', async ({ page }) => {
-    // determinístico: acha via API um treino que TEM GPS e o seleciona na faixa,
-    // em vez de torcer pro treino default ter trilha
+  test('dashboard: calendário abre o treino com mapa REAL (deep-link)', async ({ page }) => {
+    // determinístico: acha via API um treino COM GPS, navega o calendário até o mês dele
+    // e clica no dia — a home é o log de treino agora (sem faixa em Treinos).
     const acts = await (await page.request.get('/api/v1/activities')).json()
-    let withGps: { activity_id: string; activity_name: string } | null = null
-    for (const a of acts.slice(0, 12)) {          // faixa da UI mostra os recentes
+    let gps: { activity_id: string; start_time: string } | null = null
+    for (const a of acts.slice(0, 20)) {
       const t = await (await page.request.get(`/api/v1/activities/${a.activity_id}/track`)).json()
-      if (t.points > 1) { withGps = a; break }
+      if (t.points > 1) { gps = a; break }
     }
-    test.skip(!withGps, 'nenhum treino recente com GPS no banco')
+    test.skip(!gps, 'nenhum treino com GPS no banco')
 
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Treinos' }).click()
+    const [y, m, d] = gps!.start_time.slice(0, 10).split('-').map(Number)
+    await page.goto('/dashboard')
+    const now = new Date()
+    const monthsBack = (now.getFullYear() * 12 + now.getMonth()) - (y * 12 + (m - 1))
+    for (let i = 0; i < monthsBack; i++) await page.getByRole('button', { name: 'Mês anterior' }).click()
+    await page.getByRole('button', { name: new RegExp(`^Dia ${d} — treino feito$`) }).click()
+
+    // rota real: muitos <path> no overlay do leaflet (um por segmento de cadência)
     await expect(page.getByText('Percurso · Semáforo de Cadência')).toBeVisible()
-    await page.getByRole('button', { name: withGps!.activity_name.split(' — ')[0].slice(0, 16) })
-      .first().click()
-
-    // a rota real vira MUITOS <path> no overlay (um por segmento colorido de cadência);
-    // cada segmento tem ~1px (bbox zero = "hidden"), então o certo é asserir a contagem
     await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 20_000 })
     await expect
       .poll(() => page.locator('.leaflet-overlay-pane path').count(), { timeout: 20_000 })
       .toBeGreaterThan(50)
-    await expect(page.locator('.leaflet-control-zoom')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Satélite' })).toBeVisible()
   })
 
-  test('coach: gerar análise -> veredito REAL estruturado (streaming ou cache)', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Treinos' }).click()
-    await expect(page.getByText('Veredito do Coach')).toBeVisible()
-
-    await page.getByRole('button', { name: 'Gerar análise' }).click()
-    // cache -> instantâneo; sem cache -> streama ~30s. As listas estruturadas fecham o fluxo.
-    await expect(page.locator('h4', { hasText: 'Pontos fortes' })).toBeVisible({ timeout: 150_000 })
-    // e é dado REAL (não o mock): o subtítulo muda quando coach.data chega da API
-    await expect(page.getByText('Análise real · IA local + ciência citada')).toBeVisible()
-  })
-
-  test('análise & saúde: risco, calendário interativo e deep-link pro treino', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Análise & Saúde' }).click()
-    await expect(page.getByRole('heading', { name: 'Análise & Saúde' })).toBeVisible()
-    await expect(page.getByText('Risco geral de lesão')).toBeVisible()
-
-    // strip 2 semanas com legenda
-    await expect(page.getByText('Feito', { exact: true })).toBeVisible()
-    await expect(page.getByText('Não treinado', { exact: true })).toBeVisible()
-
-    // modo Mês: nome do mês atual, > desabilitado (futuro), < navega
-    await page.getByRole('button', { name: 'Mês', exact: true }).click()
+  test('dashboard: > trava no mês atual, < navega', async ({ page }) => {
+    await page.goto('/dashboard')
     const now = new Date()
     await expect(page.getByText(monthLabel(now))).toBeVisible()
     await expect(page.getByRole('button', { name: 'Próximo mês' })).toBeDisabled()
     await page.getByRole('button', { name: 'Mês anterior' }).click()
     const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     await expect(page.getByText(monthLabel(prev))).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Próximo mês' })).toBeEnabled()
+  })
 
-    // clicar num dia com treino abre a ANÁLISE DO DIA aqui na página (não navega)
-    const day = page.getByRole('button', { name: /treino feito/ }).first()
-    await expect(day).toBeVisible()
-    await day.click()
-    await expect(page.getByText('Análise do dia')).toBeVisible()
-    await expect(page.getByText('Carga do dia')).toBeVisible()
-    // e o aprofundamento (mapa/zonas/coach) fica na tela de Treinos, via botão explícito
-    await page.getByRole('button', { name: /Ver treino completo/ }).click()
-    await expect(page.getByText('Veredito do Coach')).toBeVisible()
+  test('coach: review da IA gera veredito REAL em Análise & Saúde', async ({ page }) => {
+    await page.goto('/analise')
+    await expect(page.getByRole('heading', { name: 'Review da IA' })).toBeVisible()
+    await page.getByRole('button', { name: /Gerar do último treino|Regerar/ }).click()
+    // cache -> instantâneo; sem cache -> streama ~30s. Listas estruturadas fecham o fluxo.
+    await expect(page.locator('h4', { hasText: 'Pontos fortes' })).toBeVisible({ timeout: 150_000 })
+  })
+
+  test('análise & saúde: risco visível, SEM calendário (foi pra home)', async ({ page }) => {
+    await page.goto('/analise')
+    await expect(page.getByRole('heading', { name: 'Análise & Saúde' })).toBeVisible()
+    await expect(page.getByText('Risco geral de lesão')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Review da IA' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Mês anterior' })).toHaveCount(0)
   })
 })

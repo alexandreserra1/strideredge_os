@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles, CalendarDays, ArrowRight } from 'lucide-react'
-import { useActivities, useActivity, useCoachStream, useTrainingLoad, latestAcwr, toDurability, toWorkoutSession } from '@strideredge/core'
+import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
+import { useActivities, useActivity, useCoachStream, useTrainingLoad, latestAcwr, toDurability } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
-import TrainingCalendarStrip, { type TrainingDayInfo } from '../components/ui/TrainingCalendarStrip'
 
 type Level = 'ok' | 'warn' | 'risk'
 const levelMeta: Record<Level, { color: string; label: string; chip: string }> = {
@@ -13,7 +11,7 @@ const levelMeta: Record<Level, { color: string; label: string; chip: string }> =
 }
 const worst = (ls: Level[]): Level => ls.includes('risk') ? 'risk' : ls.includes('warn') ? 'warn' : 'ok'
 
-export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: string) => void }) {
+export default function AnaliseSaude() {
   // ACWR + ramp reais quando o backend está up; fallback pro mock
   const { data: load } = useTrainingLoad()
   const { data: acts } = useActivities()
@@ -29,8 +27,6 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
   const cadence = latestRun?.avg_cadence ? Math.round(latestRun.avg_cadence) : mockActivities[0].cadence
   const realDur = runDetail ? toDurability(runDetail) : null
   const decoupling = realDur?.decoupling_pct ?? (isReal ? 0 : mockActivityDetail.durability!.decoupling_pct)
-  // dia selecionado no calendário -> análise inline (aqui, não na tela de Treinos)
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
   const acwrLevel: Level = acwr.acwr < 0.8 ? 'warn' : acwr.acwr <= 1.3 ? 'ok' : acwr.acwr <= 1.5 ? 'warn' : 'risk'
   const cadLevel: Level = cadence >= 178 ? 'ok' : cadence >= 166 ? 'warn' : 'risk'
@@ -59,23 +55,6 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
   const overall: Level = riskScore < 25 ? 'ok' : riskScore < 55 ? 'warn' : 'risk'
   const ov = levelMeta[overall]
 
-  // Calendário: mapa dia -> {status, atividade} cobrindo o HISTÓRICO TODO (o modo mês navega
-  // por qualquer mês). Treino real = 'done' clicável; sem plano gerado ainda, dia sem treino =
-  // 'none' (não inventamos 'pulado' — isso vem com o gerador de plano; simulado só no mock).
-  const calendarDays: Record<string, TrainingDayInfo> = {}
-  const src = isReal ? acts!.map(a => ({ day: String(a.start_time).slice(0, 10), id: a.activity_id }))
-                     : mockActivities.map(a => ({ day: a.date.slice(0, 10), id: a.id }))
-  src.forEach(({ day, id }) => { if (!calendarDays[day]) calendarDays[day] = { status: 'done', activityId: id } })
-  // dia PASSADO sem treino = vermelho ('não treinado'); futuro fica neutro
-  if (src.length) {
-    const first = new Date(src.map(x => x.day).sort()[0] + 'T00:00:00')
-    const today = new Date(); today.setHours(0, 0, 0, 0)
-    for (let d = new Date(first); d < today; d.setDate(d.getDate() + 1)) {
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      if (!calendarDays[iso]) calendarDays[iso] = { status: 'skipped' }
-    }
-  }
-
   const trend = timeline.slice(-21).map(t => ({
     day: new Date(t.day + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
     acwr: Math.round((t.acwr ?? 0) * 100) / 100,
@@ -86,59 +65,6 @@ export default function AnaliseSaude({ onOpenWorkout }: { onOpenWorkout?: (id: s
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Análise & Saúde</h1>
         <p className="text-text-secondary mt-1">Visão do atleta — risco de lesão e review da IA</p>
-      </div>
-
-      {/* Calendário — clicar num dia abre a ANÁLISE DO DIA aqui embaixo (treino completo é na tela Treinos) */}
-      <div className="card">
-        <TrainingCalendarStrip days={calendarDays} selected={selectedDay}
-          onSelectDay={iso => setSelectedDay(d => d === iso ? null : iso)} />
-        {selectedDay && (() => {
-          const info = calendarDays[selectedDay]
-          const act = acts?.find(a => a.activity_id === info?.activityId)
-          const session = act ? toWorkoutSession(act) : null
-          const dayLoad = timeline.find(t => String(t.day).slice(0, 10) === selectedDay)
-          const raw = new Date(selectedDay + 'T00:00:00')
-            .toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
-          const dayLabel = raw.charAt(0).toUpperCase() + raw.slice(1)
-          return (
-            <div className="mt-4 pt-4 border-t border-border-light animate-fade-in">
-              <p className="text-xs text-text-secondary uppercase tracking-wider flex items-center gap-2 mb-3">
-                <CalendarDays size={12} /> Análise do dia · <span>{dayLabel}</span>
-              </p>
-              <div className="grid sm:grid-cols-3 gap-3">
-                <div className="rounded-xl bg-surface-200 border border-border-light p-3">
-                  <p className="text-[10px] text-text-secondary uppercase tracking-wider">Treino</p>
-                  {session ? (
-                    <>
-                      <p className="text-sm font-semibold mt-1 truncate">{session.name.split(' — ')[0]}</p>
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        {session.duration_min} min{session.distance_km ? ` · ${session.distance_km} km` : ''}{session.avg_hr ? ` · ${session.avg_hr} bpm` : ''}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-text-muted mt-1">Descanso — também constrói. 😴</p>
-                  )}
-                </div>
-                <div className="rounded-xl bg-surface-200 border border-border-light p-3">
-                  <p className="text-[10px] text-text-secondary uppercase tracking-wider">Carga do dia</p>
-                  <p className="text-xl font-bold tabular-nums mt-1">{dayLoad ? Math.round(dayLoad.daily_load) : 0}</p>
-                  <p className="text-xs text-text-secondary">TRIMP (esforço × duração)</p>
-                </div>
-                <div className="rounded-xl bg-surface-200 border border-border-light p-3">
-                  <p className="text-[10px] text-text-secondary uppercase tracking-wider">Prontidão no dia</p>
-                  <p className="text-xl font-bold tabular-nums mt-1">{dayLoad?.acwr != null ? Number(dayLoad.acwr).toFixed(2) : '—'}</p>
-                  <p className="text-xs text-text-secondary capitalize">{dayLoad ? String(dayLoad.status) : 'sem dado de carga'}</p>
-                </div>
-              </div>
-              {session && onOpenWorkout && (
-                <button onClick={() => onOpenWorkout(act!.activity_id)}
-                  className="mt-3 text-xs text-brand font-medium flex items-center gap-1 hover:gap-2 transition-all">
-                  Ver treino completo (mapa, zonas, coach) <ArrowRight size={12} />
-                </button>
-              )}
-            </div>
-          )
-        })()}
       </div>
 
       {/* Risco geral */}

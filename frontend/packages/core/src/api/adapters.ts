@@ -20,6 +20,17 @@ function paceFrom(distanceM: number, durationS: number): string {
   return `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, '0')}`
 }
 
+/** Atividades -> mapa dia(ISO) -> {activityId, type} pro calendário (1 treino/dia; o mais
+ * recente vence). Reusado pelo WorkoutCalendar da home. */
+export function toCalendarDays(activities: Activity[]): Record<string, { activityId: string; type: ActivityType }> {
+  const days: Record<string, { activityId: string; type: ActivityType }> = {}
+  for (const a of activities) {
+    const day = String(a.start_time).slice(0, 10)
+    if (!days[day]) days[day] = { activityId: a.activity_id, type: toActivityType(a.primary_type) }
+  }
+  return days
+}
+
 /** Atividade da API -> card de treino da UI. */
 export function toWorkoutSession(a: Activity): WorkoutSession {
   return {
