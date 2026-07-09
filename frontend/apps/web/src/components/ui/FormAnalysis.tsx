@@ -112,6 +112,17 @@ export default function FormAnalysisCard({ activityId, watchCadence }: {
             src={api.form.videoUrl(analysis.analysis_id)} />
 
           <div className="space-y-3">
+            {/* guard de qualidade: enquadramento ruim -> orienta em vez de mostrar número furado */}
+            {!analysis.metrics.reliable && (
+              <div className="rounded-xl bg-accent-yellow/10 border border-accent-yellow/25 p-3">
+                <p className="text-xs font-semibold text-accent-yellow flex items-center gap-1.5">
+                  <Info size={13} /> Análise pouco confiável
+                </p>
+                <p className="text-[11px] text-text-secondary mt-1 leading-snug">
+                  {analysis.metrics.quality_note ?? 'Filme de lado, com o corpo inteiro no quadro.'}
+                </p>
+              </div>
+            )}
             {METRIC_DEFS.map(def => {
               const v = analysis.metrics![def.key]
               if (v == null) return null

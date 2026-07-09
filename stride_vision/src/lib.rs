@@ -148,6 +148,11 @@ pub struct FormMetrics {
     /// oscilação vertical do quadril como % do comprimento da perna
     /// (invariante à distância da câmera)
     pub vertical_oscillation_pct: Option<f32>,
+    /// as métricas são confiáveis? false = enquadramento/ângulo ruim (não é vista
+    /// lateral, atleta some do quadro, ou pernas mal rastreadas). A UI avisa.
+    pub reliable: bool,
+    /// por que não é confiável (vazio quando reliable=true)
+    pub quality_note: Option<String>,
 }
 
 /// amplitude robusta de uma série (p95 - p5; ignora outliers de detecção)
@@ -174,20 +179,39 @@ pub fn analyze_form(
         (Some(a), Some(b)) if a.max(b) > 0.0 => Some((a - b).abs() / a.max(b) * 100.0),
         _ => None,
     };
+    // oscilação vertical realista fica bem abaixo de ~20% da perna. Acima de 40% é
+    // sinal de vista NÃO-lateral (perspectiva) ou perna mal rastreada -> descarta o número.
     let vert_osc = amplitude(hip_y)
         .filter(|_| leg_len_px > 0.0)
-        .map(|a| a / leg_len_px * 100.0);
+        .map(|a| a / leg_len_px * 100.0)
+        .filter(|v| *v <= 40.0);
+
+    let detection = if total_frames > 0 {
+        ankle_l.len() as f32 / total_frames as f32 * 100.0
+    } else { 0.0 };
+
+    // Guarda de QUALIDADE: só confia se o atleta ficou no quadro, as duas pernas foram
+    // rastreadas de forma coerente (numa vista lateral batem) e a osc. vertical é plausível.
+    let legs_agree = matches!((cl, cr), (Some(l), Some(r)) if (l - r).abs() / l.max(r) <= 0.35);
+    let note = if detection < 60.0 {
+        Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into())
+    } else if !legs_agree {
+        Some("As pernas não foram rastreadas de forma coerente — grave de LADO, corpo inteiro no quadro.".into())
+    } else if vert_osc.is_none() {
+        Some("Ângulo parece não ser lateral — a oscilação vertical ficou implausível.".into())
+    } else { None };
+
     FormMetrics {
         frames: total_frames,
         fps,
-        detection_rate_pct: if total_frames > 0 {
-            ankle_l.len() as f32 / total_frames as f32 * 100.0
-        } else { 0.0 },
+        detection_rate_pct: detection,
         cadence_spm: cadence,
         cadence_left: cl,
         cadence_right: cr,
         asymmetry_pct: asymmetry.map(|v| (v * 10.0).round() / 10.0),
         vertical_oscillation_pct: vert_osc.map(|v| (v * 10.0).round() / 10.0),
+        reliable: note.is_none(),
+        quality_note: note,
     }
 }
 
@@ -223,5 +247,29 @@ mod tests {
     fn series_curtas_degradam_gracioso() {
         let m = analyze_form(&[1.0; 4], &[1.0; 4], &[1.0; 4], 100.0, 30.0, 4);
         assert!(m.cadence_spm.is_none() && m.asymmetry_pct.is_none());
+    }
+
+    #[test]
+    fn guard_recusa_quando_pernas_divergem() {
+        // pernas com cadência bem diferente (1.4 vs 0.7 Hz) = rastreamento ruim/vista não-lateral
+        let l = sine(1.4, 25.0, 12.0, 20.0);
+        let r = sine(0.7, 25.0, 12.0, 20.0);
+        let m = analyze_form(&l, &r, &sine(2.8, 25.0, 12.0, 4.0), 100.0, 25.0, l.len());
+        assert!(!m.reliable && m.quality_note.is_some());
+    }
+
+    #[test]
+    fn guard_descarta_oscilacao_vertical_absurda() {
+        // hip_y com amplitude enorme vs perna curta (vista frontal) -> osc. vertical implausível
+        let l = sine(1.4, 25.0, 12.0, 20.0);
+        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 500.0), 100.0, 25.0, l.len());
+        assert!(m.vertical_oscillation_pct.is_none() && !m.reliable);
+    }
+
+    #[test]
+    fn boa_entrada_e_confiavel() {
+        let l = sine(1.4, 25.0, 12.0, 20.0);
+        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, l.len());
+        assert!(m.reliable && m.vertical_oscillation_pct.is_some() && m.quality_note.is_none());
     }
 }

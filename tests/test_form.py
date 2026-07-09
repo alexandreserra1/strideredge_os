@@ -13,7 +13,8 @@ from core.database import get_connection
 client = TestClient(app)
 
 FAKE_METRICS = {"frames": 100, "fps": 30.0, "detection_rate_pct": 98.0,
-                "cadence_spm": 172.0, "asymmetry_pct": 4.2, "vertical_oscillation_pct": 7.1}
+                "cadence_spm": 172.0, "asymmetry_pct": 4.2, "vertical_oscillation_pct": 7.1,
+                "reliable": True, "quality_note": None}
 
 
 class FakeFormService(FormService):

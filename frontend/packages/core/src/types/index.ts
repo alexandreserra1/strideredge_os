@@ -81,6 +81,8 @@ export interface FormMetrics {
   cadence_right: number | null
   asymmetry_pct: number | null
   vertical_oscillation_pct: number | null
+  reliable: boolean
+  quality_note: string | null
 }
 
 export interface FormAnalysis {
