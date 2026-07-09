@@ -1,0 +1,78 @@
+erDiagram
+  cache_coach_verdicts {
+  uuid activity_id PK
+  string verdict
+  string structured
+  string model
+  datetime created_at
+  }
+  cache_workout_summary {
+  uuid activity_id PK
+  float avg_hr
+  float max_hr
+  float avg_cadence
+  float total_elevation_gain
+  float metabolic_efficiency_score
+  datetime breaking_point_timestamp
+  }
+  dim_activities {
+  uuid activity_id PK
+  int garmin_activity_id
+  string activity_name
+  datetime start_time
+  float total_distance_meters
+  float total_duration_seconds
+  string primary_type
+  }
+  dim_devices {
+  int device_id PK
+  string manufacturer
+  string model_name
+  string firmware_version
+  }
+  dim_users {
+  uuid user_id PK
+  string name
+  date birth_date
+  float weight_kg
+  datetime created_at
+  }
+  fact_strength_sets {
+  uuid activity_id
+  int set_index
+  string exercise
+  int reps
+  float weight_kg
+  float duration_s
+  datetime start_time
+  }
+  fact_telemetry {
+  int telemetry_id PK
+  uuid activity_id
+  uuid user_id
+  int device_id
+  datetime timestamp
+  int heart_rate
+  int cadence
+  float latitude
+  float longitude
+  float altitude
+  float vertical_oscillation
+  float stance_time_ms
+  }
+  form_analyses {
+  uuid analysis_id PK
+  uuid activity_id
+  string status
+  string video_path
+  string metrics
+  string error
+  datetime created_at
+  }
+  dim_activities ||--o{ fact_telemetry : "activity_id"
+  dim_users ||--o{ fact_telemetry : "user_id"
+  dim_devices ||--o{ fact_telemetry : "device_id"
+  dim_activities ||--o{ cache_workout_summary : "activity_id"
+  dim_activities ||--o{ cache_coach_verdicts : "activity_id"
+  dim_activities ||--o{ fact_strength_sets : "activity_id"
+  dim_activities |o--o{ form_analyses : "activity_id"
