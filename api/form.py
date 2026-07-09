@@ -51,14 +51,33 @@ class FormService:
                          daemon=True).start()
         return {"analysis_id": analysis_id, "status": "processing"}
 
+    # PATH com ffmpeg (Homebrew no macOS) pro subprocess do motor/normalização.
+    _ENV = {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
+
+    def _normalize(self, src: Path) -> Path:
+        """Prepara o vídeo pro motor: ASSA a rotação (celular grava com flag rotate=±90 —
+        sem isso o buffer cru sai na orientação errada e o motor não detecta ninguém),
+        limita o lado maior a 1280px (velocidade) e garante dimensões pares. Se o ffmpeg
+        falhar, devolve o original (o motor tenta como está)."""
+        dst = src.parent / "normalized.mp4"
+        cmd = [
+            "ffmpeg", "-v", "error", "-y", "-i", str(src),
+            "-vf", "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,"
+                   "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-metadata:s:v:0", "rotate=0", "-c:v", "libx264", "-an", str(dst),
+        ]
+        r = subprocess.run(cmd, env={**self._ENV}, capture_output=True, text=True, timeout=300)
+        return dst if r.returncode == 0 and dst.exists() else src
+
     def _process(self, analysis_id: str, original: Path) -> None:
         """Roda o motor Rust; grava métricas ou o erro. (thread própria + cursor próprio)"""
         overlay = original.parent / "overlay.mp4"
         con = get_connection()
         try:
+            source = self._normalize(original)   # celular -> vídeo limpo (rotação assada)
             result = subprocess.run(
-                [str(self.binary), str(original), str(overlay)],
-                env={"STRIDE_MODEL": str(self.model), "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
+                [str(self.binary), str(source), str(overlay)],
+                env={"STRIDE_MODEL": str(self.model), **self._ENV},
                 capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
                 raise RuntimeError(result.stderr.strip()[-300:] or "motor falhou")
@@ -67,6 +86,7 @@ class FormService:
                 "UPDATE form_analyses SET status='done', video_path=?, metrics=? WHERE analysis_id=?",
                 [str(overlay), metrics, analysis_id])
             original.unlink(missing_ok=True)   # original descartado: métricas + overlay bastam
+            (original.parent / "normalized.mp4").unlink(missing_ok=True)
             _log.info("form_done", analysis_id=analysis_id)
         except Exception as e:  # noqa: BLE001 — qualquer falha vira status 'failed'
             con.execute(
