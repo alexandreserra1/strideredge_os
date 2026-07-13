@@ -5,9 +5,11 @@ idênticos (cosine 1.0) e de temas diferentes ficam ortogonais (cosine 0.0). Iss
 deixa a ordenação e o limiar totalmente determinísticos e testáveis.
 """
 
+import duckdb
 import pytest
 
 from core.framework.interfaces import BaseEmbedder
+from rag.contextualize import ContextGenerator
 from rag.knowledge_base import KnowledgeBase, load_corpus
 
 EMBED_DIM = 1024
@@ -76,3 +78,53 @@ def test_load_corpus_parses_text_and_source(tmp_path):
         ("Primeiro trecho de teste.", "Fonte A"),
         ("Segundo trecho de teste.", "Fonte B"),
     ]
+
+
+# ---------- Contextual Retrieval (rag/contextualize.py) ----------
+
+class _FakeLLM:
+    def __init__(self, reply="contexto fake", raise_it=False):
+        self.reply, self.raise_it = reply, raise_it
+
+    def chat(self, system_prompt, user_prompt):
+        if self.raise_it:
+            raise RuntimeError("llm off")
+        return self.reply
+
+    def chat_stream(self, system_prompt, user_prompt):
+        yield self.reply
+
+
+def _search_text_row(base, chunk_id=0):
+    con = duckdb.connect(base.db_path, read_only=True)
+    row = con.execute("SELECT text, search_text FROM knowledge_chunks WHERE id = ?",
+                      [chunk_id]).fetchone()
+    con.close()
+    return row
+
+
+def test_index_sem_context_gen_mantem_search_text_igual_ao_text(tmp_path):
+    base = KnowledgeBase(embedder=FakeEmbedder(), db_path=tmp_path / "k.db")
+    base.index([("texto sobre cadencia", "F1")])
+    text, search_text = _search_text_row(base)
+    assert text == search_text == "texto sobre cadencia"
+
+
+def test_index_com_context_gen_nao_altera_text_so_search_text(tmp_path):
+    base = KnowledgeBase(embedder=FakeEmbedder(), db_path=tmp_path / "k.db")
+    ctx_gen = ContextGenerator(_FakeLLM(reply="Estudo sobre cadencia e lesao."))
+    base.index([("cadencia alta reduz impacto", "PMC1")], context_gen=ctx_gen)
+
+    text, search_text = _search_text_row(base)
+    assert text == "cadencia alta reduz impacto"           # puro — o que vai pra citacao/UI
+    assert "Estudo sobre cadencia e lesao." in search_text  # contexto entrou so no search_text
+    assert "cadencia alta reduz impacto" in search_text
+
+
+def test_context_generator_degrada_gracioso_se_llm_falha(tmp_path):
+    base = KnowledgeBase(embedder=FakeEmbedder(), db_path=tmp_path / "k.db")
+    ctx_gen = ContextGenerator(_FakeLLM(raise_it=True))
+    base.index([("cadencia alta reduz impacto", "PMC1")], context_gen=ctx_gen)  # nao levanta
+
+    text, search_text = _search_text_row(base)
+    assert text == search_text == "cadencia alta reduz impacto"  # sem contexto

@@ -8,6 +8,7 @@ Pecas:
 Banco separado (storage/knowledge.db) para nao disputar lock com a telemetria.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Tuple
 
@@ -16,6 +17,7 @@ import httpx
 
 from core.database import PROJECT_ROOT
 from core.framework.interfaces import BaseEmbedder, BaseRetriever
+from rag.contextualize import ContextGenerator
 
 EMBED_DIM = 1024  # dimensao do vetor do bge-m3 (multilingue, bom em portugues)
 KNOWLEDGE_DB = PROJECT_ROOT / "storage" / "knowledge.db"
@@ -59,47 +61,100 @@ class KnowledgeBase(BaseRetriever):
         con = duckdb.connect(self.db_path)
         con.execute(
             f"""CREATE TABLE IF NOT EXISTS knowledge_chunks (
-                    id INTEGER, text VARCHAR, source VARCHAR,
+                    id INTEGER, text VARCHAR, source VARCHAR, search_text VARCHAR,
                     embedding FLOAT[{EMBED_DIM}]
                 )"""
         )
         con.close()
 
-    def index(self, chunks: List[Tuple[str, str]]) -> int:
-        """(Re)indexa do zero: embeda cada chunk e grava texto+fonte+vetor."""
+    def index(self, chunks: List[Tuple[str, str]], context_gen: ContextGenerator = None) -> int:
+        """(Re)indexa do zero: embeda cada chunk, grava texto+fonte+vetor e cria o
+        indice FTS (BM25) do DuckDB sobre o texto — pra busca hibrida (denso+palavra).
+
+        context_gen (opcional): Contextual Retrieval (Anthropic) — gera uma frase de contexto
+        por chunk e usa CONTEXTO+TEXTO so no indice BM25 (search_text). O DENSO continua
+        embedando o `text` PURO: testado empiricamente, prefixar contexto ao texto ANTES de
+        embedar dilui termos-ancora do chunk (ex: query usa 'quicando', o texto tem 'quicar',
+        o contexto parafraseia pra 'oscilacao vertical' — a media do embedding se afasta do
+        termo exato que o denso pegava bem). BM25 nao sofre desse efeito (so soma vocabulario
+        novo ao indice invertido), entao e onde o contexto realmente ajuda."""
         con = duckdb.connect(self.db_path)
         con.execute("DELETE FROM knowledge_chunks")
         for i, (text, source) in enumerate(chunks):
-            emb = self.embedder.embed_document(text)  # o embedder cuida de prefixo, se houver
+            ctx = context_gen.generate(text, source) if context_gen else ""
+            search_text = f"{ctx}\n\n{text}".strip() if ctx else text
+            emb = self.embedder.embed_document(text)  # denso: SEMPRE do texto puro
             con.execute(
-                "INSERT INTO knowledge_chunks VALUES (?, ?, ?, ?)",
-                [i, text, source, emb],
+                "INSERT INTO knowledge_chunks VALUES (?, ?, ?, ?, ?)",
+                [i, text, source, search_text, emb],
             )
+        try:  # indice de texto (BM25). Se o extension nao instalar (sem rede), segue so denso.
+            con.execute("INSTALL fts; LOAD fts;")
+            con.execute(  # indexa search_text (contexto+texto) E fonte — pra achar tambem
+                "PRAGMA create_fts_index('knowledge_chunks', 'id', 'search_text', 'source', "
+                "stemmer='portuguese', overwrite=1)"
+            )
+        except Exception:
+            pass
         con.close()
         return len(chunks)
 
-    def search(self, query: str, k: int = 4, min_similarity: float = 0.0) -> list:
-        """Busca os k chunks mais proximos do sentido da pergunta.
+    def _bm25(self, con, query: str) -> dict:
+        """Ranking BM25 (palavra-chave) via FTS do DuckDB. id -> posicao (1 = melhor).
+        Vazio se o FTS nao estiver disponivel (fallback gracioso pra busca so-densa)."""
+        try:
+            con.execute("LOAD fts;")
+            rows = con.execute(
+                """SELECT id, fts_main_knowledge_chunks.match_bm25(id, ?) AS score
+                   FROM knowledge_chunks
+                   WHERE score IS NOT NULL
+                   ORDER BY score DESC""",
+                [query],
+            ).fetchall()
+            return {rid: rank for rank, (rid, _s) in enumerate(rows, 1)}
+        except Exception:
+            return {}
 
-        Usa array_cosine_similarity (nativo do DuckDB). min_similarity descarta
-        trechos irrelevantes — a base do anti-alucinacao (so usa o que e relevante).
-        """
+    def search(self, query: str, k: int = 4, min_similarity: float = 0.0) -> list:
+        """Busca HIBRIDA: funde o ranking SEMANTICO (embeddings, array_cosine_similarity)
+        com o de PALAVRA-CHAVE (BM25/FTS) via Reciprocal Rank Fusion (RRF). O denso ainda
+        e o PISO de relevancia (min_similarity) — base do anti-alucinacao; o BM25 so
+        reordena (dando peso a termos exatos: 'ACWR', 'PMCxxxx', 'cadencia')."""
         qvec = self.embedder.embed_query(query)  # o embedder aplica prefixo, se houver
         con = duckdb.connect(self.db_path, read_only=True)
-        rows = con.execute(
-            f"""SELECT text, source,
+        dense = con.execute(
+            f"""SELECT id, text, source,
                        array_cosine_similarity(embedding, ?::FLOAT[{EMBED_DIM}]) AS sim
                 FROM knowledge_chunks
-                ORDER BY sim DESC
-                LIMIT ?""",
-            [qvec, k],
+                ORDER BY sim DESC""",
+            [qvec],
         ).fetchall()
+        bm_rank = self._bm25(con, query)
         con.close()
-        return [
-            {"text": t, "source": s, "similarity": round(sim, 3)}
-            for t, s, sim in rows
-            if sim >= min_similarity
-        ]
+
+        # Fusao: base = SIMILARIDADE semantica (preserva os gaps reais entre os chunks; num
+        # corpus curado o embedding ja e forte). O BM25 entra so como um BONUS pequeno de
+        # desempate, dando um empurrao a quem casa o termo exato — sem deixar palavra comum
+        # ('FC', 'treino') derrubar o resultado semanticamente certo. Cresce em valor conforme
+        # o corpus escala (onde termo exato/jargao pesa mais).
+        BM25_BONUS = 0.005   # calibrado no conjunto-ouro: maior valor sem regressao (o denso
+                             # manda no corpus atual; sobe conforme escalar)
+        info = {rid: (text, source, sim) for rid, text, source, sim in dense}
+        fused = []
+        for rid, (_t, _s, sim) in info.items():
+            score = sim + (BM25_BONUS / bm_rank[rid] if rid in bm_rank else 0.0)
+            fused.append((rid, score))
+        fused.sort(key=lambda x: x[1], reverse=True)
+
+        out = []
+        for rid, _score in fused:
+            text, source, sim = info[rid]
+            if sim < min_similarity:   # piso de relevancia (semantico) = anti-alucinacao
+                continue
+            out.append({"text": text, "source": source, "similarity": round(sim, 3)})
+            if len(out) >= k:
+                break
+        return out
 
     def retrieve(self, query: str, k: int = 3) -> list:
         """Interface BaseRetriever: usa o limiar proprio e marca origem 'curado'."""
@@ -129,7 +184,14 @@ def load_corpus(path: Path) -> List[Tuple[str, str]]:
 
 
 if __name__ == "__main__":
-    # (Re)indexa o corpus. Rode apos adicionar/editar fontes em rag/sources/.
+    # (Re)indexa o corpus com Contextual Retrieval. Rode apos editar fontes em rag/sources/.
+    # Import local (nao no topo): analytics.coach ja importa rag.knowledge_base (circular).
+    from analytics.coach import OllamaClient
+
+    KNOWLEDGE_DB.unlink(missing_ok=True)  # reseta: schema pode ter mudado (search_text)
     kb = KnowledgeBase(embedder=OllamaEmbedder())
-    n = kb.index(load_corpus(PROJECT_ROOT / "rag" / "sources" / "corpus.md"))
-    print(f"Base de conhecimento (re)indexada: {n} chunks.")
+    # 7B (nao o 1.5b do rerank): indexacao e offline/manual, sem restricao de latencia — e o
+    # 1.5b as vezes ignora a instrucao de formato (preambulo, aspas), poluindo o embedding.
+    ctx_gen = ContextGenerator(OllamaClient(model="qwen2.5:7b-instruct", temperature=0.0))
+    n = kb.index(load_corpus(PROJECT_ROOT / "rag" / "sources" / "corpus.md"), context_gen=ctx_gen)
+    print(f"Base de conhecimento (re)indexada com contexto: {n} chunks.")

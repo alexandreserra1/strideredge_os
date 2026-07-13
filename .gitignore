@@ -21,6 +21,15 @@ storage/*.wal
 *.FIT
 storage/samples/
 
+# Videos enviados pelo usuario (analise de forma) — grandes + pessoais, nao versionar
+storage/videos/
+
+# Pesos de modelo (ONNX/YOLO) — grandes, baixados via script, nao versionar
+stride_vision/models/
+
+# Conjunto-ouro rotulado a mao p/ calibrar o LLM-judge — referencia activity_id local, nao portavel
+storage/coach_gold.json
+
 # Segredos / credenciais (NUNCA versionar)
 .env
 

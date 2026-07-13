@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
-from analytics.coach_eval import GOLDEN_RETRIEVAL, OFFTOPIC_QUERY
+from analytics.coach_eval import GOLDEN_RETRIEVAL, OFFTOPIC_QUERY, Benchmark
 
 
 def _ollama_up() -> bool:
@@ -43,3 +43,11 @@ def test_retrieval_relevance(kb, query, expected_source):
 def test_offtopic_returns_nothing(kb):
     # pergunta sem relação com o corpus deve ficar abaixo do limiar
     assert kb.retrieve(OFFTOPIC_QUERY, k=2) == []
+
+
+def test_context_precision_dentro_dos_limites(kb):
+    # Benchmark so usa coach.knowledge -> stub minimo em vez de montar um Coach real
+    fake_coach = type("FakeCoach", (), {"knowledge": kb})()
+    report = Benchmark(fake_coach).context_precision(k=2)
+    assert 0.0 <= report["context_precision"] <= 1.0
+    assert len(report["per_query"]) == len(GOLDEN_RETRIEVAL)

@@ -79,7 +79,7 @@ class LLMJudge:
     # (MAE ~0.65 vs humano). Padrao do coach: rigor por dentro, DIDATICO ao falar com o atleta.
     RUBRICA = (
         "Voce e um avaliador SEVERO de feedback de coach esportivo. Pontue o VEREDITO de 0.0 a "
-        "1.0 em dois criterios:\n"
+        "1.0 em tres criterios:\n"
         "- acionabilidade: SO e alta (>= 0.7) se da um passo CONCRETO E ESPECIFICO e EXPLICA o "
         "porque de forma didatica, ligada ao dado/ciencia (ex: 'sua cadencia caiu 5% no fim = "
         "fadiga; faca 4 tiros de 1min focando passos curtos e rapidos, que reduzem o impacto'). "
@@ -88,11 +88,14 @@ class LLMJudge:
         "- aterramento: comeca em 1.0 e CAI a cada afirmacao que nao esteja LITERALMENTE nos dados. "
         "Citar causa nao medida (desidratacao, calor, deplecao de glicogenio) sem dado que sustente, "
         "ou interpretar mal um numero, derruba para <= 0.4.\n"
+        "- relevancia: o veredito ENDERECA a situacao real desse treino (o que aconteceu, o risco, "
+        "a duvida implicita nos dados)? Resposta generica que serviria pra qualquer treino = 0.0 a "
+        "0.3, mesmo que bem fundamentada. Resposta sobre algo fora do que os dados mostram = 0.0.\n"
         "EXEMPLOS de nota:\n"
         "- 'Mantenha a cadencia e monitore a carga semanal' -> acionabilidade 0.1 (generico, nao ensina).\n"
         "- 'A FC subiu na 2a metade, pode ser desidratacao' sem dado de hidratacao/calor -> aterramento 0.3.\n"
         "Responda APENAS um JSON valido, sem texto fora dele:\n"
-        '{"acionabilidade": 0.0, "aterramento": 0.0, "justificativa": "uma frase curta"}'
+        '{"acionabilidade": 0.0, "aterramento": 0.0, "relevancia": 0.0, "justificativa": "uma frase curta"}'
     )
 
     def __init__(self, llm):
@@ -103,14 +106,17 @@ class LLMJudge:
         """Extrai o 1o objeto JSON da resposta (robusto a texto em volta)."""
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if not m:
-            return {"acionabilidade": None, "aterramento": None, "justificativa": "parse falhou"}
+            return {"acionabilidade": None, "aterramento": None, "relevancia": None,
+                    "justificativa": "parse falhou"}
         try:
             data = json.loads(m.group(0))
         except json.JSONDecodeError:
-            return {"acionabilidade": None, "aterramento": None, "justificativa": "json invalido"}
+            return {"acionabilidade": None, "aterramento": None, "relevancia": None,
+                    "justificativa": "json invalido"}
         return {
             "acionabilidade": data.get("acionabilidade"),
             "aterramento": data.get("aterramento"),
+            "relevancia": data.get("relevancia"),
             "justificativa": data.get("justificativa", ""),
         }
 
@@ -164,6 +170,19 @@ class Benchmark:
             "misses": misses,
         }
 
+    def context_precision(self, k: int = 2) -> dict:
+        """Fracao dos k chunks recuperados que sao da fonte esperada (RAGAS Context Precision).
+        Complementa hit_rate/retrieval_report (que so mede SE achou, nao QUANTO ruido veio
+        junto): pega o mesmo casamento por substring ja usado la, pra ficar consistente."""
+        kb = self.coach.knowledge
+        per_query = []
+        for q, expected in GOLDEN_RETRIEVAL:
+            hits = kb.retrieve(q, k=k)
+            relevant = sum(1 for h in hits if expected in h["source"])
+            per_query.append(relevant / k if hits else 0.0)
+        return {"context_precision": round(sum(per_query) / len(per_query), 3),
+                "per_query": per_query}
+
     @staticmethod
     def _avg(values: list):
         """Media ignorando None (juiz pode falhar parse num caso)."""
@@ -185,11 +204,30 @@ class Benchmark:
             judged = [judge.judge(r["prompt"], r["verdict"]) for r in rows]
             out["acionabilidade"] = self._avg([j["acionabilidade"] for j in judged])
             out["aterramento"] = self._avg([j["aterramento"] for j in judged])
+            out["relevancia"] = self._avg([j["relevancia"] for j in judged])
         return out
 
     def run(self, activity_ids: list, judge: "LLMJudge" = None) -> dict:
         return {"retrieval": self.retrieval_report(),
                 "coach": self.coach_report(activity_ids, judge)}
+
+    def ragas_report(self, activity_ids: list, judge: "LLMJudge" = None, k: int = 2) -> dict:
+        """Boletim nos 4 nomes CANONICOS do RAGAS, remontado a partir das pecas ja existentes —
+        sem instalar o pacote ragas (nao chama OpenAI, nao adiciona dependencia pesada). So
+        legibilidade/nomenclatura padrao pra quem conhece o framework."""
+        retrieval = self.retrieval_report(k=k)
+        precision = self.context_precision(k=k)
+        coach = self.coach_report(activity_ids, judge=judge)
+        return {
+            "context_recall": retrieval["hit_rate"],               # achou a fonte certa no top-k?
+            "context_precision": precision["context_precision"],   # quanto do top-k e ruido
+            "faithfulness": {                                       # so numero/citacao que veio do dado
+                "numeric_fidelity": coach["numeric_fidelity"],
+                "citation_validity": coach["citation_validity"],
+            },
+            "answer_relevancy": coach.get("relevancia"),            # None se rodou sem judge
+            "_detail": {"retrieval": retrieval, "precision": precision, "coach": coach},
+        }
 
     def calibrate(self, judge: "LLMJudge", labeled: list) -> dict:
         """Compara o juiz com NOTAS HUMANAS (gold) e calcula o erro medio absoluto (MAE).
@@ -224,7 +262,8 @@ if __name__ == "__main__":
     ).fetchall()]
 
     judge = LLMJudge(OllamaClient(temperature=0))           # juiz deterministico
-    report = Benchmark(build_coach(temperature=0)).run(runs, judge=judge)
+    bench = Benchmark(build_coach(temperature=0))
+    report = bench.run(runs, judge=judge)
     r, c = report["retrieval"], report["coach"]
     print("=== BOLETIM DO COACH ===")
     print(f"RAG  retrieval hit-rate : {r['hit_rate']:.0%} ({r['hits']}/{r['total']})  "
@@ -235,4 +274,13 @@ if __name__ == "__main__":
           f"citacao: {c['citation_validity']:.0%}  palavras/veredito: {c['avg_words']}  "
           f"termos banidos: {c['banned_total']}")
     print(f"LLM-judge       acionabilidade: {c.get('acionabilidade')}  "
-          f"aterramento: {c.get('aterramento')}  (n={c['n']} treinos)")
+          f"aterramento: {c.get('aterramento')}  relevancia: {c.get('relevancia')}  "
+          f"(n={c['n']} treinos)")
+
+    ragas = bench.ragas_report(runs, judge=judge)
+    print("=== BOLETIM RAGAS (nomes canonicos) ===")
+    print(f"context_recall     : {ragas['context_recall']:.0%}")
+    print(f"context_precision  : {ragas['context_precision']:.0%}")
+    print(f"faithfulness       : numeric={ragas['faithfulness']['numeric_fidelity']:.0%}  "
+          f"citation={ragas['faithfulness']['citation_validity']:.0%}")
+    print(f"answer_relevancy   : {ragas['answer_relevancy']}")

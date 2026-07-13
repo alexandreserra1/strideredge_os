@@ -7,7 +7,7 @@ veredito têm que aparecer no prompt (dados + evidências).
 import httpx
 import pytest
 
-from analytics.coach_eval import CoachEvaluator
+from analytics.coach_eval import CoachEvaluator, LLMJudge
 
 ev = CoachEvaluator(coach=None)  # as métricas não usam o coach
 
@@ -49,6 +49,27 @@ def test_extrapolation_terms_flags_unmeasured_cause():
     # citar causa nao medida (desidratacao) = extrapolacao; falar de fadiga (medida) = ok
     assert "desidrat" in ev.extrapolation_terms("a FC subiu, pode ser desidratacao")
     assert ev.extrapolation_terms("a FC subiu no fim, sinal de fadiga") == []
+
+
+class _FakeJudgeLLM:
+    def __init__(self, reply):
+        self.reply = reply
+
+    def chat(self, system_prompt, user_prompt):
+        return self.reply
+
+
+def test_llm_judge_parseia_campo_relevancia():
+    judge = LLMJudge(_FakeJudgeLLM(
+        '{"acionabilidade": 0.5, "aterramento": 0.5, "relevancia": 0.5, "justificativa": "x"}'))
+    assert judge.judge("fatos", "veredito")["relevancia"] == 0.5
+
+
+def test_llm_judge_json_invalido_inclui_relevancia_none():
+    judge = LLMJudge(_FakeJudgeLLM("isso nao e json"))
+    r = judge.judge("fatos", "veredito")
+    assert r["relevancia"] is None
+    assert r["acionabilidade"] is None
 
 
 @pytest.mark.skipif(not _ollama_up(), reason="Ollama não está rodando")
