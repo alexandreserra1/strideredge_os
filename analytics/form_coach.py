@@ -78,6 +78,20 @@ class FormCoach:
         """Devolve {verdict, actions, citations, targets, deviations}. Os DESVIOS (o que
         corrigir) sao deterministicos; o LLM so gera os exercicios (aterrados + citados)."""
         targets = ideal_targets(profile, history)
+
+        # Guarda de CONFIABILIDADE (app de prevencao de lesao): se o motor marcou a captura
+        # como nao-confiavel (nao-lateral, atleta fora do quadro, rastreio incoerente), NAO
+        # diagnosticamos nem tranquilizamos ("sua forma esta otima") em cima de dado ruim —
+        # avisamos pra refilmar. Melhor nao opinar do que opinar errado sobre lesao.
+        if metrics.get("reliable") is False:
+            nota = metrics.get("quality_note") or "A captura nao ficou boa o bastante pra analisar."
+            return {
+                "verdict": f"Ainda nao da pra analisar sua forma com confianca: {nota} "
+                           "Refaca a filmagem e envie de novo — assim o plano sai certo.",
+                "actions": [], "citations": [], "targets": targets, "deviations": [],
+                "unreliable": True,
+            }
+
         devs = diagnose(metrics, targets)
 
         if not devs:
