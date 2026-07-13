@@ -64,8 +64,14 @@ const SOURCE_LABEL: Record<string, string> = {
   PMC9653533: 'Força × pliometria na corrida',
   PMC3070501: 'Fortalecimento de quadril',
   PMC12372021: 'Exercícios de quadril com banda',
+  // fontes sem PMC (têm DOI/PubMed — reais e citáveis; o id completo fica no hover)
+  'DOI:10.2519/jospt.2015.6019': 'Padrões de pisada (JOSPT)',
+  'DOI:10.2519/jospt.2015.5091': 'Força de quadril e dor no joelho',
+  'DOI:10.2519/jospt.2018.7365': 'Fortalecer quadril + joelho',
+  'PMID:34537800': 'Inclinar o tronco e o joelho',
+  'Effects of Plyometric Jump Training on Running Economy in Endurance Runners': 'Pliometria e economia',
 }
-const sourceLabel = (pmc: string) => SOURCE_LABEL[pmc] ?? 'Estudo revisado por pares'
+const sourceLabel = (id: string) => SOURCE_LABEL[id] ?? 'Estudo revisado por pares'
 
 export default function FormAnalysisCard({ activityId, watchCadence }: {
   activityId?: string            // opcional: sem treino = análise avulsa (página de Movimento)

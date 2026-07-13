@@ -40,6 +40,27 @@ class GroundingGuard(BaseGuard):
                 seen.append(pmc.upper())
         return seen
 
+    # DOI e PubMed ID em strings de FONTE (nem todo estudo real tem PMC — PMC e so full-text
+    # aberto; JOSPT/Kinesiology tem DOI/PMID). O _DOI para no 1o espaco/parentese/virgula.
+    _DOI_RE = re.compile(r"10\.\d{4,}/[^\s)\],]+")
+    _PMID_RE = re.compile(r"pubmed\s*:?\s*(\d{6,})", re.IGNORECASE)
+
+    @classmethod
+    def source_id(cls, source: str) -> str:
+        """ID ESTAVEL de uma string de FONTE autoritativa (do corpus), pra citar de forma
+        verificavel. Preferencia: PMC > PMID > DOI. Sem nenhum, cai pro titulo curto (ate o
+        travessao/parentese) — sempre devolve algo citavel, nunca vazio."""
+        m = re.search(r"PMC\d+", source, re.IGNORECASE)
+        if m:
+            return m.group(0).upper()
+        m = cls._PMID_RE.search(source)
+        if m:
+            return f"PMID:{m.group(1)}"
+        m = cls._DOI_RE.search(source)
+        if m:
+            return f"DOI:{m.group(0)}"
+        return re.split(r"\s+[—–-]\s+|\s*\(", source.strip())[0][:80]
+
     def issues(self, output: str, reference: str) -> Dict[str, list]:
         return {
             "invented_numbers": sorted(self.numbers(output) - self.numbers(reference)),

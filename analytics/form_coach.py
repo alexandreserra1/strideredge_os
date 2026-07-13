@@ -113,7 +113,35 @@ class FormCoach:
         return {
             "verdict": text,
             "actions": self._drills(text),
-            "citations": GroundingGuard.citations(text),
+            "citations": self._cited(text, hits),
             "targets": targets,
             "deviations": devs,
         }
+
+    @staticmethod
+    def _cited(text: str, hits: list) -> list:
+        """"Baseado em:" — fontes que embasam o plano, como IDs estáveis (source_id: PMC/PMID/DOI).
+        Casa pelo NOME da fonte (título/autor), não pelo código PMC no texto do LLM (ele nem sempre
+        ecoa o código; e há fontes reais sem PMC). Se o LLM não citar ninguém nominalmente, cai pra
+        TODA evidência recuperada (foi ela que embasou a resposta) — nunca deixa ação sem fonte
+        visível, princípio de ciência citável (constituição §14)."""
+        def sid_of(h):
+            return GroundingGuard.source_id(h["source"])
+
+        low = text.lower()
+        matched: list = []
+        for h in hits:
+            titulo = re.split(r"\s+[—–-]\s+|\s*\(", h["source"].strip())[0]  # parte distintiva
+            if len(titulo) >= 8 and titulo.lower() in low:                   # o LLM citou esta fonte?
+                sid = sid_of(h)
+                if sid and sid not in matched:
+                    matched.append(sid)
+        if matched:
+            return matched
+        # fallback: nenhuma citada nominalmente -> a evidência recuperada (dedup, em ordem)
+        out: list = []
+        for h in hits:
+            sid = sid_of(h)
+            if sid and sid not in out:
+                out.append(sid)
+        return out

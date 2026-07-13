@@ -55,3 +55,30 @@ def test_captura_confiavel_sem_desvio_elogia():
     out = FormCoach(llm=_FakeLLM(), knowledge=_FakeKB()).plan(perfeita)
     assert out["deviations"] == [] and not out.get("unreliable")
     assert "ideais" in out["verdict"].lower()
+
+
+class _KBFonteSemPMC:
+    """Devolve uma fonte REAL sem PMC (só DOI) — o caso que o citations() de PMC perdia."""
+    def retrieve(self, query, k=3):
+        return [{"text": "inclinar o tronco reduz carga no joelho", "origin": "curado",
+                 "source": "Leaning the Trunk Forward Decreases Patellofemoral Joint "
+                           "Loading During Uneven Running (PubMed 34537800)"}]
+
+
+def test_citacao_de_fonte_sem_PMC_e_capturada_por_nome():
+    """Regressao: fonte real sem PMC (só PubMed/DOI). O LLM cita pelo NOME (não pelo código);
+    a citação tem que ser capturada mesmo assim, com um id estável (PMID/DOI), pra o chip não
+    sumir na UI num app de fontes citáveis."""
+    llm = _FakeLLM(reply="- Incline levemente o tronco pra frente (Fonte: Leaning the Trunk "
+                          "Forward Decreases Patellofemoral Joint Loading During Uneven Running)")
+    # cadência baixa força um desvio -> gera plano e recupera a fonte sem PMC
+    out = FormCoach(llm=llm, knowledge=_KBFonteSemPMC()).plan(_RELIABLE_LOW_CADENCE)
+    assert out["citations"] == ["PMID:34537800"]              # capturada, com id estável
+
+
+def test_citacao_cai_pra_evidencia_recuperada_quando_llm_nao_cita_nome():
+    """Se o LLM parafraseia sem nomear a fonte, o chip nao pode sumir (ciencia citavel): cai
+    pra evidencia recuperada que embasou a resposta."""
+    llm = _FakeLLM(reply="- Incline levemente o tronco pra frente durante a corrida")  # sem nome
+    out = FormCoach(llm=llm, knowledge=_KBFonteSemPMC()).plan(_RELIABLE_LOW_CADENCE)
+    assert out["citations"] == ["PMID:34537800"]              # fallback = fonte recuperada
