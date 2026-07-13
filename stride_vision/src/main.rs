@@ -6,7 +6,8 @@ use anyhow::{bail, Context, Result};
 use image::RgbImage;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
-use stride_vision::{analyze_form, cadence_spm, draw_pose, PoseEngine, KP_NAMES};
+use stride_vision::{analyze_form, contact_angle, contact_flight_ms, foot_strike, draw_angles,
+                    joint_angle, median, trunk_lean_deg, draw_pose, PoseEngine, KP_NAMES};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -40,6 +41,7 @@ fn run_image(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
                 }
             }
             draw_pose(&mut img, &pose);
+            draw_angles(&mut img, &pose);
             img.save(out)?;
             println!("esqueleto salvo em {out}");
         }
@@ -67,6 +69,13 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     let mut buf = vec![0u8; (w * h * 3) as usize];
     let (mut frames, mut ankle_l, mut ankle_r) = (0u32, Vec::new(), Vec::new());
     let (mut hip_y, mut leg_lens) = (Vec::new(), Vec::new());
+    // séries de ângulo por perna (E/D) + soma de confiança p/ escolher a perna visível
+    let (mut knee_l, mut knee_r, mut hip_l, mut hip_r) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut conf_l, mut conf_r) = (0f32, 0f32);
+    let mut trunk = Vec::new();   // inclinação do tronco por frame
+    // séries X (posição horizontal) p/ padrão de pisada + direção "pra frente"
+    let (mut ax_l, mut ax_r, mut kx_l, mut kx_r) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut nose_dx = Vec::new();   // nariz − quadril-médio (sinal = direção da corrida)
     let t = std::time::Instant::now();
 
     loop {
@@ -81,7 +90,24 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
             hip_y.push((kp[11].1 + kp[12].1) / 2.0);          // centro do quadril
             // comprimento da perna (quadril->tornozelo) = escala do corpo no vídeo
             leg_lens.push(((kp[11].0 - kp[15].0).powi(2) + (kp[11].1 - kp[15].1).powi(2)).sqrt());
+            // ângulos articulares por perna (joelho: quadril-joelho-tornozelo; quadril: ombro-quadril-joelho)
+            knee_l.push(joint_angle(kp[11], kp[13], kp[15]));
+            knee_r.push(joint_angle(kp[12], kp[14], kp[16]));
+            hip_l.push(joint_angle(kp[5], kp[11], kp[13]));
+            hip_r.push(joint_angle(kp[6], kp[12], kp[14]));
+            conf_l += kp[11].2.min(kp[13].2).min(kp[15].2);
+            conf_r += kp[12].2.min(kp[14].2).min(kp[16].2);
+            ax_l.push(kp[15].0); ax_r.push(kp[16].0);
+            kx_l.push(kp[13].0); kx_r.push(kp[14].0);
+            nose_dx.push(kp[0].0 - (kp[11].0 + kp[12].0) / 2.0);
+            // inclinação do tronco: ombro-médio vs quadril-médio (só com tronco confiável)
+            if kp[5].2 > 0.4 && kp[6].2 > 0.4 && kp[11].2 > 0.4 && kp[12].2 > 0.4 {
+                let sh = ((kp[5].0 + kp[6].0) / 2.0, (kp[5].1 + kp[6].1) / 2.0);
+                let hp = ((kp[11].0 + kp[12].0) / 2.0, (kp[11].1 + kp[12].1) / 2.0);
+                trunk.push(trunk_lean_deg(sh, hp));
+            }
             draw_pose(&mut img, &pose);
+            draw_angles(&mut img, &pose);
         }
         dst.write_all(img.as_raw())?;
         frames += 1;
@@ -94,7 +120,24 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     // métricas consolidadas -> JSON ao lado do vídeo (o backend lê daqui)
     leg_lens.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let leg_len = leg_lens.get(leg_lens.len() / 2).copied().unwrap_or(0.0);
-    let metrics = analyze_form(&ankle_l, &ankle_r, &hip_y, leg_len, fps, frames as usize);
+    let mut metrics = analyze_form(&ankle_l, &ankle_r, &hip_y, leg_len, fps, frames as usize);
+    // ângulo no APOIO do pé, medido na perna mais visível (fase fixa = número estável)
+    let right = conf_r >= conf_l;
+    let (knee_ser, hip_ser, ankle_ser) = if right {
+        (&knee_r, &hip_r, &ankle_r)
+    } else {
+        (&knee_l, &hip_l, &ankle_l)
+    };
+    metrics.knee_contact_deg = contact_angle(knee_ser, ankle_ser);
+    metrics.hip_contact_deg = contact_angle(hip_ser, ankle_ser);
+    metrics.trunk_lean_deg = median(&trunk).map(|v| (v * 10.0).round() / 10.0);
+    // contato/voo (usa os dois pés) + padrão de pisada (perna de análise)
+    let (gct, flight) = contact_flight_ms(&ankle_l, &ankle_r, fps);
+    metrics.ground_contact_ms = gct;
+    metrics.flight_ms = flight;
+    let facing = median(&nose_dx).unwrap_or(0.0);
+    let (ax, kx) = if right { (&ax_r, &kx_r) } else { (&ax_l, &kx_l) };
+    metrics.foot_strike = foot_strike(ax, ankle_ser, kx, facing, leg_len).map(|s| s.to_string());
     let mpath = format!("{}.metrics.json", out.trim_end_matches(".mp4"));
     std::fs::write(&mpath, serde_json::to_string_pretty(&metrics)?)?;
 

@@ -12,7 +12,7 @@ O StriderEdge OS é um **wearable de IA para atletas de corrida, HYROX e CrossFi
 
 ### 0.1 Fases do produto
 
-1. **Corrida (fase ATUAL)** — análise de arquivos `.FIT`: cadência, pace, FC, eficiência por terreno, ponto de quebra mecânica, risco de lesão. Coach por LLM local + RAG.
+1. **Corrida (fase ATUAL)** — análise de arquivos `.FIT`: cadência, pace, FC, eficiência por terreno, ponto de quebra mecânica, risco de lesão. Coach por LLM local + RAG. **+ Análise de movimento por VÍDEO** (biomecânica por câmera — pisada, ângulos, contato/voo + plano corretivo; §6.5).
 2. **HYROX** — segmentar e analisar os **8 stations** individualmente, split cardio/muscular por estação, degradação de movimento por fadiga.
 3. **CrossFit** — reconhecimento de WODs e movimentos olímpicos, carga muscular por sessão.
 
@@ -42,19 +42,31 @@ maratona em 8 semanas), estilo Runna. É um **módulo NOVO de backend**, não al
 
 ---
 
-## Estado atual (checkpoint v0.1.0)
+## Estado atual (checkpoint v0.2.0)
 
-**Feito:** ingestão (`FitParser` + **sync automático Garmin**, idempotente, arquiva `.FIT` bruto) ·
-kernel **Rust** (Kalman/DTW/FFT) · análises de corrida (§6.1 quebra, §6.2 eficiência, §6.3 semáforo,
-zonas de FC, terreno) · **carga/ACWR** (`TrainingLoad`, TRIMP por zona + portão de confiança) ·
-**fitness/prova** (`RunningFitness`: preditor de Riegel 5k→42k + tendência de eficiência velocidade÷FC
-— fecha a Trilha 1) · **coach IA local** (Ollama/Qwen, RAG citável + fallback web, personalização,
-eval anti-alucinação, agêntico text-to-SQL) · **API REST** (FastAPI OOP) + **dashboard** Streamlit
-(cliente HTTP) · **logging estruturado** · conexão reutilizável · **67 testes + CI verde**, tudo versionado.
+**Feito (backend/dados):** ingestão (`FitParser` + **sync automático Garmin**, idempotente, arquiva
+`.FIT` bruto) · kernel **Rust** (Kalman/DTW/FFT) · análises de corrida (§6.1 quebra, §6.2 eficiência,
+§6.3 semáforo, zonas de FC, terreno) · **carga/ACWR** (`TrainingLoad`) · **fitness/prova**
+(`RunningFitness`: Riegel 5k→42k + tendência de eficiência) · **coach IA local** (Ollama/Qwen, RAG
+citável + fallback web, eval anti-alucinação, agêntico text-to-SQL) · **auth** (login/registro,
+senha com hash, e-mail único) · **API REST** (FastAPI OOP) · **logging estruturado** · **135 testes
+Python + 12 Rust, CI verde**.
 
-**Próximo (produto):** frontend web de verdade (React, substitui o Streamlit) · **gerador de plano
-adaptativo** (§0.3 — backend novo, base das telas de calendário) · dado ao vivo (Connect IQ) · app
-mobile · HYROX (precisa de IMU). Autonomia: agendar o sync (cron). **Hospedar = por último** (§10).
+**Feito (NOVO — visão computacional, ver §6.5):** **`stride_vision`** — motor Rust de **análise de
+movimento por VÍDEO** (pose YOLO11 via ONNX + biomecânica na mão): esqueleto desenhado + ângulos de
+joelho/quadril + eventos da passada (apoio, voo, pisada) + cadência, tempo de contato, oscilação,
+inclinação de tronco. Pipeline de **Análise de Forma** (upload → overlay + métricas, filesystem+DB) ·
+**biomecânica personalizada** (perfil do atleta + alvos ideais) · **algoritmo corretivo** (`FormCoach`:
+do gap medido→exercícios citados pelo corpus) · **corpus RAG expandido** (~26 estudos reais).
+
+**Feito (produto):** **frontend web React** (monorepo, substitui o Streamlit): dashboard, treino,
+análise & saúde, **página dedicada de Análise de Forma** (vídeo), landing de marketing com hero em
+vídeo, tema light/dark, auth com guarda de rota.
+
+**Próximo (produto):** **upgrade de pose RTMPose** (26 keypoints c/ pés → pisada/pronação REAIS +
+vista de trás; hoje a pisada é estimativa) · **gerador de plano adaptativo** (§0.3) · motores de
+movimento **HYROX/CrossFit** (classificar exercício, contar reps, ginástica×LPO) · dado ao vivo
+(Connect IQ) · app mobile · **Hospedar = por último** (§10).
 
 ---
 
@@ -448,6 +460,33 @@ def generate_coach_prompt(summary_metrics: dict, anomalies: list) -> str:
     """
 ```
 
+### 6.5 Análise de Movimento por VÍDEO (`stride_vision`) — visão computacional
+
+> **Mudança de rota importante:** o plano original assumia que a inteligência de *movimento*
+> (biomecânica: pisada, assimetria, forma) só viria do **hardware/IMU** (Fase E, anos à frente).
+> Descobrimos que dá pra entregar **hoje, por CÂMERA** — o atleta filma correndo e a IA extrai a
+> biomecânica. Isso **de-risca** o maior diferencial sem depender de device. É um pilar novo.
+
+- **Motor:** `stride_vision/` — crate Rust standalone (compute pesado = Rust, constituição §1).
+  Pose estimation via **YOLO11-pose (ONNX Runtime `ort`)**: 17 keypoints COCO → esqueleto desenhado
+  (neon) + **goniômetros** de joelho/quadril. Roda por subprocesso (não é o kernel PyO3; é binário).
+- **Métricas na mão (biomecânica):** cadência (FFT da oscilação do tornozelo), assimetria E/D,
+  oscilação vertical, **flexão de joelho/quadril no apoio**, **inclinação de tronco**, **tempo de
+  contato com o solo e de voo**, **padrão de pisada** (estimativa via tíbia — sem keypoint de pé).
+  **Guarda de qualidade:** vista não-lateral / rastreio incoerente → marca `reliable=false` e orienta
+  (nada de número furado).
+- **Pipeline (`api/form.py`):** upload → filesystem (`storage/videos/`) → normaliza (ffmpeg) → motor
+  Rust → `overlay.mp4` + `metrics.json` → linha em `form_analyses` (caminho + métricas; **nunca**
+  toca os dados do `.FIT`). Cadência da câmera e do relógio são **independentes** (uma valida a outra).
+- **Biomecânica personalizada (`analytics/biomechanics.py`):** alvos ideais ajustados ao atleta
+  (perfil: altura/peso/nível) + diagnóstico de gap (medido × ideal).
+- **Algoritmo corretivo (`analytics/form_coach.py`):** do gap → exercícios citados pelo corpus RAG
+  (mesma guarda de aterramento do coach; sem fonte, não inventa).
+- **Validação:** contra o ground-truth do Garmin (cadência da câmera vs. do relógio) — diferencial
+  que o mercado (ex.: Ochy) não tem, pois valida a própria precisão.
+- **Próximo:** trocar YOLO11 por **RTMPose Halpe26** (26 keypoints, 6 nos pés) → pisada/pronação
+  REAIS + análise de vista de trás; e estender o padrão pra movimentos de HYROX/CrossFit.
+
 ---
 
 ## 7. Pilha de Observabilidade (LGTM Stack) — Fase 2
@@ -538,21 +577,24 @@ Exemplo — 100 usuários, 20 vereditos no mesmo minuto, W≈10s →
 produto está completo e vai pra usuários reais. Hospedar é *deploy, não feature*; montar nuvem/auth/
 fila antes de ter produto é overengineering (constituição: "local agora, hospedado depois").
 
-**Caminho crítico:** o diferencial (voz em tempo real + inteligência de movimento) é travado por UMA
-coisa — **obter dado ao vivo e rico do corpo** (BLE/Connect IQ → depois IMU próprio). É o maior risco
-técnico → de-riscar cedo. As telas (web/app) são clientes de **baixo risco** da API já pronta.
+**Caminho crítico (ATUALIZADO):** a **inteligência de movimento (biomecânica)** — que se pensava
+travada por hardware/IMU — **já foi de-riscada por VÍDEO** (`stride_vision`, §6.5): câmera + pose
+estimation entregam pisada, ângulos, contato/voo e o corretivo hoje, sem device. O que ainda depende
+de **dado ao vivo do corpo** (BLE/Connect IQ → IMU) é a **voz em tempo real durante o treino** e a
+análise contínua sem filmar. As telas (web/app) são clientes de **baixo risco** da API já pronta.
 
 **Costura que evita retrabalho:** tudo consome UMA API (FastAPI); o kernel Rust é escrito uma vez e
 cross-compila pro celular/firmware. A matemática de sinal não se reescreve.
 
 | Fase | O quê | Estado / gatilho |
 |---|---|---|
-| **A — Cérebro + API** | ingestão, kernel, análises, coach, RAG, tempo real, eval; API REST | ✅ feito (local) |
-| **B — Dado ao vivo** (ponte Connect IQ) | capturar live/IMU do relógio → destrava voz real + base do HYROX | **próximo (caminho crítico)** |
-| **C — App mobile** (o produto) | insights (cliente da API) + voz em tempo real on-device + BLE | contra backend **LOCAL** |
-| **D — Web de verdade** | React/Next substitui o Streamlit (protótipo → produto) | quando útil |
-| **E — Device/IMU próprio** | firmware Rust, IMU, HYROX/movimento | valor provado + app pronto |
-| **F — Hospedar** (POR ÚLTIMO) | deploy, auth, Postgres/fila (ver §9) | **só ao ir pra usuários reais** |
+| **A — Cérebro + API** | ingestão, kernel, análises, coach, RAG, eval; API REST + auth | ✅ feito (local) |
+| **A2 — Movimento por vídeo** (`stride_vision`) | pose+biomecânica por câmera, análise de forma, corretivo (§6.5) | ✅ feito (local) — **de-riscou o movimento** |
+| **D — Web de verdade** (React, o produto) | dashboard, análise & saúde, análise de forma (vídeo), landing | ✅ feito (substituiu o Streamlit) |
+| **B — Dado ao vivo** (ponte Connect IQ) | live/IMU do relógio → voz em tempo real + base do HYROX | **próximo (caminho crítico p/ voz)** |
+| **C — App mobile** | insights (cliente da API) + voz on-device + BLE | contra backend **LOCAL** |
+| **E — Device/IMU próprio** | firmware Rust, IMU, HYROX/movimento por sensor | valor provado + app pronto |
+| **F — Hospedar** (POR ÚLTIMO) | deploy, Postgres/fila (ver §9) | **só ao ir pra usuários reais** |
 
 > **Streamlit = protótipo/ferramenta interna, nunca o produto.** O produto é a **web (D)** + o **app (C)**,
 > ambos clientes da mesma API. Specs: [`app-spec.md`](app-spec.md) (Fase C) · [`device-spec.md`](device-spec.md) (Fase E).
