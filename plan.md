@@ -329,6 +329,56 @@ CREATE TABLE cache_workout_summary (
 );
 ```
 
+### 4.3 Duas fontes de dado, dois FATOS, uma dimensão conformada (galaxy schema)
+
+O produto tem **dois objetivos que se sobrepõem** — *prevenção de lesão* e *performance esportiva* —
+mas **NÃO se separa o dado por objetivo** (cadência serve aos dois; ACWR é risco; Riegel é
+performance). A separação correta é por **FONTE / GRÃO do dado**, e ela já existe no schema:
+
+| Fato | Fonte | Grão (1 linha por…) | Tabela |
+|---|---|---|---|
+| Telemetria | `.FIT` (relógio) | (atividade, **segundo**) — milhares/treino | `fact_telemetry` |
+| Análise de forma | **vídeo** (câmera) | (**análise**) — 1 linha, métricas em JSON | `form_analyses` |
+
+Isto é o padrão Kimball de **galaxy schema** (*fact constellation*): **dois fatos** que
+compartilham a **dimensão conformada** `dim_activities`, cada um com seu **grão**. A regra de ouro
+do star schema — *nunca misturar grãos diferentes num mesmo fato* — é o motivo técnico de **não**
+fundir os dois numa tabela só.
+
+```
+                 dim_activities   ◄──── dimensão CONFORMADA (o elo)
+                       │
+        ┌──────────────┴───────────────┐
+        │ grão: segundo                 │ grão: análise
+        ▼                               ▼
+   fact_telemetry  (.FIT)         form_analyses (vídeo)
+   FONTE: relógio                 activity_id UUID  NULL ◄── FK OPCIONAL
+```
+
+**Onde um NÃO influencia o outro (fronteira de isolamento) — 3 camadas:**
+1. **Armazenamento:** tabelas separadas, zero linha compartilhada.
+2. **Ingestão:** entram por **portas diferentes** — `.FIT` via `FitParser`→`fact_telemetry`; vídeo
+   via `POST /api/v1/form`→`stride_vision`→`form_analyses`. Nenhum código de escrita cruza.
+3. **Análise:** `Coach` lê telemetria; `FormCoach` lê métrica de vídeo. Composições independentes.
+
+O **único** ponto de cruzamento é `form_analyses.activity_id` (FK **opcional**, `NULL` quando o
+vídeo é avulso), e ele é **só leitura**: serve à *validação cruzada* (cadência da câmera × cadência
+do relógio — o diferencial vs. Ochy), nunca a uma escrita depender da outra. Por isso um bug num
+pipeline (ex.: o de direção de cadência do corretivo) **não tem como corromper** a análise da outra
+fonte — o isolamento contém o raio de estrago.
+
+**Materialized view = camada de LEITURA, não de armazenamento.** Quando um vídeo está *vinculado* a
+uma atividade, uma view junta os dois fatos pela `dim_activities` e entrega a foto combinada (ex.:
+"relógio 178 spm, câmera confirmou 176 → cadência validada"). Vídeo avulso (`activity_id IS NULL`)
+simplesmente não aparece na view — degrada gracioso. Separar *risco × performance* na TELA, se
+desejado, é uma **tag** na camada de análise (`goal: "risco" | "performance"`), não um split de
+tabela (constituição §2 — sem overengineering).
+
+> **Refinamento futuro (não agora):** `form_analyses.metrics` é um blob JSON — simples e suficiente
+> na escala atual. Se as métricas de vídeo virarem consulta analítica pesada, explodir o JSON num
+> `fact_form_metrics` colunar (mesmo grão, mesma `dim_activities`) fecha o galaxy schema por
+> completo. Só quando o volume justificar.
+
 ---
 
 ## 5. API Design, Swagger & Autenticação
