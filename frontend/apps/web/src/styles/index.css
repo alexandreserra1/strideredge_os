@@ -3,44 +3,46 @@
 @tailwind utilities;
 
 @layer base {
-  /* ---- Tema CLARO ---- */
+  /* ---- Tema CLARO (fundo creme quente) ---- */
   :root {
-    --surface-bg: #F5F6F8;
+    --surface-bg: #FCF5E4;
     --surface-50: #FFFFFF;
-    --surface-100: #FFFFFF;
-    --surface-200: #FFFFFF;
-    --surface-300: #EDEFF3;
-    --text-primary: #0E1116;
-    --text-secondary: #56606E;
-    --text-muted: #8A93A0;
-    --border-light: rgba(16, 20, 30, 0.07);
-    --border-medium: rgba(16, 20, 30, 0.12);
-    /* acento da marca (índigo-violeta) — troque estes valores p/ re-tematizar tudo */
-    --brand: #6E56F7;
-    --brand-hover: #8371FF;
+    --surface-100: #FFFDF7;
+    --surface-200: #FBF6EA;
+    --surface-300: #EFE7D4;
+    --text-primary: #14110C;
+    --text-secondary: #5B5546;
+    --text-muted: #8C846F;
+    --border-light: rgba(20, 17, 12, 0.08);
+    --border-medium: rgba(20, 17, 12, 0.14);
+    /* acento da marca (terracota) — troque estes valores + tailwind.config p/ re-tematizar tudo */
+    --brand: #BA5653;
+    --brand-hover: #A84744;
     --brand-ink: #FFFFFF;
-    --brand-soft: rgba(110, 86, 247, 0.12);
-    --glass-bg: rgba(255, 255, 255, 0.72);
+    --brand-soft: rgba(186, 86, 83, 0.12);
+    --brand-chart: #BA5653;          /* linha de gráfico (no light = a própria marca) */
+    --glass-bg: rgba(255, 253, 247, 0.72);
     color-scheme: light;
   }
 
-  /* ---- Tema ESCURO (charcoal azulado, não preto chapado) ---- */
+  /* ---- Tema ESCURO (quase-preto quente) ---- */
   .dark {
-    --surface-bg: #0B0D12;
-    --surface-50: #0B0D12;
-    --surface-100: #12151C;
-    --surface-200: #171B23;
-    --surface-300: #212632;
-    --text-primary: #F3F5F9;
-    --text-secondary: #9AA2AE;
-    --text-muted: #626A76;
+    --surface-bg: #161515;
+    --surface-50: #161515;
+    --surface-100: #1E1D1C;
+    --surface-200: #262524;
+    --surface-300: #322F2E;
+    --text-primary: #F4F2EE;
+    --text-secondary: #A7A198;
+    --text-muted: #6E6860;
     --border-light: rgba(255, 255, 255, 0.06);
     --border-medium: rgba(255, 255, 255, 0.11);
-    --brand: #6E56F7;
-    --brand-hover: #8371FF;
+    --brand: #BA5653;
+    --brand-hover: #CD6D6A;
     --brand-ink: #FFFFFF;
-    --brand-soft: rgba(124, 107, 255, 0.16);
-    --glass-bg: rgba(18, 21, 28, 0.72);
+    --brand-soft: rgba(205, 109, 106, 0.18);
+    --brand-chart: #DB8380;          /* linha de gráfico no dark: terracota mais vivo p/ contraste */
+    --glass-bg: rgba(22, 21, 21, 0.72);
     color-scheme: dark;
   }
 
@@ -101,3 +103,9 @@
 .leaflet-control-zoom a:hover { background: var(--surface-200) !important; }
 .leaflet-control-zoom a:first-child { border-radius: 10px 10px 0 0 !important; }
 .leaflet-control-zoom a:last-child { border-radius: 0 0 10px 10px !important; border-top: none !important; }
+
+/* Marquee: carrossel infinito de depoimentos (conteúdo duplicado -> translateX(-50%) = loop sem emenda) */
+@keyframes marquee { to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 42s linear infinite; }
+.marquee-pause:hover .animate-marquee { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .animate-marquee { animation: none; } }

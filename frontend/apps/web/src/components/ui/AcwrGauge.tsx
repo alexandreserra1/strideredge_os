@@ -1,5 +1,5 @@
-import { Info } from 'lucide-react'
 import AnimatedNumber from './AnimatedNumber'
+import InfoHint from './InfoHint'
 
 const ACWR_HINT =
   'Prontidão (ACWR): razão entre a carga aguda (últimos 7 dias) e a crônica (últimos 28 dias). ' +
@@ -25,9 +25,7 @@ export default function AcwrGauge({ value, status }: AcwrGaugeProps) {
     <div className="kpi-card">
       <span className="flex items-center gap-1.5 text-xs font-medium text-text-secondary uppercase tracking-wider">
         Prontidão · ACWR
-        <span title={ACWR_HINT} className="cursor-help text-text-muted hover:text-text-secondary transition-colors">
-          <Info size={12} />
-        </span>
+        <InfoHint text={ACWR_HINT} />
       </span>
       <div className="flex items-center justify-between mt-2">
         <div className="relative w-16 h-16">

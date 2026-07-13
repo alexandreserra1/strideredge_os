@@ -22,10 +22,10 @@ export default {
           light: 'var(--border-light)',
           medium: 'var(--border-medium)',
         },
-        // Acento da marca — índigo-violeta. `lime` mantido como ALIAS p/ não quebrar
-        // classes existentes (text-lime, bg-lime/20 etc.); o valor agora é o violeta.
-        brand: { DEFAULT: '#6E56F7', hover: '#8371FF', ink: '#FFFFFF' },
-        lime: { DEFAULT: '#6E56F7', hover: '#8371FF', 50: '#FFFFFF', 100: '#EEEAFF', 200: '#6E56F7' },
+        // Acento da marca — terracota. `lime` mantido como ALIAS p/ não quebrar classes
+        // existentes (text-lime, bg-lime/20 etc.); o valor agora é o terracota.
+        brand: { DEFAULT: '#BA5653', hover: '#A84744', ink: '#FFFFFF' },
+        lime: { DEFAULT: '#BA5653', hover: '#A84744', 50: '#FFFFFF', 100: '#F3DEDD', 200: '#BA5653' },
         // Cores semânticas (zonas de FC, ACWR, gráficos) — espectro refinado
         accent: {
           green: '#34D399',
@@ -39,6 +39,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Oswald', 'Inter', 'sans-serif'],   // condensada esportiva (títulos de impacto)
       },
       animation: {
         'slide-in': 'slideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1)',

@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Activity, HeartPulse, Play, Dumbbell,
+  LayoutDashboard, Activity, HeartPulse, Play, Clapperboard,
 } from 'lucide-react'
 
 interface BottomNavProps {
@@ -10,9 +10,9 @@ interface BottomNavProps {
 const items = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Início' },
   { id: 'detalhe', icon: Activity, label: 'Treinos' },
+  { id: 'video', icon: Clapperboard, label: 'Forma' },
   { id: 'analise', icon: HeartPulse, label: 'Saúde' },
   { id: 'corrida', icon: Play, label: 'Correr' },
-  { id: 'hyrox', icon: Dumbbell, label: 'HYROX' },
 ]
 
 export default function BottomNav({ currentRoute, onNavigate }: BottomNavProps) {

@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Activity, HeartPulse, Play, Dumbbell, Settings,
+  LayoutDashboard, Activity, HeartPulse, Play, Dumbbell, Settings, Clapperboard,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -10,6 +10,7 @@ interface SidebarProps {
 const menu = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'detalhe', label: 'Treinos', icon: Activity },
+  { id: 'video', label: 'Análise de Forma', icon: Clapperboard },
   { id: 'analise', label: 'Análise & Saúde', icon: HeartPulse },
   { id: 'corrida', label: 'Correr', icon: Play },
   { id: 'hyrox', label: 'HYROX', icon: Dumbbell },

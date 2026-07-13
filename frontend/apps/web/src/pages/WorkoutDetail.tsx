@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { Route, Footprints, Heart, Zap, TrendingUp, Play } from 'lucide-react'
+import { Route, Footprints, Heart, Zap, Play, Clapperboard } from 'lucide-react'
 import RouteMap from '../components/ui/RouteMap'
-import FormAnalysisCard from '../components/ui/FormAnalysis'
 import InfoHint from '../components/ui/InfoHint'
 import {
   useActivities, useActivity, useTrack, useTelemetry,
-  toWorkoutSession, toZoneBars, toDurability, toRoutePoints,
+  toWorkoutSession, toZoneBars, toRoutePoints,
 } from '@strideredge/core'
 import {
   mockActivities, mockActivityDetail, mockTrack, mockTelemetry,
@@ -62,11 +61,9 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
     ? Math.max(...apiTele.map(t => t.heart_rate ?? 0))
     : mockActivityDetail.max_hr ?? 0
 
-  // Zonas + durabilidade: adapter do dado real, fallback mock
+  // Zonas de FC: adapter do dado real, fallback mock
+  // (durabilidade/decoupling foi pra Análise & Saúde — é julgamento de fadiga, não sinal do treino)
   const zoneBars = apiDetail ? toZoneBars(apiDetail) : mockZoneBars
-  const durability = apiDetail
-    ? toDurability(apiDetail)
-    : { ...mockActivityDetail.durability!, label: '' }
 
   // Rota: track real ([] = indoor, sem GPS) ou mock
   const routeLL = apiTrack
@@ -92,35 +89,42 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
         </div>
       </div>
 
-      {/* Hero Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="kpi-card">
-          <span className="text-xs text-text-secondary uppercase tracking-wider">Distância</span>
-          <span className="text-xl md:text-2xl font-bold">
-            {activity.distance_km || '—'}{activity.distance_km ? <span className="text-sm font-medium text-text-secondary"> km</span> : null}
-          </span>
+      {/* A análise de vídeo vive na sua própria página (Análise de Forma) — aqui só o atalho,
+          pra não misturar a leitura do movimento com os dados do relógio. */}
+      <button onClick={() => onNavigate('video')}
+        className="card-hover w-full flex items-center justify-between text-left">
+        <div className="flex items-center gap-3">
+          <div className="grid place-items-center w-10 h-10 rounded-xl bg-brand/10 text-brand shrink-0">
+            <Clapperboard size={18} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Analisar sua forma em vídeo</p>
+            <p className="text-xs text-text-secondary mt-0.5">A IA desenha seu esqueleto e mede cadência, pisada, contato e mais.</p>
+          </div>
         </div>
-        <div className="kpi-card">
-          <span className="text-xs text-text-secondary uppercase tracking-wider">Duração</span>
-          <span className="text-xl md:text-2xl font-bold">{activity.duration_min} <span className="text-sm font-medium text-text-secondary">min</span></span>
-        </div>
-        <div className="kpi-card">
-          <span className="text-xs text-text-secondary uppercase tracking-wider">Pace médio</span>
-          <span className="text-xl md:text-2xl font-bold">{activity.pace}</span>
-        </div>
-        <div className="kpi-card">
-          <span className="text-xs text-text-secondary uppercase tracking-wider">FC média</span>
-          <span className="text-xl md:text-2xl font-bold text-accent-red">
-            {activity.avg_hr || '—'}{activity.avg_hr ? <span className="text-sm font-medium text-text-secondary"> bpm</span> : null}
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="text-xs text-text-secondary uppercase tracking-wider">Cadência</span>
-          <span className="text-xl md:text-2xl font-bold text-accent-green">
-            {activity.cadence || '—'}{activity.cadence ? <span className="text-sm font-medium text-text-secondary"> spm</span> : null}
-          </span>
-        </div>
+        <span className="text-brand text-sm font-medium shrink-0">Abrir →</span>
+      </button>
+
+      {/* Tira de métricas — compacta, secundária ao vídeo (números resumo do relógio) */}
+      <div className="card grid grid-cols-3 md:grid-cols-5 gap-y-3 gap-x-2">
+        {[
+          { k: 'Distância', v: activity.distance_km || '—', u: activity.distance_km ? ' km' : '', c: '' },
+          { k: 'Duração', v: activity.duration_min, u: ' min', c: '' },
+          { k: 'Pace', v: activity.pace, u: '', c: '' },
+          { k: 'FC média', v: activity.avg_hr || '—', u: activity.avg_hr ? ' bpm' : '', c: 'text-accent-red' },
+          { k: 'Cadência', v: activity.cadence || '—', u: activity.cadence ? ' spm' : '', c: 'text-accent-green' },
+        ].map(m => (
+          <div key={m.k} className="text-center md:text-left">
+            <p className="text-[10px] text-text-secondary uppercase tracking-wider">{m.k}</p>
+            <p className={`text-lg font-bold tabular-nums ${m.c}`}>
+              {m.v}{m.u && <span className="text-xs font-medium text-text-secondary">{m.u}</span>}
+            </p>
+          </div>
+        ))}
       </div>
+
+      {/* Detalhes do treino — contexto secundário, abaixo do carro-chefe */}
+      <p className="text-xs font-semibold uppercase tracking-wider text-text-muted pt-2">Detalhes do treino</p>
 
       {/* Charts Row */}
       <div className="grid lg:grid-cols-2 gap-4">
@@ -155,34 +159,13 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
           </div>
         </div>
 
-        {/* HR Zones */}
-        <div className="card">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
-            <Zap size={14} className="text-lime" /> Tempo por Zona de FC
-            <InfoHint text="Quanto tempo você passou em cada faixa de esforço (das zonas de FC do relógio). Muito tempo nas zonas altas = treino intenso; a base aeróbia se constrói nas zonas baixas." />
-          </h3>
-          <div className="space-y-3">
-            {zoneBars.map(z => (
-              <div key={z.label} className="flex items-center gap-3">
-                <span className="text-[10px] font-semibold w-24 text-text-secondary whitespace-nowrap">{z.label}</span>
-                <div className="flex-1 h-3 bg-surface-300 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${z.pct}%`, backgroundColor: zoneColor(z.loFrac) }} />
-                </div>
-                <span className="text-xs text-text-secondary w-12 text-right tabular-nums">{z.pct}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Cadence + Spectrum */}
-      <div className="grid lg:grid-cols-2 gap-4">
+        {/* Cadência — mesma linha da FC (ambos são sinais no mesmo eixo de tempo) */}
         <div className="card">
           <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
             <Footprints size={14} className="text-accent-green" /> Cadência
             <InfoHint text="Passos por minuto (spm). Passada mais curta e rápida reduz o impacto por passo — abaixo de ~166 spm associa-se a mais risco de lesão na canela. Alvo protetor: ≥178 spm." />
           </h3>
-          <div className="h-36">
+          <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={hrData}>
                 <defs>
@@ -203,42 +186,24 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
 
-        {/* Durability / Decoupling */}
-        <div className="card">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
-            <TrendingUp size={14} className="text-accent-blue" /> Durabilidade
-            <InfoHint text="Mede se você segura o ritmo quando cansa. Compara a eficiência (pace por batimento) da 1ª e 2ª metade do treino: quanto menor a queda, mais durável você é sob fadiga." />
-          </h3>
-          {durability ? (
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-3xl font-bold text-accent-blue">{durability.decoupling_pct}%</p>
-                <p className="text-xs text-text-secondary mt-1 flex items-center gap-1">
-                  Decoupling Pa:FC
-                  <InfoHint text="Desacoplamento entre pace e FC. <5% = você segurou bem o ritmo sob fadiga; >10% = o corpo 'rachou' e a FC subiu sem o pace acompanhar." />
-                </p>
+      {/* Tempo por Zona de FC — largura total */}
+      <div className="card">
+        <h3 className="text-sm font-semibold mb-4 flex items-center gap-1.5">
+          <Zap size={14} className="text-lime" /> Tempo por Zona de FC
+          <InfoHint text="Quanto tempo você passou em cada faixa de esforço (das zonas de FC do relógio). Muito tempo nas zonas altas = treino intenso; a base aeróbia se constrói nas zonas baixas." />
+        </h3>
+        <div className="space-y-3">
+          {zoneBars.map(z => (
+            <div key={z.label} className="flex items-center gap-3">
+              <span className="text-[10px] font-semibold w-24 text-text-secondary whitespace-nowrap">{z.label}</span>
+              <div className="flex-1 h-3 bg-surface-300 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${z.pct}%`, backgroundColor: zoneColor(z.loFrac) }} />
               </div>
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-secondary">Eficiência 1ª metade</span>
-                  <span className="font-medium tabular-nums">{durability.first_half_pa.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-secondary">Eficiência 2ª metade</span>
-                  <span className="font-medium tabular-nums">{durability.second_half_pa.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-secondary">Status</span>
-                  <span className={`font-medium ${durability.decoupling_pct < 5 ? 'text-accent-green' : durability.decoupling_pct < 10 ? 'text-accent-yellow' : 'text-accent-red'}`}>
-                    {durability.label || (durability.decoupling_pct < 5 ? 'Boa' : durability.decoupling_pct < 10 ? 'Atenção' : 'Alta')}
-                  </span>
-                </div>
-              </div>
+              <span className="text-xs text-text-secondary w-12 text-right tabular-nums">{z.pct}%</span>
             </div>
-          ) : (
-            <p className="text-xs text-text-muted">Não aplicável a este treino (precisa de ritmo contínuo).</p>
-          )}
+          ))}
         </div>
       </div>
 
@@ -265,9 +230,6 @@ export default function WorkoutDetail({ onNavigate, initialId }: {
           </div>
         )}
       </div>
-
-      {/* Análise de Forma: vídeo -> esqueleto + métricas (motor Rust local) */}
-      {isReal && <FormAnalysisCard activityId={activity.id} watchCadence={activity.cadence || undefined} />}
 
       {/* O veredito do Coach vive em Análise & Saúde — atalho pra não duplicar aqui */}
       <button onClick={() => onNavigate('analise')}

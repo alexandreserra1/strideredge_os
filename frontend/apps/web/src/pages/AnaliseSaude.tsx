@@ -1,7 +1,8 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { ShieldCheck, Footprints, Activity, TrendingUp, Info, Sparkles } from 'lucide-react'
+import { ShieldCheck, Footprints, Activity, TrendingUp, Sparkles } from 'lucide-react'
 import { useActivities, useActivity, useCoachStream, useTrainingLoad, latestAcwr, toDurability } from '@strideredge/core'
 import { mockTrainingLoad, mockAcwrCurrent, mockCoachVerdict, mockActivityDetail, mockActivities } from './mockData'
+import InfoHint from '../components/ui/InfoHint'
 
 type Level = 'ok' | 'warn' | 'risk'
 const levelMeta: Record<Level, { color: string; label: string; chip: string }> = {
@@ -67,48 +68,35 @@ export default function AnaliseSaude() {
         <p className="text-text-secondary mt-1">Visão do atleta — risco de lesão e review da IA</p>
       </div>
 
-      {/* Risco geral */}
-      <div className="card flex items-center gap-4" style={{ borderColor: `${ov.color}44` }}>
-        <div className="grid place-items-center w-14 h-14 rounded-2xl shrink-0" style={{ background: `${ov.color}1f`, color: ov.color }}>
-          <ShieldCheck size={28} />
+      {/* Score geral — um único número em destaque (padrão "gait score"); o resto vira detalhe secundário */}
+      <div className="card" style={{ borderColor: `${ov.color}44` }}>
+        <div className="flex items-center gap-4">
+          <div className="grid place-items-center w-16 h-16 rounded-2xl shrink-0" style={{ background: `${ov.color}1f`, color: ov.color }}>
+            <ShieldCheck size={30} />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs text-text-secondary uppercase tracking-wider">Risco geral de lesão</p>
+            <p className="text-3xl font-bold leading-tight" style={{ color: ov.color }}>
+              {ov.label} <span className="text-base font-semibold text-text-secondary">· {riskScore}/100</span>
+            </p>
+          </div>
         </div>
-        <div className="flex-1">
-          <p className="text-xs text-text-secondary uppercase tracking-wider">Risco geral de lesão</p>
-          <p className="text-2xl font-bold" style={{ color: ov.color }}>
-            {ov.label} <span className="text-sm font-semibold text-text-secondary">· índice {riskScore}/100</span>
-          </p>
-        </div>
-        <div className="hidden sm:flex flex-wrap gap-2 justify-end max-w-sm">
-          {metrics.map(m => (
-            <span key={m.label} className="flex items-center gap-1.5 text-[11px] text-text-secondary bg-surface-200 border border-border-light rounded-full px-2.5 py-1">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: levelMeta[m.level].color }} />
-              {m.label.split(' (')[0]}
-            </span>
-          ))}
-        </div>
-      </div>
 
-      {/* Painel de métricas de risco */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {metrics.map(({ icon: Icon, label, value, level, why, source }) => {
-          const m = levelMeta[level]
-          return (
-            <div key={label} className="card-hover flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <div className="grid place-items-center w-9 h-9 rounded-xl" style={{ background: `${m.color}1f`, color: m.color }}>
-                  <Icon size={18} />
-                </div>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${m.chip}`}>{m.label}</span>
+        {/* as 4 métricas que compõem o score — pílulas compactas, explicação só no hover */}
+        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border-light">
+          {metrics.map(({ icon: Icon, label, value, level, why, source }) => {
+            const m = levelMeta[level]
+            return (
+              <div key={label}
+                className="flex items-center gap-2 rounded-full bg-surface-200 border border-border-light pl-2.5 pr-3 py-1.5">
+                <Icon size={13} style={{ color: m.color }} />
+                <span className="text-[11px] text-text-secondary whitespace-nowrap">{label}</span>
+                <span className="text-xs font-bold tabular-nums" style={{ color: m.color }}>{value}</span>
+                <InfoHint text={`${why} Fonte: ${source}.`} />
               </div>
-              <div>
-                <p className="text-xs text-text-secondary">{label}</p>
-                <p className="text-2xl font-bold tabular-nums">{value}</p>
-              </div>
-              <p className="text-[11px] text-text-muted leading-snug flex-1">{why}</p>
-              <span className="text-[10px] text-text-muted flex items-center gap-1"><Info size={10} /> {source}</span>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
@@ -149,7 +137,7 @@ export default function AnaliseSaude() {
           ) : (
             <>
               {coach.isError && (
-                <p className="text-xs text-accent-red mb-3">Não consegui gerar — o backend/Ollama está no ar?</p>
+                <p className="text-xs text-accent-red mb-3">Não consegui gerar — o coach local está no ar?</p>
               )}
               {!(review.strengths?.length || review.improvements?.length || review.actions?.length) ? (
                 <p className="text-sm text-text-muted leading-relaxed mb-4 whitespace-pre-line">{review.verdict}</p>
@@ -177,8 +165,8 @@ export default function AnaliseSaude() {
               <AreaChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
                 <defs>
                   <linearGradient id="acwrGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6E56F7" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#6E56F7" stopOpacity={0} />
+                    <stop offset="0%" stopColor="var(--brand-chart)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--brand-chart)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#6B7079' }} axisLine={false} tickLine={false} interval={3} />
@@ -186,8 +174,8 @@ export default function AnaliseSaude() {
                 <ReferenceLine y={0.8} stroke="#34D399" strokeDasharray="4 4" strokeOpacity={0.55} />
                 <ReferenceLine y={1.3} stroke="#34D399" strokeDasharray="4 4" strokeOpacity={0.55} />
                 <Tooltip content={<AcwrTooltip />} cursor={{ stroke: 'var(--border-medium)', strokeWidth: 1 }} />
-                <Area type="monotone" dataKey="acwr" stroke="#6E56F7" strokeWidth={2.5} fill="url(#acwrGrad)"
-                  dot={false} activeDot={{ r: 5, fill: '#6E56F7', stroke: 'var(--surface-100)', strokeWidth: 2 }} />
+                <Area type="monotone" dataKey="acwr" stroke="var(--brand-chart)" strokeWidth={2.5} fill="url(#acwrGrad)"
+                  dot={false} activeDot={{ r: 5, fill: 'var(--brand-chart)', stroke: 'var(--surface-100)', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

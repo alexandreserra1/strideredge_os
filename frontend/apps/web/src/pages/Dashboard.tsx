@@ -75,12 +75,12 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
 
         <KpiCard label="Previsão 10K" value={fit.predictions['10k']?.pace ?? '—'}
           sub={fit.predictions['10k'] ? `${fit.predictions['10k'].minutes}min` : 'sem referência'}
-          hint="Tempo estimado de prova (modelo de Riegel), projetado a partir da sua melhor corrida recente."
+          hint="Tempo estimado de prova, projetado a partir da sua melhor corrida recente."
           icon={<Target size={16} />} accent="blue" />
 
         <KpiCard label="Previsão 21K" value={fit.predictions['21k']?.pace ?? '—'}
           sub={fit.predictions['21k'] ? `${fit.predictions['21k'].minutes}min` : 'sem referência'}
-          hint="Tempo estimado de prova (modelo de Riegel). Mais preciso perto da distância que você treina."
+          hint="Tempo estimado de prova. Mais preciso perto da distância que você treina."
           icon={<Target size={16} />} accent="orange" />
       </div>
 
@@ -103,8 +103,8 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
               <AreaChart data={progressPoints}>
                 <defs>
                   <linearGradient id="effGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6E56F7" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#6E56F7" stopOpacity={0} />
+                    <stop offset="0%" stopColor="var(--brand-chart)" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="var(--brand-chart)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#6B7079' }} axisLine={false} tickLine={false} />
@@ -112,10 +112,10 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
                 <Tooltip
                   contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }}
                   labelStyle={{ color: 'var(--text-secondary)' }}
-                  itemStyle={{ color: '#6E56F7' }}
+                  itemStyle={{ color: 'var(--brand-chart)' }}
                   cursor={{ stroke: 'var(--border-medium)', strokeWidth: 1 }}
                 />
-                <Area type="monotone" dataKey="efficiency" stroke="#6E56F7" strokeWidth={2} fill="url(#effGrad)" />
+                <Area type="monotone" dataKey="efficiency" stroke="var(--brand-chart)" strokeWidth={2} fill="url(#effGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -140,10 +140,10 @@ export default function Dashboard({ onNavigate, onOpenWorkout }: {
                 <Tooltip
                   contentStyle={{ background: 'var(--surface-100)', border: '1px solid var(--border-light)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }}
                   labelStyle={{ color: 'var(--text-secondary)' }}
-                  itemStyle={{ color: '#6E56F7' }}
+                  itemStyle={{ color: 'var(--brand-chart)' }}
                   cursor={{ fill: 'var(--surface-300)', opacity: 0.5 }}
                 />
-                <Bar dataKey="volume" fill="#6E56F7" radius={[4, 4, 0, 0]} barSize={24} />
+                <Bar dataKey="volume" fill="var(--brand-chart)" radius={[4, 4, 0, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </div>

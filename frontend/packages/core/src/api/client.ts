@@ -11,6 +11,8 @@ import type {
   TrainingLoadItem,
   ApiFitness,
   AskResponse,
+  FormPlan,
+  AthleteProfile,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -85,6 +87,12 @@ export const api = {
       return res.json() as Promise<{ analysis_id: string; status: string }>
     },
     videoUrl: (id: string) => `${BASE_URL}/form/${id}/video`,
+    coach: (id: string) => request<FormPlan>(`/form/${id}/coach`, { method: 'POST' }),
+  },
+  profile: {
+    get: () => request<AthleteProfile>('/profile'),
+    save: (p: AthleteProfile) =>
+      request<AthleteProfile>('/profile', { method: 'PUT', body: JSON.stringify(p) }),
   },
   trainingLoad: {
     list: () => request<TrainingLoadItem[]>('/training-load'),

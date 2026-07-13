@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Info } from 'lucide-react'
+import InfoHint from './InfoHint'
 
 interface KpiCardProps {
   label: string
@@ -29,11 +29,7 @@ export default function KpiCard({ label, value, sub, hint, icon, accent = 'lime'
       <div className="flex items-start justify-between mb-1">
         <span className="flex items-center gap-1.5 text-xs font-medium text-text-secondary uppercase tracking-wider">
           {label}
-          {hint && (
-            <span title={hint} className="cursor-help text-text-muted hover:text-text-secondary transition-colors">
-              <Info size={12} />
-            </span>
-          )}
+          {hint && <InfoHint text={hint} />}
         </span>
         {icon && <span className={`${accentColors[accent]} opacity-70`}>{icon}</span>}
       </div>

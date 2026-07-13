@@ -81,6 +81,12 @@ export interface FormMetrics {
   cadence_right: number | null
   asymmetry_pct: number | null
   vertical_oscillation_pct: number | null
+  knee_contact_deg: number | null
+  hip_contact_deg: number | null
+  trunk_lean_deg: number | null
+  ground_contact_ms: number | null
+  flight_ms: number | null
+  foot_strike: string | null
   reliable: boolean
   quality_note: string | null
 }
@@ -93,6 +99,35 @@ export interface FormAnalysis {
   metrics: FormMetrics | null
   error: string | null
   created_at: string
+  modality?: string
+}
+
+// Algoritmo corretivo: desvios (medido × ideal) + plano com exercícios citados
+export interface FormDeviation {
+  metric: string
+  label: string
+  value: number
+  lo: number
+  hi: number
+  unit: string
+  side: 'baixo' | 'alto'
+  source: string
+  plain: string        // explicação em linguagem simples do que o desvio significa
+}
+
+export interface FormPlan {
+  analysis_id: string
+  verdict: string
+  actions: string[]        // exercícios/ajustes gerados pelo coach (citados)
+  citations: string[]
+  deviations: FormDeviation[]   // o que corrigir — determinístico (medido × ideal)
+}
+
+export interface AthleteProfile {
+  height_cm?: number | null
+  weight_kg?: number | null
+  years_running?: number | null
+  goal?: string | null
 }
 
 // ---- Auth ----

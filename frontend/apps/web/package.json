@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@radix-ui/react-tooltip": "^1.2.12",
     "@strideredge/core": "*",
     "@tanstack/react-query": "^5.50.0",
     "leaflet": "^1.9.4",

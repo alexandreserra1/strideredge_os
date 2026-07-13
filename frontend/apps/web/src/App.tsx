@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { ThemeProvider } from './components/layout/ThemeProvider'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
@@ -7,18 +8,20 @@ import WorkoutDetail from './pages/WorkoutDetail'
 import RunMode from './pages/RunMode'
 import HyroxScreen from './pages/HyroxScreen'
 import AnaliseSaude from './pages/AnaliseSaude'
+import MovementAnalysis from './pages/MovementAnalysis'
 import Login from './pages/Login'
 import ThemeToggle from './components/layout/ThemeToggle'
 import { api, session, useTrainingLoad, latestAcwr } from '@strideredge/core'
 import { mockAcwrCurrent } from './pages/mockData'
 
-type Route = 'landing' | 'login' | 'dashboard' | 'detalhe' | 'analise' | 'corrida' | 'hyrox'
+type Route = 'landing' | 'login' | 'dashboard' | 'detalhe' | 'analise' | 'corrida' | 'hyrox' | 'video'
 
 // Rota <-> URL: digitar/copiar /dashboard, /analise etc. passa pela MESMA guarda —
 // sem sessão, qualquer caminho protegido cai no /login (nada de entrar pela URL).
 const PATHS: Record<Route, string> = {
   landing: '/', login: '/login', dashboard: '/dashboard',
   detalhe: '/treinos', analise: '/analise', corrida: '/correr', hyrox: '/hyrox',
+  video: '/movimento',
 }
 const PUBLIC: Route[] = ['landing', 'login']
 const routeFromPath = (path: string): Route =>
@@ -114,6 +117,8 @@ export default function App() {
         return <RunMode />
       case 'hyrox':
         return <HyroxScreen />
+      case 'video':
+        return <MovementAnalysis onNavigate={navigate} />
       default:
         return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
     }
@@ -124,6 +129,7 @@ export default function App() {
 
   return (
     <ThemeProvider>
+      <Tooltip.Provider delayDuration={150} skipDelayDuration={400}>
       {isLanding ? (
         <div className="min-h-screen bg-surface">
           <header className="sticky top-0 z-50 bg-surface-100/80 backdrop-blur-xl border-b border-border-light">
@@ -152,6 +158,7 @@ export default function App() {
           {renderPage()}
         </Layout>
       )}
+      </Tooltip.Provider>
     </ThemeProvider>
   )
 }
