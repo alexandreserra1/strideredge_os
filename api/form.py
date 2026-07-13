@@ -6,6 +6,10 @@ FFT, métricas) roda no binário Rust via subprocess. O vídeo fica no filesyste
 
 Processamento é assíncrono (thread): um vídeo de 30s leva ~1min em CPU.
 A conexão DuckDB é thread-safe por cursor (core/database).
+
+ISOLAMENTO: a análise de vídeo escreve APENAS em `form_analyses`. Nunca toca em
+`dim_activities`/tabelas de fato. A cadência da câmera e a do `.fit` (relógio) são
+medidas por caminhos independentes — o vídeo jamais altera os dados do Garmin.
 """
 
 import json
@@ -35,8 +39,9 @@ class FormService:
     # ---------- escrita ----------
 
     def create(self, video_bytes: bytes, filename: str,
-               activity_id: Optional[str] = None) -> dict:
-        """Salva o upload, registra a análise e dispara o processamento em background."""
+               activity_id: Optional[str] = None, modality: str = "run") -> dict:
+        """Salva o upload, registra a análise e dispara o processamento em background.
+        `modality` fica pronto p/ o futuro (Hyrox/CrossFit); hoje o motor só faz 'run'."""
         analysis_id = str(uuid.uuid4())
         adir = VIDEOS_DIR / analysis_id
         adir.mkdir(parents=True, exist_ok=True)
@@ -45,8 +50,9 @@ class FormService:
         original.write_bytes(video_bytes)
 
         get_connection().execute(
-            "INSERT INTO form_analyses (analysis_id, activity_id, status) VALUES (?, ?, 'processing')",
-            [analysis_id, activity_id])
+            "INSERT INTO form_analyses (analysis_id, activity_id, status, modality) "
+            "VALUES (?, ?, 'processing', ?)",
+            [analysis_id, activity_id, modality])
         threading.Thread(target=self._process, args=(analysis_id, original),
                          daemon=True).start()
         return {"analysis_id": analysis_id, "status": "processing"}
@@ -96,15 +102,16 @@ class FormService:
 
     # ---------- leitura ----------
 
+    _COLS = ("analysis_id, activity_id, status, video_path, metrics, error, created_at, modality")
+
     def get(self, analysis_id: str) -> Optional[dict]:
         row = get_connection().execute(
-            """SELECT analysis_id, activity_id, status, video_path, metrics, error, created_at
-               FROM form_analyses WHERE analysis_id = ?""", [analysis_id]).fetchone()
+            f"SELECT {self._COLS} FROM form_analyses WHERE analysis_id = ?",
+            [analysis_id]).fetchone()
         return self._row(row) if row else None
 
     def list(self, activity_id: Optional[str] = None) -> list:
-        sql = """SELECT analysis_id, activity_id, status, video_path, metrics, error, created_at
-                 FROM form_analyses"""
+        sql = f"SELECT {self._COLS} FROM form_analyses"
         args = []
         if activity_id:
             sql += " WHERE activity_id = ?"
@@ -126,4 +133,5 @@ class FormService:
             "metrics": json.loads(r[4]) if r[4] else None,
             "error": r[5],
             "created_at": str(r[6]),
+            "modality": r[7] if len(r) > 7 else "run",
         }

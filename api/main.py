@@ -7,6 +7,7 @@ grandes. Concorrência = async/threadpool do FastAPI; o paralelismo mora no kern
 
 import json
 import time
+from typing import Optional
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -21,11 +22,14 @@ from analytics.fitness import RunningFitness
 from analytics.sql_agent import SqlAgent
 from analytics.strength import StrengthSets
 from analytics.training_load import TrainingLoad
+from analytics.form_coach import FormCoach
 from api.auth import AuthError, AuthService
 from api.form import FormService
+from api.profile import ProfileService
 from api.services import ActivityService
-from api.deps import (get_activity_service, get_auth_service, get_coach, get_form_service,
-                      get_running_fitness, get_sql_agent, get_strength_sets, get_training_load)
+from api.deps import (get_activity_service, get_auth_service, get_coach, get_form_coach,
+                      get_form_service, get_profile_service, get_running_fitness, get_sql_agent,
+                      get_strength_sets, get_training_load)
 
 
 class AskRequest(BaseModel):
@@ -46,6 +50,13 @@ class LoginRequest(BaseModel):
 class GoogleRequest(BaseModel):
     credential: str
 
+
+class ProfileRequest(BaseModel):
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    years_running: Optional[float] = None
+    goal: Optional[str] = None
+
 app = FastAPI(title="StriderEdge OS API", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # compacta payloads grandes (telemetria)
 app.add_middleware(
@@ -57,6 +68,10 @@ app.add_middleware(
 )
 
 _log = Logger("api")
+
+# Declara a config efetiva no boot (ambiente + flags de IA) — observabilidade.
+from core.config import summary as _config_summary  # noqa: E402
+_log.info("boot", **_config_summary())
 
 
 @app.middleware("http")
@@ -178,14 +193,15 @@ def coach_verdict_stream(activity_id: str, force: bool = False, coach: Coach = D
 
 @app.post("/api/v1/form", status_code=201)
 async def form_upload(video: UploadFile = File(...), activity_id: str = Form(None),
-                      svc: FormService = Depends(get_form_service)):
-    """Recebe o vídeo, salva no filesystem e processa em background (motor Rust)."""
+                      modality: str = Form("run"), svc: FormService = Depends(get_form_service)):
+    """Recebe o vídeo, salva no filesystem e processa em background (motor Rust).
+    `activity_id` opcional (análise avulsa); `modality` hoje só 'run'."""
     if activity_id:
         _ensure_uuid(activity_id)
     data = await video.read()
     if len(data) > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Vídeo grande demais (max 300MB)")
-    return svc.create(data, video.filename or "video.mp4", activity_id)
+    return svc.create(data, video.filename or "video.mp4", activity_id, modality or "run")
 
 
 @app.get("/api/v1/form")
@@ -212,6 +228,46 @@ def form_video(analysis_id: str, svc: FormService = Depends(get_form_service)):
     if not path:
         raise HTTPException(status_code=404, detail="Vídeo não disponível")
     return FileResponse(path, media_type="video/mp4")
+
+
+@app.post("/api/v1/form/{analysis_id}/coach")
+def form_coach(analysis_id: str, request: Request,
+               form: FormService = Depends(get_form_service),
+               coach: FormCoach = Depends(get_form_coach),
+               profiles: ProfileService = Depends(get_profile_service),
+               auth: AuthService = Depends(get_auth_service)):
+    """Algoritmo Corretivo: das métricas do vídeo -> plano de correção com exercícios citados.
+    Usa o perfil do usuário logado (se houver) pra personalizar os alvos."""
+    _ensure_uuid(analysis_id)
+    row = form.get(analysis_id)
+    if row is None or row.get("metrics") is None:
+        raise HTTPException(status_code=404, detail="Análise não encontrada ou ainda sem métricas")
+    profile = None
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    try:
+        profile = profiles.get(auth.me(token)["user_id"])
+    except AuthError:
+        pass   # sem login -> alvos populacionais (degrada gracioso)
+    return {"analysis_id": analysis_id, **coach.plan(row["metrics"], profile=profile)}
+
+
+def _user_id(request: Request, auth: AuthService) -> str:
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    return _auth_call(auth.me, token)["user_id"]
+
+
+@app.get("/api/v1/profile")
+def get_profile(request: Request, auth: AuthService = Depends(get_auth_service),
+                profiles: ProfileService = Depends(get_profile_service)):
+    """Perfil do atleta logado (morfologia/hábitos). {} se ainda não preenchido."""
+    return profiles.get(_user_id(request, auth)) or {}
+
+
+@app.put("/api/v1/profile")
+def put_profile(req: ProfileRequest, request: Request,
+                auth: AuthService = Depends(get_auth_service),
+                profiles: ProfileService = Depends(get_profile_service)):
+    return profiles.upsert(_user_id(request, auth), req.model_dump())
 
 
 @app.get("/api/v1/training-load")
