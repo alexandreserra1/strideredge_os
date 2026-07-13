@@ -22,9 +22,11 @@ SYSTEM = (
     "Recebe os desvios ja medidos e EVIDENCIAS cientificas. Sua unica tarefa: listar "
     "exercicios ou ajustes praticos que corrijam esses desvios, UM POR LINHA, cada linha "
     "comecando com '- ' e terminando com a fonte entre parenteses no formato (Fonte: PMCxxxx). "
-    "Regras rigidas: NAO escreva cabecalhos nem repita os desvios; NAO use markdown; use "
-    "SOMENTE numeros que aparecem nos dados; recomende SOMENTE o que as evidencias amparam e "
-    "cite a FONTE (PMC) de cada exercicio. Se faltar evidencia para um desvio, nao invente."
+    "Regras rigidas: cada linha ataca UM dos desvios LISTADOS — se a evidencia mencionar outra "
+    "metrica que NAO esta na lista de desvios (ex: cita cadencia mas cadencia nao foi listada), "
+    "IGNORE essa parte, nao recomende sobre ela. NAO escreva cabecalhos nem repita os desvios; "
+    "NAO use markdown; use SOMENTE numeros que aparecem nos dados; recomende SOMENTE o que as "
+    "evidencias amparam e cite a FONTE (PMC) de cada exercicio. Sem evidencia p/ um desvio, nao invente."
 )
 
 

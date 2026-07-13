@@ -60,39 +60,59 @@ PLAIN = {
 }
 
 
-# tema de busca no corpus p/ cada métrica desviada (o corretivo recupera por aqui)
+# tema de busca no corpus p/ cada (metrica, LADO do desvio) — a DIRECAO importa: numa metrica
+# que erra pros dois lados (trunk_lean e `range`), "alto" e "baixo" pedem evidencia OPOSTA. Se a
+# busca fosse so por metrica, o RAG traria a evidencia de UM lado e o LLM, fiel a ela, recomendaria
+# o oposto do desvio medido — conselho invertido num app de lesao. Chave = (metrica, lado).
 CORRECTIVE_QUERY = {
-    "cadence_spm": "aumentar cadencia frequencia de passos metronomo reeducacao de marcha",
-    "ground_contact_ms": "reduzir tempo de contato com o solo pliometria rigidez elastica",
-    "vertical_oscillation_pct": "reduzir oscilacao vertical correr rasante economia de corrida",
-    "knee_contact_deg": "overstriding passada longa aterrar sob o quadril aumentar cadencia",
-    "trunk_lean_deg": "inclinacao do tronco postura patelofemoral",
-    "asymmetry_pct": "assimetria contato solo fortalecer quadril gluteo medio",
+    ("cadence_spm", "baixo"): "aumentar cadencia frequencia de passos metronomo reeducacao de marcha",
+    ("ground_contact_ms", "alto"): "reduzir tempo de contato com o solo pliometria rigidez elastica",
+    ("vertical_oscillation_pct", "alto"): "reduzir oscilacao vertical correr rasante economia de corrida",
+    ("knee_contact_deg", "alto"): "overstriding passada longa aterrar sob o quadril aumentar cadencia",
+    ("trunk_lean_deg", "baixo"): "inclinacao do tronco postura leve pra frente eficiencia",
+    ("trunk_lean_deg", "alto"): "inclinacao do tronco excessiva sobrecarga lombar postura",
+    ("asymmetry_pct", "alto"): "assimetria contato solo fortalecer quadril gluteo medio",
 }
 
 
 def diagnose(metrics: dict, targets: dict) -> list:
     """Compara o medido × alvo. Devolve desvios (fora da faixa) ordenados do pior pro
     melhor. `severity` = quão longe da faixa, normalizado pela largura (comparável entre
-    métricas de unidades diferentes)."""
+    métricas de unidades diferentes).
+
+    A DIREÇÃO do alvo (`dir`) decide o que conta como desvio — não basta "fora da faixa":
+      - higher_better (cadência): só incomoda ficar ABAIXO do piso. Passar do topo NÃO é falha
+        (cadência alta protege contra impacto); tratar o topo como teto rígido geraria conselho
+        invertido ('reduza a cadência') num app de prevenção de lesão.
+      - lower_better (contato, oscilação, joelho, assimetria): só incomoda passar do teto.
+      - range (inclinação de tronco): fora da faixa nos dois lados."""
     out = []
     for key, t in targets.items():
         v = metrics.get(key)
         if v is None:
             continue
-        lo, hi = t["lo"], t["hi"]
-        if v < lo:
+        lo, hi, direction = t["lo"], t["hi"], t["dir"]
+        if direction == "higher_better":
+            if v >= lo:
+                continue
             side, gap = "baixo", lo - v
-        elif v > hi:
+        elif direction == "lower_better":
+            if v <= hi:
+                continue
             side, gap = "alto", v - hi
-        else:
-            continue
+        else:  # range: erra pros dois lados
+            if v < lo:
+                side, gap = "baixo", lo - v
+            elif v > hi:
+                side, gap = "alto", v - hi
+            else:
+                continue
         width = max(hi - lo, 1e-6)
         out.append({
             "metric": key, "label": t["label"], "value": v, "lo": lo, "hi": hi,
             "unit": t["unit"], "side": side, "source": t["source"],
             "severity": round(gap / width, 3),
-            "query": CORRECTIVE_QUERY.get(key, t["label"]),
+            "query": CORRECTIVE_QUERY.get((key, side), t["label"]),
             "plain": PLAIN.get((key, side), ""),   # explicação em linguagem de gente
         })
     out.sort(key=lambda d: d["severity"], reverse=True)
