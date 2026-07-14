@@ -32,6 +32,20 @@ class BaseTelemetryParser(ABC):
         ...
 
 
+class BaseActivityImporter(ABC):
+    """Contrato para importar histórico de treino de uma FONTE externa (API).
+
+    Diferente do BaseTelemetryParser (que lê um ARQUIVO), o importer PUXA de uma API
+    (Strava hoje; Garmin/Polar amanhã) e persiste. Polimorfismo: trocar a fonte é criar
+    outra implementação, sem mexer em quem dispara o import (o worker da fila)."""
+
+    @abstractmethod
+    def import_history(self, user_id: str) -> dict:
+        """Baixa e ingere o histórico do usuário. Idempotente (não duplica). Roda em
+        background (fila). Devolve um resumo {imported, skipped, errors}."""
+        ...
+
+
 class BasePredictiveEngine(ABC):
     """Contrato para motores de ML / analise estatistica temporal."""
 

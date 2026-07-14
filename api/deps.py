@@ -18,6 +18,7 @@ from analytics.training_load import TrainingLoad
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
 from rag.rerank import LLMReranker, RerankedRetriever
 from rag.web_search import WebSearchRetriever
+from ingestion.strava_importer import StravaClient, StravaImporter
 
 
 # SINGLETONS: a base e o reranker são reusados entre requests pra o CACHE do reranker
@@ -70,6 +71,16 @@ def get_auth_service() -> AuthService:
 
 def get_form_service() -> FormService:
     return FormService(queue=get_job_queue())
+
+
+def get_strava_client() -> StravaClient:
+    """Cliente da API do Strava (client_id/secret do ambiente). Um por request é barato."""
+    return StravaClient()
+
+
+def get_strava_importer() -> StravaImporter:
+    """Importador do histórico do Strava (roda no worker da fila, não no request)."""
+    return StravaImporter(client=get_strava_client())
 
 
 def get_profile_service() -> ProfileService:

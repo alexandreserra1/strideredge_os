@@ -182,6 +182,36 @@ class AuthService:
             raise AuthError(401, "Token do Google inválido")
         return r.json()
 
+    def login_strava(self, code: str, client) -> dict:
+        """Login/cadastro via Strava (OAuth). Troca o `code` por token+atleta, cria/vincula a
+        conta pelo strava_athlete_id (o Strava NÃO retorna email → placeholder), guarda os
+        tokens e devolve a sessão nossa. NÃO importa histórico — isso é job de fila (o
+        controller enfileira). `client` = StravaClient (injetável → testável com fake)."""
+        data = client.exchange_code(code)
+        athlete = data["athlete"]
+        athlete_id = athlete["id"]
+        con = get_connection()
+        row = con.execute(
+            "SELECT user_id, name, email FROM auth_users WHERE strava_athlete_id = ?",
+            [athlete_id]).fetchone()
+        if row:
+            user_id, name, email = str(row[0]), row[1], row[2]
+        else:
+            user_id = str(uuid.uuid4())
+            nome = " ".join(x for x in (athlete.get("firstname"), athlete.get("lastname")) if x)
+            name = nome.strip() or f"Atleta {athlete_id}"
+            email = f"strava_{athlete_id}@strava.local"   # placeholder (Strava não dá email)
+            con.execute(
+                "INSERT INTO auth_users (user_id, name, email, strava_athlete_id) "
+                "VALUES (?, ?, ?, ?)", [user_id, name, email, athlete_id])
+        # upsert dos tokens (rotacionam; expires_at vem em epoch segundos)
+        con.execute("DELETE FROM strava_tokens WHERE user_id = ?", [user_id])
+        con.execute(
+            "INSERT INTO strava_tokens (user_id, athlete_id, access_token, refresh_token, expires_at) "
+            "VALUES (?, ?, ?, ?, to_timestamp(?))",
+            [user_id, athlete_id, data["access_token"], data["refresh_token"], data["expires_at"]])
+        return self._issue(user_id, name, email)
+
     def me(self, token: str) -> dict:
         payload = self.signer.verify(token or "")
         if not payload:

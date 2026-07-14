@@ -6,6 +6,7 @@ grandes. Concorrência = async/threadpool do FastAPI; o paralelismo mora no kern
 """
 
 import json
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -14,7 +15,7 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 from core.logging import Logger
@@ -29,8 +30,11 @@ from api.form import FormService
 from api.profile import ProfileService
 from api.services import ActivityService
 from api.deps import (get_activity_service, get_auth_service, get_coach, get_form_coach,
-                      get_form_service, get_profile_service, get_running_fitness, get_sql_agent,
-                      get_strength_sets, get_training_load)
+                      get_form_service, get_job_queue, get_profile_service, get_running_fitness,
+                      get_sql_agent, get_strava_client, get_strava_importer, get_strength_sets,
+                      get_training_load)
+from core.jobs import JobQueue
+from ingestion.strava_importer import StravaClient, StravaImporter
 
 
 class AskRequest(BaseModel):
@@ -60,10 +64,12 @@ class ProfileRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Boot da API: sobe o pool de workers da fila de jobs e recupera análises órfãs
-    (crash: linhas que ficaram 'processing' quando o servidor caiu no meio do job)."""
-    from api.deps import get_job_queue
+    """Boot da API: carrega o .env (credenciais Strava/Google), sobe o pool de workers da
+    fila de jobs e recupera análises órfãs (crash: linhas 'processing' de quando o servidor
+    caiu no meio do job)."""
     from api.form import recover_orphaned_analyses
+    from core.env import load_dotenv
+    load_dotenv()
     get_job_queue().start()
     recover_orphaned_analyses()
     yield
@@ -131,6 +137,37 @@ def auth_login(req: LoginRequest, auth: AuthService = Depends(get_auth_service))
 def auth_google(req: GoogleRequest, auth: AuthService = Depends(get_auth_service)):
     """Login/cadastro com o ID token do Google (exige GOOGLE_CLIENT_ID no ambiente)."""
     return _auth_call(auth.login_google, req.credential)
+
+
+# ---------- Login + import via Strava (OAuth) ----------
+
+STRAVA_REDIRECT = "http://localhost:8000/api/v1/auth/strava/callback"
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
+
+@app.get("/api/v1/auth/strava/connect")
+def strava_connect(client: StravaClient = Depends(get_strava_client)):
+    """Manda o usuário pro consentimento do Strava (login/cadastro)."""
+    return RedirectResponse(client.authorize_url(STRAVA_REDIRECT))
+
+
+@app.get("/api/v1/auth/strava/callback")
+def strava_callback(code: str = None, error: str = None,
+                    auth: AuthService = Depends(get_auth_service),
+                    client: StravaClient = Depends(get_strava_client),
+                    importer: StravaImporter = Depends(get_strava_importer),
+                    queue: JobQueue = Depends(get_job_queue)):
+    """Volta do Strava: cria/loga a conta e ENFILEIRA o import do histórico. A API só envia
+    pra fila — não sabe (nem espera) quem processa. Redireciona pro app já logado (token no
+    fragmento da URL, que o front lê). Histórico popula sozinho via GET /activities."""
+    if error or not code:
+        return RedirectResponse(f"{FRONTEND_URL}/?strava_error=1")
+    try:
+        session = auth.login_strava(code, client)
+    except Exception:  # noqa: BLE001 — fluxo de browser: erro vira redirect, não JSON
+        return RedirectResponse(f"{FRONTEND_URL}/?strava_error=1")
+    queue.enqueue(importer.import_history, session["user"]["user_id"])
+    return RedirectResponse(f"{FRONTEND_URL}/#strava_token={session['token']}")
 
 
 @app.get("/api/v1/auth/me")
