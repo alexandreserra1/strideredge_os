@@ -14,12 +14,12 @@ medidas por caminhos independentes — o vídeo jamais altera os dados do Garmin
 
 import json
 import subprocess
-import threading
 import uuid
 from pathlib import Path
 from typing import Optional
 
 from core.database import get_connection, PROJECT_ROOT
+from core.jobs import JobQueue
 from core.logging import Logger
 
 VIDEOS_DIR = PROJECT_ROOT / "storage" / "videos"
@@ -30,9 +30,13 @@ _log = Logger("form")
 
 
 class FormService:
-    """Ciclo de vida de uma análise de forma (criar -> processar -> consultar)."""
+    """Ciclo de vida de uma análise de forma (criar -> processar -> consultar).
 
-    def __init__(self, binary: Path = BINARY, model: Path = MODEL):
+    COMPÕE uma JobQueue (injetada): `create` só ENFILEIRA o processamento e responde
+    na hora; um worker roda `_process` depois. A API não sabe quem processa."""
+
+    def __init__(self, queue: JobQueue, binary: Path = BINARY, model: Path = MODEL):
+        self.queue = queue
         self.binary = binary
         self.model = model
 
@@ -40,7 +44,8 @@ class FormService:
 
     def create(self, video_bytes: bytes, filename: str,
                activity_id: Optional[str] = None, modality: str = "run") -> dict:
-        """Salva o upload, registra a análise e dispara o processamento em background.
+        """Salva o upload, registra a análise e ENFILEIRA o processamento (background).
+        Responde na hora com 'processing' — o usuário pode fechar a página e voltar depois.
         `modality` fica pronto p/ o futuro (Hyrox/CrossFit); hoje o motor só faz 'run'."""
         analysis_id = str(uuid.uuid4())
         adir = VIDEOS_DIR / analysis_id
@@ -53,8 +58,7 @@ class FormService:
             "INSERT INTO form_analyses (analysis_id, activity_id, status, modality) "
             "VALUES (?, ?, 'processing', ?)",
             [analysis_id, activity_id, modality])
-        threading.Thread(target=self._process, args=(analysis_id, original),
-                         daemon=True).start()
+        self.queue.enqueue(self._process, analysis_id, original)
         return {"analysis_id": analysis_id, "status": "processing"}
 
     # PATH com ffmpeg (Homebrew no macOS) pro subprocess do motor/normalização.
@@ -135,3 +139,22 @@ class FormService:
             "created_at": str(r[6]),
             "modality": r[7] if len(r) > 7 else "run",
         }
+
+
+def recover_orphaned_analyses() -> int:
+    """Recuperação de crash: análises que ficaram 'processing' (o servidor caiu/reiniciou
+    no meio do job, então o worker morreu sem terminar) viram 'failed' com aviso pra
+    reenviar. Rodado no boot da API. Devolve quantas foram recuperadas.
+
+    (Re-enfileirar o original em vez de falhar é enhancement futuro: o original só é apagado
+    no sucesso, então o arquivo ainda existe — mas falhar-e-avisar é o comportamento honesto
+    e simples pra v1.)"""
+    con = get_connection()
+    n = con.execute("SELECT COUNT(*) FROM form_analyses WHERE status = 'processing'").fetchone()[0]
+    if n:
+        con.execute(
+            "UPDATE form_analyses SET status = 'failed', "
+            "error = 'Interrompido por reinício do servidor — reenvie o vídeo.' "
+            "WHERE status = 'processing'")
+        _log.info("orphans_recovered", count=n)
+    return n

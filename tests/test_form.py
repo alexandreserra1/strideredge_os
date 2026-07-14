@@ -9,6 +9,7 @@ from api.form import FormService
 from api.main import app
 from api.deps import get_form_service
 from core.database import get_connection
+from core.jobs import JobQueue
 
 client = TestClient(app)
 
@@ -17,8 +18,21 @@ FAKE_METRICS = {"frames": 100, "fps": 30.0, "detection_rate_pct": 98.0,
                 "reliable": True, "quality_note": None}
 
 
+class InlineQueue(JobQueue):
+    """Fila síncrona pra teste: roda o job na hora (sem thread) — determinístico."""
+
+    def start(self):
+        pass
+
+    def enqueue(self, fn, *args, **kwargs):
+        fn(*args, **kwargs)
+
+
 class FakeFormService(FormService):
     """Substitui o subprocess do motor por métricas fixas (hermético)."""
+
+    def __init__(self):
+        super().__init__(queue=InlineQueue())
 
     def _process(self, analysis_id, original):
         get_connection().execute(
@@ -54,3 +68,45 @@ def test_upload_processa_e_devolve_metricas(tmp_path):
 def test_get_inexistente_404():
     assert client.get("/api/v1/form/00000000-0000-0000-0000-000000000000").status_code == 404
     assert client.get("/api/v1/form/nao-uuid").status_code == 404
+
+
+def test_create_enfileira_em_vez_de_processar_inline():
+    """create() deve ENFILEIRAR (não bloquear): com uma fila que NÃO roda o job, a análise
+    fica em 'processing' e a resposta volta na hora."""
+    import uuid as _uuid
+
+    class _NoRunQueue(JobQueue):
+        def __init__(self):
+            self.calls = []
+        def start(self):
+            pass
+        def enqueue(self, fn, *args, **kwargs):
+            self.calls.append((fn.__name__, args))   # registra, mas NÃO roda
+
+    q = _NoRunQueue()
+    svc = FormService(queue=q)
+    try:
+        out = svc.create(b"bytes", "run.mp4")
+        assert out["status"] == "processing"
+        assert q.calls and q.calls[0][0] == "_process"        # enfileirou o processamento
+        row = svc.get(out["analysis_id"])
+        assert row["status"] == "processing"                  # não rodou inline (fila não executou)
+    finally:
+        get_connection().execute("DELETE FROM form_analyses")
+
+
+def test_recover_orphaned_marca_failed():
+    """Recuperação de crash: 'processing' órfão vira 'failed' com aviso."""
+    import uuid as _uuid
+    from api.form import recover_orphaned_analyses
+
+    aid = str(_uuid.uuid4())
+    con = get_connection()
+    con.execute("INSERT INTO form_analyses (analysis_id, status, modality) VALUES (?, 'processing', 'run')", [aid])
+    try:
+        n = recover_orphaned_analyses()
+        assert n >= 1
+        row = con.execute("SELECT status, error FROM form_analyses WHERE analysis_id=?", [aid]).fetchone()
+        assert row[0] == "failed" and "reenvie" in row[1].lower()
+    finally:
+        con.execute("DELETE FROM form_analyses WHERE analysis_id=?", [aid])

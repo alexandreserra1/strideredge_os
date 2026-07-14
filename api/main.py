@@ -7,6 +7,7 @@ grandes. Concorrência = async/threadpool do FastAPI; o paralelismo mora no kern
 
 import json
 import time
+from contextlib import asynccontextmanager
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -57,7 +58,18 @@ class ProfileRequest(BaseModel):
     years_running: Optional[float] = None
     goal: Optional[str] = None
 
-app = FastAPI(title="StriderEdge OS API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Boot da API: sobe o pool de workers da fila de jobs e recupera análises órfãs
+    (crash: linhas que ficaram 'processing' quando o servidor caiu no meio do job)."""
+    from api.deps import get_job_queue
+    from api.form import recover_orphaned_analyses
+    get_job_queue().start()
+    recover_orphaned_analyses()
+    yield
+
+
+app = FastAPI(title="StriderEdge OS API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # compacta payloads grandes (telemetria)
 app.add_middleware(
     CORSMiddleware,

@@ -4,6 +4,7 @@ Centraliza a construção dos serviços. Nos testes, sobrescrevemos via
 app.dependency_overrides para injetar fakes (ex: LLM falso) sem tocar o Ollama.
 """
 
+from core.jobs import JobQueue, LocalJobQueue
 from analytics.strength import StrengthSets
 from analytics.form_coach import FormCoach
 from api.auth import AuthService
@@ -24,6 +25,16 @@ from rag.web_search import WebSearchRetriever
 # (o KB abre a conexao DuckDB por consulta; o reranker só guarda o cache em memória).
 _KB = None
 _RERANKER = None
+_JOB_QUEUE = None
+
+
+def get_job_queue() -> JobQueue:
+    """Fila de jobs em background (singleton). Impl leve in-process hoje; troca por Celery
+    na Fase F sem mexer em quem enfileira. Iniciada no startup da API (main.py)."""
+    global _JOB_QUEUE
+    if _JOB_QUEUE is None:
+        _JOB_QUEUE = LocalJobQueue(workers=2)
+    return _JOB_QUEUE
 
 
 def _knowledge_base() -> KnowledgeBase:
@@ -58,7 +69,7 @@ def get_auth_service() -> AuthService:
 
 
 def get_form_service() -> FormService:
-    return FormService()
+    return FormService(queue=get_job_queue())
 
 
 def get_profile_service() -> ProfileService:
