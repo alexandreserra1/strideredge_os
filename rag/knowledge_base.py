@@ -185,8 +185,7 @@ def load_corpus(path: Path) -> List[Tuple[str, str]]:
 
 if __name__ == "__main__":
     # (Re)indexa o corpus com Contextual Retrieval. Rode apos editar fontes em rag/sources/.
-    # Import local (nao no topo): analytics.coach ja importa rag.knowledge_base (circular).
-    from analytics.coach import OllamaClient
+    from analytics.llm import OllamaClient
 
     KNOWLEDGE_DB.unlink(missing_ok=True)  # reseta: schema pode ter mudado (search_text)
     kb = KnowledgeBase(embedder=OllamaEmbedder())

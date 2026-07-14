@@ -1,12 +1,11 @@
 """api/main.py — Gateway REST do StriderEdge OS (FastAPI).
 
-Endpoints FINOS (controllers): validam entrada e delegam às classes de serviço
-(`ActivityService`, `Coach`) injetadas via Depends. REST + gzip nas respostas
-grandes. Concorrência = async/threadpool do FastAPI; o paralelismo mora no kernel Rust.
+App focado em ANÁLISE DE FORMA POR VÍDEO (prevenção de lesão): auth, upload/consulta de
+análise de forma e o plano corretivo citado. Controllers FINOS: validam entrada e delegam
+às classes de serviço injetadas via Depends. Processamento pesado (motor de visão) roda em
+background pela fila de jobs — o request só enfileira e responde na hora.
 """
 
-import json
-import os
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -15,30 +14,16 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from core.logging import Logger
-from analytics.coach import Coach
-from analytics.fitness import RunningFitness
-from analytics.sql_agent import SqlAgent
-from analytics.strength import StrengthSets
-from analytics.training_load import TrainingLoad
 from analytics.form_coach import FormCoach
 from api.auth import AuthError, AuthService
 from api.form import FormService
 from api.profile import ProfileService
-from api.services import ActivityService
-from api.deps import (get_activity_service, get_auth_service, get_coach, get_form_coach,
-                      get_form_service, get_job_queue, get_profile_service, get_running_fitness,
-                      get_sql_agent, get_strava_client, get_strava_importer, get_strength_sets,
-                      get_training_load)
-from core.jobs import JobQueue
-from ingestion.strava_importer import StravaClient, StravaImporter
-
-
-class AskRequest(BaseModel):
-    question: str
+from api.deps import (get_auth_service, get_form_coach, get_form_service, get_job_queue,
+                      get_profile_service)
 
 
 class RegisterRequest(BaseModel):
@@ -62,11 +47,12 @@ class ProfileRequest(BaseModel):
     years_running: Optional[float] = None
     goal: Optional[str] = None
 
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Boot da API: carrega o .env (credenciais Strava/Google), sobe o pool de workers da
-    fila de jobs e recupera análises órfãs (crash: linhas 'processing' de quando o servidor
-    caiu no meio do job)."""
+    """Boot da API: carrega o .env (credenciais Google), sobe o pool de workers da fila de
+    jobs e recupera análises órfãs (crash: linhas 'processing' de quando o servidor caiu no
+    meio do job de vídeo)."""
     from api.form import recover_orphaned_analyses
     from core.env import load_dotenv
     load_dotenv()
@@ -75,8 +61,8 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="StriderEdge OS API", version="1.0.0", lifespan=lifespan)
-app.add_middleware(GZipMiddleware, minimum_size=1000)  # compacta payloads grandes (telemetria)
+app = FastAPI(title="StriderEdge OS API", version="2.0.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # compacta respostas grandes (métricas)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -87,7 +73,7 @@ app.add_middleware(
 
 _log = Logger("api")
 
-# Declara a config efetiva no boot (ambiente + flags de IA) — observabilidade.
+# Declara a config efetiva no boot (ambiente) — observabilidade.
 from core.config import summary as _config_summary  # noqa: E402
 _log.info("boot", **_config_summary())
 
@@ -104,12 +90,12 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-def _ensure_uuid(activity_id: str) -> None:
+def _ensure_uuid(value: str) -> None:
     """String que não é UUID = 404 (não 500)."""
     try:
-        UUID(activity_id)
+        UUID(value)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Atividade não encontrada")
+        raise HTTPException(status_code=404, detail="Não encontrado")
 
 
 # ---------- Auth (contas) ----------
@@ -124,7 +110,7 @@ def _auth_call(fn, *args):
 
 @app.post("/api/v1/auth/register", status_code=201)
 def auth_register(req: RegisterRequest, auth: AuthService = Depends(get_auth_service)):
-    """Cadastro único por e-mail; senha vira scrypt+salt (nunca em claro)."""
+    """Cadastro único por e-mail; senha vira PBKDF2+salt (nunca em claro)."""
     return _auth_call(auth.register, req.name, req.email, req.password)
 
 
@@ -139,125 +125,29 @@ def auth_google(req: GoogleRequest, auth: AuthService = Depends(get_auth_service
     return _auth_call(auth.login_google, req.credential)
 
 
-# ---------- Login + import via Strava (OAuth) ----------
-
-STRAVA_REDIRECT = "http://localhost:8000/api/v1/auth/strava/callback"
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-
-
-@app.get("/api/v1/auth/strava/connect")
-def strava_connect(client: StravaClient = Depends(get_strava_client)):
-    """Manda o usuário pro consentimento do Strava (login/cadastro)."""
-    return RedirectResponse(client.authorize_url(STRAVA_REDIRECT))
-
-
-@app.get("/api/v1/auth/strava/callback")
-def strava_callback(code: str = None, error: str = None,
-                    auth: AuthService = Depends(get_auth_service),
-                    client: StravaClient = Depends(get_strava_client),
-                    importer: StravaImporter = Depends(get_strava_importer),
-                    queue: JobQueue = Depends(get_job_queue)):
-    """Volta do Strava: cria/loga a conta e ENFILEIRA o import do histórico. A API só envia
-    pra fila — não sabe (nem espera) quem processa. Redireciona pro app já logado (token no
-    fragmento da URL, que o front lê). Histórico popula sozinho via GET /activities."""
-    if error or not code:
-        return RedirectResponse(f"{FRONTEND_URL}/?strava_error=1")
-    try:
-        session = auth.login_strava(code, client)
-    except Exception:  # noqa: BLE001 — fluxo de browser: erro vira redirect, não JSON
-        return RedirectResponse(f"{FRONTEND_URL}/?strava_error=1")
-    queue.enqueue(importer.import_history, session["user"]["user_id"])
-    return RedirectResponse(f"{FRONTEND_URL}/#strava_token={session['token']}")
-
-
 @app.get("/api/v1/auth/me")
 def auth_me(request: Request, auth: AuthService = Depends(get_auth_service)):
     token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
     return _auth_call(auth.me, token)
 
 
-@app.get("/api/v1/activities")
-def list_activities(svc: ActivityService = Depends(get_activity_service)):
-    return svc.list()
-
-
-@app.get("/api/v1/activities/{activity_id}")
-def activity_detail(activity_id: str, svc: ActivityService = Depends(get_activity_service)):
-    _ensure_uuid(activity_id)
-    detail = svc.detail(activity_id)
-    if detail is None:
-        raise HTTPException(status_code=404, detail="Atividade não encontrada")
-    return detail
-
-
-@app.get("/api/v1/activities/{activity_id}/track")
-def activity_track(activity_id: str, svc: ActivityService = Depends(get_activity_service)):
-    _ensure_uuid(activity_id)
-    return svc.track(activity_id)
-
-
-@app.get("/api/v1/activities/{activity_id}/telemetry")
-def activity_telemetry(activity_id: str, svc: ActivityService = Depends(get_activity_service)):
-    _ensure_uuid(activity_id)
-    return svc.telemetry(activity_id)
-
-
-@app.get("/api/v1/activities/{activity_id}/sets")
-def activity_sets(activity_id: str, strength: StrengthSets = Depends(get_strength_sets)):
-    """Séries de força + músculos trabalhados (vazio fora do modo Força — gracioso)."""
-    _ensure_uuid(activity_id)
-    return {"activity_id": activity_id, **strength.summary(activity_id)}
-
-
-@app.get("/api/v1/activities/{activity_id}/cadence-spectrum")
-def activity_spectrum(activity_id: str, svc: ActivityService = Depends(get_activity_service)):
-    _ensure_uuid(activity_id)
-    return svc.spectrum(activity_id)
-
-
-@app.post("/api/v1/activities/{activity_id}/coach")
-def coach_verdict(activity_id: str, force: bool = False, coach: Coach = Depends(get_coach)):
-    """Veredito estruturado COM cache (idempotente: repetir devolve o persistido).
-    ?force=true regenera. Resposta inclui cached: bool."""
-    _ensure_uuid(activity_id)
-    return {"activity_id": activity_id, **coach.cached_verdict(activity_id, force=force)}
-
-
-@app.get("/api/v1/activities/{activity_id}/coach/stream")
-def coach_verdict_stream(activity_id: str, force: bool = False, coach: Coach = Depends(get_coach)):
-    """Veredito em STREAMING (SSE): 'token' conforme o LLM gera; 'correcting'/'replace' se a
-    guarda de aterramento reprovar; 'done' com o estruturado (persistido). Cache -> 'done' direto."""
-    _ensure_uuid(activity_id)
-
-    def sse():
-        for event, payload in coach.stream_verdict(activity_id, force=force):
-            data = {"text": payload} if isinstance(payload, str) else payload
-            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(sse(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-
-# ---------- Análise de Forma (stride-vision) ----------
+# ---------- Análise de Forma por vídeo (stride-vision) ----------
 
 @app.post("/api/v1/form", status_code=201)
-async def form_upload(video: UploadFile = File(...), activity_id: str = Form(None),
-                      modality: str = Form("run"), svc: FormService = Depends(get_form_service)):
-    """Recebe o vídeo, salva no filesystem e processa em background (motor Rust).
-    `activity_id` opcional (análise avulsa); `modality` hoje só 'run'."""
-    if activity_id:
-        _ensure_uuid(activity_id)
+async def form_upload(video: UploadFile = File(...), modality: str = Form("run"),
+                      svc: FormService = Depends(get_form_service)):
+    """Recebe o vídeo, salva no filesystem e ENFILEIRA o processamento (motor Rust em
+    background). Responde 'processing' na hora — o usuário pode fechar a página e voltar.
+    `modality` hoje só 'run' (Hyrox/CrossFit no roteiro)."""
     data = await video.read()
     if len(data) > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Vídeo grande demais (max 300MB)")
-    return svc.create(data, video.filename or "video.mp4", activity_id, modality or "run")
+    return svc.create(data, video.filename or "video.mp4", None, modality or "run")
 
 
 @app.get("/api/v1/form")
-def form_list(activity_id: str = None, svc: FormService = Depends(get_form_service)):
-    if activity_id:
-        _ensure_uuid(activity_id)
-    return svc.list(activity_id)
+def form_list(svc: FormService = Depends(get_form_service)):
+    return svc.list()
 
 
 @app.get("/api/v1/form/{analysis_id}")
@@ -300,6 +190,8 @@ def form_coach(analysis_id: str, request: Request,
     return {"analysis_id": analysis_id, **coach.plan(row["metrics"], profile=profile)}
 
 
+# ---------- Perfil do atleta (personaliza os alvos biomecânicos) ----------
+
 def _user_id(request: Request, auth: AuthService) -> str:
     token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
     return _auth_call(auth.me, token)["user_id"]
@@ -317,22 +209,3 @@ def put_profile(req: ProfileRequest, request: Request,
                 auth: AuthService = Depends(get_auth_service),
                 profiles: ProfileService = Depends(get_profile_service)):
     return profiles.upsert(_user_id(request, auth), req.model_dump())
-
-
-@app.get("/api/v1/training-load")
-def training_load(tl: TrainingLoad = Depends(get_training_load)):
-    """Linha do tempo de carga + ACWR (com portão de confiança) — nível atleta."""
-    return tl.acwr_timeline()
-
-
-@app.get("/api/v1/fitness")
-def fitness(rf: RunningFitness = Depends(get_running_fitness)):
-    """Previsão de prova (Riegel) + tendência de fitness — nível atleta."""
-    return rf.summary()
-
-
-@app.post("/api/v1/ask")
-def ask(req: AskRequest, agent: SqlAgent = Depends(get_sql_agent)):
-    """Coach agêntico: pergunta em linguagem natural → SQL → resposta."""
-    result = agent.answer(req.question)
-    return {"question": req.question, **result}

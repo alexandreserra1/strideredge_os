@@ -1,7 +1,7 @@
-"""Testes herméticos do harness de avaliação (sem Ollama) — a ferramenta de medir
+"""Testes herméticos do harness de avaliação do RAG (sem Ollama) — a ferramenta de medir
 tem que ser confiável antes de confiarmos no boletim que ela produz."""
 
-from analytics.coach_eval import CoachEvaluator, Benchmark, LLMJudge, GOLDEN_RETRIEVAL
+from analytics.rag_eval import RagBenchmark, LLMJudge, GOLDEN_RETRIEVAL
 
 
 class _FakeLLM:
@@ -15,34 +15,15 @@ class _FakeLLM:
 def test_llmjudge_parse_json_com_texto_em_volta():
     # LLM costuma cercar o JSON de texto — o parser tem que extrair mesmo assim
     judge = LLMJudge(_FakeLLM('Claro!\n{"acionabilidade": 0.8, "aterramento": 0.5, '
-                              '"justificativa": "extrapolou desidratacao"}\nFim.'))
+                              '"relevancia": 0.6, "justificativa": "extrapolou desidratacao"}\nFim.'))
     r = judge.judge("fatos", "veredito")
-    assert r["acionabilidade"] == 0.8 and r["aterramento"] == 0.5
+    assert r["acionabilidade"] == 0.8 and r["aterramento"] == 0.5 and r["relevancia"] == 0.6
     assert "desidrata" in r["justificativa"]
 
 
 def test_llmjudge_resposta_invalida_nao_quebra():
     r = LLMJudge(_FakeLLM("desculpe, nao consigo")).judge("f", "v")
-    assert r["acionabilidade"] is None and r["aterramento"] is None
-
-
-def test_numeric_fidelity_pega_numero_inventado():
-    ev = CoachEvaluator(coach=None)  # scoring é puro, não usa o coach
-    # 5.5 está no prompt, 9.9 não -> metade suportada (pega conta/numero inventado)
-    assert ev.numeric_fidelity("pace 5.5 e carga 9.9", "seu pace foi 5.5") == 0.5
-    assert ev.numeric_fidelity("sem numeros", "prompt 5.5") == 1.0
-
-
-def test_numeric_fidelity_virgula_decimal_pt():
-    ev = CoachEvaluator(coach=None)
-    # veredito em PT (virgula) vs prompt com ponto: deve casar -> 1.0 (sem falso negativo)
-    assert ev.numeric_fidelity("desacoplamento de 2,9% e ACWR 0,96", "decoupling 2.9 acwr 0.96") == 1.0
-
-
-def test_citation_validity():
-    ev = CoachEvaluator(coach=None)
-    assert ev.citation_validity("fontes PMC123 e PMC999", "evidencia PMC123") == 0.5
-    assert ev.citation_validity("sem citacao", "PMC123") == 1.0
+    assert r["acionabilidade"] is None and r["aterramento"] is None and r["relevancia"] is None
 
 
 class _FakeKB:
@@ -54,16 +35,19 @@ class _FakeKB:
         return [{"source": src}] if src else []
 
 
-class _FakeCoach:
-    def __init__(self, kb):
-        self.knowledge = kb
-
-
 def test_benchmark_retrieval_report():
     first_q, first_src = GOLDEN_RETRIEVAL[0]
-    bench = Benchmark(_FakeCoach(_FakeKB({first_q: first_src})))  # acerta só o 1º caso
+    bench = RagBenchmark(_FakeKB({first_q: first_src}))   # acerta só o 1º caso
     rep = bench.retrieval_report()
     assert rep["hits"] == 1 and rep["total"] == len(GOLDEN_RETRIEVAL)
-    assert rep["offtopic_rejected"] is True  # off-topic não mapeado -> []
+    assert rep["offtopic_rejected"] is True               # off-topic não mapeado -> []
     assert rep["hit_rate"] == round(1 / len(GOLDEN_RETRIEVAL), 3)
     assert len(rep["misses"]) == len(GOLDEN_RETRIEVAL) - 1
+
+
+def test_benchmark_context_precision():
+    first_q, first_src = GOLDEN_RETRIEVAL[0]
+    bench = RagBenchmark(_FakeKB({first_q: first_src}))
+    rep = bench.context_precision(k=2)
+    assert 0.0 <= rep["context_precision"] <= 1.0
+    assert len(rep["per_query"]) == len(GOLDEN_RETRIEVAL)

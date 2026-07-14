@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
-from analytics.coach_eval import GOLDEN_RETRIEVAL, OFFTOPIC_QUERY, Benchmark
+from analytics.rag_eval import GOLDEN_RETRIEVAL, OFFTOPIC_QUERY, RagBenchmark
 
 
 def _ollama_up() -> bool:
@@ -23,7 +23,7 @@ def _ollama_up() -> bool:
 pytestmark = pytest.mark.skipif(not _ollama_up(), reason="Ollama não está rodando")
 
 
-# Casos-ouro centralizados em analytics.coach_eval (mesma fonte do Benchmark — sem duplicar).
+# Casos-ouro centralizados em analytics.rag_eval (mesma fonte do RagBenchmark — sem duplicar).
 CASES = GOLDEN_RETRIEVAL
 
 
@@ -46,8 +46,6 @@ def test_offtopic_returns_nothing(kb):
 
 
 def test_context_precision_dentro_dos_limites(kb):
-    # Benchmark so usa coach.knowledge -> stub minimo em vez de montar um Coach real
-    fake_coach = type("FakeCoach", (), {"knowledge": kb})()
-    report = Benchmark(fake_coach).context_precision(k=2)
+    report = RagBenchmark(kb).context_precision(k=2)
     assert 0.0 <= report["context_precision"] <= 1.0
     assert len(report["per_query"]) == len(GOLDEN_RETRIEVAL)

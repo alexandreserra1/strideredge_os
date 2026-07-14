@@ -1,76 +1,13 @@
 """core/framework/interfaces.py — contratos abstratos (OOP framework).
 
-Define O QUE cada componente deve fazer, sem dizer COMO. Implementacoes
-concretas herdam destas classes. Isso mantem o sistema extensivel: novos
-formatos de arquivo ou novos modelos preditivos so precisam cumprir o contrato.
+Define O QUE cada componente deve fazer, sem dizer COMO. Implementacoes concretas herdam
+destas classes → polimorfismo: trocar a implementacao sem mexer no resto. Os 4 contratos do
+nucleo de IA de forma: LLM (cerebro), Embedder (texto→vetor), Retriever (RAG) e Guard (guarda
+de aterramento anti-alucinacao).
 """
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, List, Optional
-
-import polars as pl
-
-
-class BaseTelemetryParser(ABC):
-    """Contrato para extrair telemetria de um arquivo bruto.
-
-    Para suportar .GPX, .TCX ou sensores IoT no futuro, basta criar uma nova
-    classe que herde desta e implemente os dois metodos abstratos.
-    """
-
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-
-    @abstractmethod
-    def validate_file(self) -> bool:
-        """Valida integridade estrutural e headers do arquivo bruto."""
-        ...
-
-    @abstractmethod
-    def to_dataframe(self) -> pl.DataFrame:
-        """Extrai os registros e devolve um DataFrame Polars padronizado."""
-        ...
-
-
-class BaseActivityImporter(ABC):
-    """Contrato para importar histórico de treino de uma FONTE externa (API).
-
-    Diferente do BaseTelemetryParser (que lê um ARQUIVO), o importer PUXA de uma API
-    (Strava hoje; Garmin/Polar amanhã) e persiste. Polimorfismo: trocar a fonte é criar
-    outra implementação, sem mexer em quem dispara o import (o worker da fila)."""
-
-    @abstractmethod
-    def import_history(self, user_id: str) -> dict:
-        """Baixa e ingere o histórico do usuário. Idempotente (não duplica). Roda em
-        background (fila). Devolve um resumo {imported, skipped, errors}."""
-        ...
-
-
-class BasePredictiveEngine(ABC):
-    """Contrato para motores de ML / analise estatistica temporal."""
-
-    def __init__(self, model_path: str):
-        self.model_path = model_path
-        self.model = self._load_model()
-
-    @abstractmethod
-    def _load_model(self) -> Any:
-        """Carrega o artefato binario do modelo treinado."""
-        ...
-
-    @abstractmethod
-    def predict_anomalies(self, data: pl.DataFrame) -> List[Dict[str, Any]]:
-        """Procura anomalias mecanicas no DataFrame de telemetria."""
-        ...
-
-
-class BaseIntelligenceNotifier(ABC):
-    """Contrato para envio dos relatorios gerados pela IA (Coach Sintetico)."""
-
-    @abstractmethod
-    def dispatch_report(self, user_id: str, payload: Dict[str, Any]) -> bool:
-        """Envia os insights consolidados ao destino final (terminal, etc)."""
-        ...
 
 
 class BaseLLMClient(ABC):
@@ -95,7 +32,7 @@ class BaseLLMClient(ABC):
 class BaseEmbedder(ABC):
     """Contrato para transformar texto em vetor (embedding) para busca semantica.
 
-    POLIMORFISMO: trocar o modelo de embedding (nomic local, outro) sem mexer em
+    POLIMORFISMO: trocar o modelo de embedding (bge-m3 local, outro) sem mexer em
     quem usa. Textos com sentido parecido viram vetores proximos.
     """
 
@@ -129,8 +66,8 @@ class BaseRetriever(ABC):
 class BaseGuard(ABC):
     """Contrato para uma GUARDA de qualidade sobre a saida do LLM (ex: aterramento).
 
-    POLIMORFISMO: trocar a politica (mais/menos rigida, ou outra dimensao) sem mexer no
-    Coach, que apenas COMPOE uma guarda e chama enforce(). Padrao template-method: a base
+    POLIMORFISMO: trocar a politica (mais/menos rigida, ou outra dimensao) sem mexer em
+    quem usa, que apenas COMPOE uma guarda e chama enforce(). Padrao template-method: a base
     define o loop de regeneracao; a subclasse define O QUE e problema (issues) e COMO
     corrigir (_correction).
     """
@@ -165,80 +102,3 @@ class BaseGuard(ABC):
     def _correction(self, issues: Dict[str, list]) -> str:
         """Mensagem de correcao para a regeneracao (subclasse sobrescreve)."""
         return "CORRECAO: ajuste a resposta para remover os problemas detectados."
-
-
-class BaseCueRule(ABC):
-    """Regra de coaching em TEMPO REAL (Strategy). Olha a janela recente + o alvo e talvez
-    devolve a mensagem de um aviso. O cooldown (nao repetir o mesmo aviso a cada tick) e
-    tratado aqui (template-method); a subclasse so implementa _check (a condicao).
-
-    POLIMORFISMO: adicionar uma regra nova = nova subclasse, sem mexer no motor (RealtimeCoach).
-    """
-
-    kind: str = "cue"          # categoria do aviso ("pace", "hr", "cadence")
-    priority: int = 1          # seguranca (FC) > pace > cadencia
-    sustain_s: float = 8.0     # o problema precisa PERSISTIR isso antes de avisar (ignora blip)
-    cooldown_s: float = 180.0  # re-lembrete do MESMO problema so apos isso (evita tagarelar)
-
-    def __init__(self):
-        self._pending_msg: Optional[str] = None    # problema observado agora (ainda nao falado)
-        self._pending_since: Optional[float] = None
-        self._spoken_msg: Optional[str] = None      # ultimo problema FALADO
-        self._last_fire: Optional[float] = None
-
-    @abstractmethod
-    def _check(self, window: Any, target: Any) -> Optional[str]:
-        """Devolve a MENSAGEM do aviso se a condicao bate; senao None (tudo certo)."""
-        ...
-
-    def evaluate(self, window: Any, target: Any, now: float) -> Optional[str]:
-        """Fala como gente: so avisa se o problema (a) PERSISTIU (sustain), e (b) e NOVO vs. o
-        ultimo falado OU ja passou o cooldown de re-lembrete. Devolve a mensagem ou None."""
-        msg = self._check(window, target)
-        if msg is None:                       # voltou ao normal: zera (proximo problema fala de novo)
-            self._pending_msg = self._pending_since = self._spoken_msg = None
-            return None
-        if msg != self._pending_msg:          # problema novo/mudou -> reinicia o relogio de sustentacao
-            self._pending_msg, self._pending_since = msg, now
-        if now - self._pending_since < self.sustain_s:
-            return None                        # ainda nao persistiu o bastante
-        new_problem = msg != self._spoken_msg
-        cooldown_ok = self._last_fire is None or now - self._last_fire >= self.cooldown_s
-        if new_problem or cooldown_ok:
-            self._spoken_msg, self._last_fire = msg, now
-            return msg
-        return None
-
-
-class BaseAnnouncer(ABC):
-    """Entrega um aviso ao atleta. POLIMORFISMO: trocar o canal (voz no Mac, TTS do celular,
-    log silencioso nos testes) sem mexer no motor."""
-
-    @abstractmethod
-    def announce(self, cue: Any) -> None:
-        """Fala/registra o Cue."""
-        ...
-
-
-class BaseAnalyzer(ABC):
-    """Contrato para uma analise de UM treino (ponto de quebra, eficiencia, zonas...).
-
-    Permite ao Coach reunir metricas de varios analisadores de forma POLIMORFICA:
-    adicionar uma analise nova = criar uma subclasse, sem mexer no Coach
-    (principio aberto/fechado).
-    """
-
-    label: str = "analise"   # nome legivel da analise
-    # Modalidades onde a analise faz sentido (None = todas). Analises de corrida
-    # (pace/cadencia/terreno) marcam {"RUN"} — treino de forca nao ganha conselho de passada.
-    types = None
-
-    @abstractmethod
-    def analyze(self, activity_id: str) -> dict:
-        """Calcula a metrica e devolve o resultado bruto (dict)."""
-        ...
-
-    @abstractmethod
-    def to_prompt(self, result: dict) -> Optional[str]:
-        """Resume o resultado numa linha para o prompt do LLM (ou None se nada relevante)."""
-        ...
