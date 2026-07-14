@@ -35,7 +35,7 @@ const TESTIMONIALS = [
   { name: 'Rafael T.', role: 'Atleta de HYROX', photo: '/avatars/av4.jpg',
     quote: 'Ver meu esqueleto correndo é surreal. Entendi minha biomecânica sem ir num laboratório caro.' },
   { name: 'Beatriz L.', role: 'Corredora de rua', photo: '/avatars/av3.jpg',
-    quote: 'A prontidão diária me segurou de treinar forte num dia que meu corpo pedia descanso. Zero lesão desde então.' },
+    quote: 'Descobri uma assimetria que nem sentia. Corrigi com os exercícios do plano e parei de forçar um lado só.' },
   { name: 'Lucas M.', role: 'Dev que corre', photo: '/avatars/av6.jpg',
     quote: 'Privacidade de verdade: meus dados não saem do meu computador. Isso pra mim vale ouro.' },
 ]
@@ -96,12 +96,12 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
               A IA que <span className="text-brand">enxerga</span><br />a sua corrida
             </h1>
             <p className="mt-6 text-lg md:text-xl text-white/80 max-w-xl text-balance drop-shadow">
-              Do relógio ao vídeo: analisamos cada passada, achamos a causa-raiz e devolvemos um
-              plano com base científica. 100% no seu aparelho.
+              Você filma correndo. A IA vê sua biomecânica, acha a causa-raiz e devolve um plano
+              corretivo com base científica — pra agir antes que a dor vire lesão. 100% no seu aparelho.
             </p>
             <div className="flex flex-wrap gap-3 mt-9">
-              <button onClick={() => onNavigate('dashboard')} className="btn-primary text-base px-8 py-4">
-                Começar grátis <ArrowRight size={18} />
+              <button onClick={() => onNavigate('video')} className="btn-primary text-base px-8 py-4">
+                Analisar minha corrida <ArrowRight size={18} />
               </button>
               <button className="inline-flex items-center gap-2 rounded-xl font-semibold px-8 py-4 text-base text-white border border-white/40 hover:bg-white/10 transition-colors">
                 <Play size={18} /> Ver demo
@@ -116,10 +116,10 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">Como funciona</h2>
         <div className="space-y-6">
           {[
-            { step: '01', title: 'Conecte', desc: 'Traga os treinos do seu relógio em um clique. Tudo fica com você — nada vai pra nuvem.' },
-            { step: '02', title: 'A gente disseca', desc: 'Cada segundo do treino vira leitura: passada, coração, subidas, fadiga. Sem planilha, sem esforço.' },
-            { step: '03', title: 'Receba o veredito', desc: 'O que foi bem, o que travou e exatamente o que fazer no próximo treino — direto ao ponto.' },
-            { step: '04', title: 'Evolua com segurança', desc: 'Prontidão diária e previsões de prova guiam o ritmo: forte na hora certa, descanso antes da lesão.' },
+            { step: '01', title: 'Filme', desc: 'Grave 20–30s correndo de lado, com o celular. Só isso — nada de relógio, sensor ou nuvem.' },
+            { step: '02', title: 'A IA vê', desc: 'A visão computacional rastreia suas articulações e mede a biomecânica: cadência, pisada, ângulos, contato e voo — no seu aparelho.' },
+            { step: '03', title: 'Entenda a causa-raiz', desc: 'O que está fora do ideal pra VOCÊ e por quê — em linguagem de gente, com a fonte científica de cada apontamento.' },
+            { step: '04', title: 'Corrija antes da lesão', desc: 'Um plano com exercícios específicos pros seus desvios, cada um amparado por pesquisa. Refilme e acompanhe a evolução.' },
           ].map(({ step, title, desc }) => (
             <div key={step} className="flex items-start gap-4 p-4">
               <span className="text-2xl font-black text-brand shrink-0 w-10">{step}</span>
@@ -173,10 +173,10 @@ export default function Landing({ onNavigate }: { onNavigate: (r: string) => voi
       {/* CTA */}
       <section className="max-w-3xl mx-auto px-4 py-16 text-center">
         <div className="card-hover p-10 border-brand/10">
-          <h2 className="text-2xl md:text-3xl font-bold mb-4">Pronto pra correr?</h2>
-          <p className="text-text-muted mb-8">Seus dados, seu coach, sua evolução. Sem assinatura obrigatória.</p>
-          <button onClick={() => onNavigate('dashboard')} className="btn-primary text-base px-10 py-4">
-            Começar agora <ArrowRight size={18} />
+          <h2 className="text-2xl md:text-3xl font-bold mb-4">Pronto pra ver sua corrida?</h2>
+          <p className="text-text-muted mb-8">Um vídeo, seu coach de IA, sua evolução sem lesão. 100% no seu aparelho.</p>
+          <button onClick={() => onNavigate('video')} className="btn-primary text-base px-10 py-4">
+            Analisar minha corrida <ArrowRight size={18} />
           </button>
         </div>
       </section>

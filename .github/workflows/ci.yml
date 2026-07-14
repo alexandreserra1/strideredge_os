@@ -16,15 +16,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install (build do kernel Rust + deps)
+      - name: Install (Python puro — o motor de visão é crate Rust standalone, não entra aqui)
         run: |
           python -m pip install --upgrade pip
           pip install ".[dev]"
 
-      # Os testes Ollama-gated e E2E pulam sozinhos (sem servidor/LLM no CI).
-      # O banco é semeado em memória pela conftest (hermético) — não precisa de .FIT.
+      # Os testes Ollama-gated pulam sozinhos (sem LLM no CI). O banco é temporário/hermético
+      # (conftest) e os testes de visão usam fakes — não precisa do motor Rust nem de vídeo.
       - name: Testes
-        run: pytest -q
+        run: pytest -q -k "not e2e"

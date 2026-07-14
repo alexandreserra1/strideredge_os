@@ -1,3 +1,12 @@
+> ⚠️ **PIVOT (jul/2026) — ler antes:** o app foi refocado APENAS em **análise de forma por vídeo
+> (visão computacional pra prevenção de lesão)**. Toda a stack `.FIT`/telemetria/Garmin/Strava
+> (ingestão, DuckDB star schema, kernel Rust Kalman/DTW/FFT, coach de treino, ACWR, previsão de
+> prova, text-to-SQL, dashboards) foi **removida** (recuperável na tag git `archive/fit-full-app`).
+> Muitas seções abaixo descrevem essa arquitetura antiga e são **HISTÓRICAS** — valem como registro
+> de decisões, não como o estado atual. O que SEGUE valendo: §6.5 (análise de movimento por vídeo),
+> o RAG, a fila de jobs (§9.2), a fronteira de isolamento vira moot (só resta a fonte vídeo).
+> Fonte de verdade do estado atual: `CLAUDE.md` e `README.md`.
+
 # StriderEdge OS - Documentação Oficial de Engenharia e System Design
 
 Bem-vindo à documentação oficial do **StriderEdge OS**. Este documento serve como o blueprint arquitetural definitivo para o desenvolvimento do nosso ecossistema de biotelemetria e analytics esportivo de alta performance.

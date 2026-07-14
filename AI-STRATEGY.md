@@ -1,9 +1,14 @@
-# StriderEdge — Estratégia de IA (roteiro AI/data-first)
+# StriderEdge — Estratégia de IA (roteiro AI-first)
 
-Como transformar o StriderEdge num app **data & AI-first** de verdade, aproveitando o que já
-temos (Qwen local + RAG + DuckDB + biomecânica por vídeo). Baseado em pesquisa de práticas de
-produção e nos apps correlatos. Também serve ao objetivo de carreira **SWE GenAI** (RAG avançado,
-evals, agentes, fine-tuning, guardrails — tudo transferível).
+> ⚠️ **Pós-pivot (jul/2026):** o app é 100% **visão computacional pra prevenção de lesão**. O
+> text-to-SQL e o coach de treino (`.FIT`) saíram; o RAG e os evals **ficam** (aterram o plano
+> corretivo do vídeo). O roteiro AI/ML abaixo vale, reorientado pro eixo VÍDEO: pose melhor
+> (RTMPose → pisada/pronação reais), **modelo de risco de lesão** (biomecânica → score, aterrado
+> na literatura), forma ao longo do tempo (deriva = fadiga/risco), evals RAGAS de tudo isso.
+
+Como aprofundar a IA do StriderEdge, aproveitando o que já temos (Qwen local + RAG citável +
+biomecânica por vídeo). Serve ao objetivo de carreira **SWE GenAI** (RAG avançado, evals,
+guardrails, visão computacional, ML clássico — tudo transferível).
 
 ## Onde estamos (base)
 - LLM local (Ollama/Qwen) + embeddings (bge-m3) + **RAG citável** (corpus de ~37 estudos reais).
