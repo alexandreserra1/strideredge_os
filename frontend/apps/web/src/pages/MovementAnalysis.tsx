@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Footprints, Dumbbell, Boxes, Lock, Clapperboard, Link2 } from 'lucide-react'
+import { Footprints, Dumbbell, Boxes, Lock, Clapperboard } from 'lucide-react'
 import FormAnalysisCard from '../components/ui/FormAnalysis'
-import { useActivities } from '@strideredge/core'
 
 // Seletor de modalidade. Só Corrida funciona hoje (o motor é de corrida); Hyrox/CrossFit
 // ficam travados "em breve" — a página já nasce pronta pra receber os motores depois.
@@ -13,12 +12,6 @@ const MODALITIES = [
 
 export default function MovementAnalysis({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [modality, setModality] = useState<'run' | 'hyrox' | 'crossfit'>('run')
-  const [linkedId, setLinkedId] = useState<string>('')   // '' = análise avulsa
-
-  // corridas reais pra oferecer o vínculo opcional (habilita câmera × Garmin)
-  const { data: acts } = useActivities()
-  const runs = (acts ?? []).filter(a => String(a.primary_type).toUpperCase() === 'RUN')
-  const linked = runs.find(a => a.activity_id === linkedId)
   const active = MODALITIES.find(m => m.id === modality)!
 
   return (
@@ -55,35 +48,7 @@ export default function MovementAnalysis({ onNavigate }: { onNavigate: (r: strin
       </div>
 
       {active.ready ? (
-        <>
-          {/* Vínculo OPCIONAL a um treino — a única conexão que faz sentido (valida câmera × Garmin) */}
-          {runs.length > 0 && (
-            <div className="card flex flex-col sm:flex-row sm:items-center gap-2">
-              <label className="text-xs text-text-secondary flex items-center gap-1.5 shrink-0">
-                <Link2 size={13} className="text-brand" /> Vincular a um treino (opcional)
-              </label>
-              <select value={linkedId} onChange={e => setLinkedId(e.target.value)}
-                className="flex-1 bg-surface-200 border border-border-light rounded-lg px-3 py-1.5 text-xs">
-                <option value="">Análise avulsa (só a câmera)</option>
-                {runs.slice(0, 20).map(a => (
-                  <option key={a.activity_id} value={a.activity_id}>
-                    {a.activity_name} · {new Date(a.start_time).toLocaleDateString('pt-BR')}
-                  </option>
-                ))}
-              </select>
-              {linked && (
-                <span className="text-[11px] text-brand shrink-0">
-                  compara com o Garmin ({Math.round(linked.avg_cadence ?? 0)} spm)
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* remonta ao trocar o vínculo (recarrega a análise certa) */}
-          <FormAnalysisCard key={linkedId || 'avulsa'}
-            activityId={linked?.activity_id}
-            watchCadence={linked?.avg_cadence ? Math.round(linked.avg_cadence) : undefined} />
-        </>
+        <FormAnalysisCard />
       ) : (
         <div className="card text-center py-10">
           <Lock size={22} className="mx-auto text-text-muted mb-2" />
@@ -100,7 +65,7 @@ export default function MovementAnalysis({ onNavigate }: { onNavigate: (r: strin
 
       <p className="text-[11px] text-text-muted text-center">
         Dica: filme de lado, corpo inteiro no quadro, 20–30s.{' '}
-        <button onClick={() => onNavigate('dashboard')} className="text-brand">Voltar ao início</button>
+        <button onClick={() => onNavigate('landing')} className="text-brand">Sobre o app</button>
       </p>
     </div>
   )

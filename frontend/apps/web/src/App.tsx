@@ -2,26 +2,18 @@ import { useState, useCallback, useEffect } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ThemeProvider } from './components/layout/ThemeProvider'
 import Layout from './components/layout/Layout'
-import Dashboard from './pages/Dashboard'
 import Landing from './pages/Landing'
-import WorkoutDetail from './pages/WorkoutDetail'
-import RunMode from './pages/RunMode'
-import HyroxScreen from './pages/HyroxScreen'
-import AnaliseSaude from './pages/AnaliseSaude'
 import MovementAnalysis from './pages/MovementAnalysis'
 import Login from './pages/Login'
 import ThemeToggle from './components/layout/ThemeToggle'
-import { api, session, useTrainingLoad, latestAcwr } from '@strideredge/core'
-import { mockAcwrCurrent } from './pages/mockData'
+import { api, session } from '@strideredge/core'
 
-type Route = 'landing' | 'login' | 'dashboard' | 'detalhe' | 'analise' | 'corrida' | 'hyrox' | 'video'
+type Route = 'landing' | 'login' | 'video'
 
-// Rota <-> URL: digitar/copiar /dashboard, /analise etc. passa pela MESMA guarda —
-// sem sessão, qualquer caminho protegido cai no /login (nada de entrar pela URL).
+// Rota <-> URL: digitar/copiar /movimento passa pela MESMA guarda — sem sessão, qualquer
+// caminho protegido cai no /login (nada de entrar pela URL).
 const PATHS: Record<Route, string> = {
-  landing: '/', login: '/login', dashboard: '/dashboard',
-  detalhe: '/treinos', analise: '/analise', corrida: '/correr', hyrox: '/hyrox',
-  video: '/movimento',
+  landing: '/', login: '/login', video: '/movimento',
 }
 const PUBLIC: Route[] = ['landing', 'login']
 const routeFromPath = (path: string): Route =>
@@ -35,7 +27,7 @@ export default function App() {
   const [route, setRouteState] = useState<Route>(() => {
     const wanted = routeFromPath(window.location.pathname)
     const initial = !authed && !PUBLIC.includes(wanted) ? 'login'
-      : authed && PUBLIC.includes(wanted) ? 'dashboard'   // logado não volta pro marketing
+      : authed && PUBLIC.includes(wanted) ? 'video'   // logado não volta pro marketing
       : wanted
     window.history.replaceState(null, '', PATHS[initial])
     return initial
@@ -45,12 +37,6 @@ export default function App() {
     setRouteState(r)
     if (window.location.pathname !== PATHS[r]) window.history.pushState(null, '', PATHS[r])
   }, [])
-
-  // prontidão do Topbar: ACWR real do backend; mock só quando ele está off
-  const { data: load } = useTrainingLoad()
-  const acwr = (latestAcwr(load ?? []) ?? mockAcwrCurrent).acwr
-  // treino a abrir no detalhe (deep-link do calendário/feed)
-  const [detailId, setDetailId] = useState<string | null>(null)
 
   const navigate = useCallback((r: string) => {
     if (!Object.keys(PATHS).includes(r)) return
@@ -86,19 +72,8 @@ export default function App() {
   const onAuthed = useCallback((user: { name: string } | null) => {
     if (user === null) localStorage.setItem('se_guest', '1')   // modo local
     setAuthed(true)
-    setRoute('dashboard')
+    setRoute('video')
   }, [setRoute])
-
-  // Retorno do OAuth do Strava: o callback do backend redireciona pra cá com o token no
-  // fragmento (#strava_token=...). Guarda a sessão, limpa a URL e entra logado. O histórico
-  // já está importando em background (o front vê os treinos popularem).
-  useEffect(() => {
-    const m = window.location.hash.match(/strava_token=([^&]+)/)
-    if (!m) return
-    session.set(decodeURIComponent(m[1]))
-    window.history.replaceState(null, '', PATHS.dashboard)
-    api.auth.me().then(onAuthed).catch(() => session.clear())
-  }, [onAuthed])
 
   const onLogout = useCallback(() => {
     session.clear()
@@ -107,31 +82,14 @@ export default function App() {
     setRoute('landing')
   }, [setRoute])
 
-  const openWorkout = useCallback((id: string) => {
-    setDetailId(id)
-    setRoute('detalhe')
-  }, [])
-
   const renderPage = () => {
     switch (route) {
       case 'landing':
         return <Landing onNavigate={navigate} />
-      case 'login':
-        return <Login onAuthed={onAuthed} onBack={() => setRoute('landing')} />
-      case 'dashboard':
-        return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
-      case 'detalhe':
-        return <WorkoutDetail onNavigate={navigate} initialId={detailId} />
-      case 'analise':
-        return <AnaliseSaude />
-      case 'corrida':
-        return <RunMode />
-      case 'hyrox':
-        return <HyroxScreen />
       case 'video':
         return <MovementAnalysis onNavigate={navigate} />
       default:
-        return <Dashboard onNavigate={navigate} onOpenWorkout={openWorkout} />
+        return <MovementAnalysis onNavigate={navigate} />
     }
   }
 
@@ -165,7 +123,7 @@ export default function App() {
           <Landing onNavigate={navigate} />
         </div>
       ) : (
-        <Layout currentRoute={route} onNavigate={navigate} acwr={acwr} onLogout={onLogout}>
+        <Layout currentRoute={route} onNavigate={navigate} onLogout={onLogout}>
           {renderPage()}
         </Layout>
       )}

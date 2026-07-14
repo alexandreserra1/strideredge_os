@@ -73,10 +73,7 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 const sourceLabel = (id: string) => SOURCE_LABEL[id] ?? 'Estudo revisado por pares'
 
-export default function FormAnalysisCard({ activityId, watchCadence }: {
-  activityId?: string            // opcional: sem treino = análise avulsa (página de Movimento)
-  watchCadence?: number          // cadência do relógio (comparação câmera vs Garmin)
-}) {
+export default function FormAnalysisCard() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
@@ -84,12 +81,10 @@ export default function FormAnalysisCard({ activityId, watchCadence }: {
   const [planLoading, setPlanLoading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // última análise deste treino
+  // última análise enviada
   useEffect(() => {
-    setAnalysis(null)
-    setPlan(null)
-    api.form.list(activityId).then(list => setAnalysis(list[0] ?? null)).catch(() => {})
-  }, [activityId])
+    api.form.list().then(list => setAnalysis(list[0] ?? null)).catch(() => {})
+  }, [])
 
   const genPlan = useCallback(async () => {
     if (!analysis) return
@@ -112,15 +107,15 @@ export default function FormAnalysisCard({ activityId, watchCadence }: {
     setError('')
     setUploading(true)
     try {
-      const out = await api.form.upload(file, activityId)
-      setAnalysis({ analysis_id: out.analysis_id, activity_id: activityId ?? null, status: 'processing',
+      const out = await api.form.upload(file)
+      setAnalysis({ analysis_id: out.analysis_id, activity_id: null, status: 'processing',
                     video_path: null, metrics: null, error: null, created_at: '' })
     } catch {
       setError('Falha no upload — a API está no ar?')
     } finally {
       setUploading(false)
     }
-  }, [activityId])
+  }, [])
 
   return (
     <div className="card overflow-hidden ring-1 ring-brand/20">
@@ -223,15 +218,10 @@ export default function FormAnalysisCard({ activityId, watchCadence }: {
           <div className="flex items-center justify-center gap-2 mt-3">
             {analysis.metrics.cadence_spm != null && (
               <span className="rounded-full bg-brand/10 border border-brand/20 px-3 py-1 text-[11px] text-brand font-medium">
-                Câmera: {Math.round(analysis.metrics.cadence_spm)} spm
+                Cadência: {Math.round(analysis.metrics.cadence_spm)} spm
               </span>
             )}
-            {watchCadence != null && (
-              <span className="rounded-full bg-surface-200 border border-border-light px-3 py-1 text-[11px] text-text-secondary font-medium">
-                Relógio: {watchCadence} spm
-              </span>
-            )}
-            <InfoHint text="Duas medições independentes: a câmera calcula a cadência pela oscilação dos pés no vídeo; o relógio (Garmin) mede pelo acelerômetro. Uma valida a outra — nenhuma influencia os dados da outra." />
+            <InfoHint text="A câmera calcula a cadência pela oscilação dos pés no vídeo — 100% no seu aparelho, sem sensor externo." />
           </div>
 
           <p className="text-[10px] text-text-muted flex items-center justify-center gap-1 mt-2">

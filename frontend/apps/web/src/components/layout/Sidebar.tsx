@@ -1,6 +1,4 @@
-import {
-  LayoutDashboard, Activity, HeartPulse, Play, Dumbbell, Settings, Clapperboard,
-} from 'lucide-react'
+import { Clapperboard } from 'lucide-react'
 
 interface SidebarProps {
   currentRoute: string
@@ -8,19 +6,14 @@ interface SidebarProps {
 }
 
 const menu = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'detalhe', label: 'Treinos', icon: Activity },
   { id: 'video', label: 'Análise de Forma', icon: Clapperboard },
-  { id: 'analise', label: 'Análise & Saúde', icon: HeartPulse },
-  { id: 'corrida', label: 'Correr', icon: Play },
-  { id: 'hyrox', label: 'HYROX', icon: Dumbbell },
 ]
 
 export default function Sidebar({ currentRoute, onNavigate }: SidebarProps) {
   return (
     <aside className="w-[220px] min-h-screen bg-surface-100 border-r border-border-light flex flex-col shrink-0 hide-mobile">
       <div className="p-5 border-b border-border-light">
-        <button onClick={() => onNavigate('dashboard')} className="flex items-center gap-2.5">
+        <button onClick={() => onNavigate('video')} className="flex items-center gap-2.5">
           <span className="grid place-items-center w-8 h-8 rounded-lg bg-brand text-brand-ink font-black text-sm">S</span>
           <span className="text-lg font-bold tracking-tight">
             Strider<span className="text-brand">Edge</span>
@@ -44,16 +37,6 @@ export default function Sidebar({ currentRoute, onNavigate }: SidebarProps) {
           </button>
         ))}
       </nav>
-
-      <div className="p-3 border-t border-border-light">
-        <button
-          onClick={() => onNavigate('settings')}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/5 dark:hover:bg-white/5 transition-all duration-200"
-        >
-          <Settings size={18} />
-          Ajustes
-        </button>
-      </div>
     </aside>
   )
 }

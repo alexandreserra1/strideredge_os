@@ -24,8 +24,6 @@ declare global {
 }
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
-// Login com Strava = navegação de browser (OAuth). Passa pelo proxy /api do vite -> backend.
-const STRAVA_CONNECT = `${import.meta.env.VITE_API_URL || '/api/v1'}/auth/strava/connect`
 
 export default function Login({ onAuthed, onBack }: {
   onAuthed: (user: AuthUser | null) => void   // null = modo convidado (local)
@@ -206,19 +204,6 @@ export default function Login({ onAuthed, onBack }: {
               Continuar com Google — não configurado
             </button>
           )}
-
-          {/* Strava: entra E importa o histórico de treino (em background). Laranja da marca. */}
-          <button onClick={() => { window.location.href = STRAVA_CONNECT }}
-            className="w-full mt-3 py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-            style={{ background: '#FC4C02' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
-            </svg>
-            Entrar com Strava
-          </button>
-          <p className="text-[10px] text-text-muted text-center mt-1.5">
-            Traz seu histórico de treinos automaticamente.
-          </p>
 
           {import.meta.env.DEV && (
             <button onClick={() => onAuthed(null)}

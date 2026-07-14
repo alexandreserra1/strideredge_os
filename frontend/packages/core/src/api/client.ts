@@ -2,15 +2,6 @@ import type {
   AuthResponse,
   AuthUser,
   FormAnalysis,
-  Activity,
-  ApiActivityDetail,
-  ApiTrack,
-  TelemetryPoint,
-  CadenceSpectrum,
-  CoachVerdict,
-  TrainingLoadItem,
-  ApiFitness,
-  AskResponse,
   FormPlan,
   AthleteProfile,
 } from '../types'
@@ -60,24 +51,13 @@ export const api = {
       request<AuthResponse>('/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
     me: () => request<AuthUser>('/auth/me'),
   },
-  activities: {
-    list: () => request<Activity[]>('/activities'),
-    detail: (id: string) => request<ApiActivityDetail>(`/activities/${id}`),
-    track: (id: string) => request<ApiTrack>(`/activities/${id}/track`),
-    telemetry: (id: string) => request<TelemetryPoint[]>(`/activities/${id}/telemetry`),
-    spectrum: (id: string) => request<CadenceSpectrum>(`/activities/${id}/cadence-spectrum`),
-    coach: (id: string) =>
-      request<CoachVerdict>(`/activities/${id}/coach`, { method: 'POST' }),
-  },
   form: {
-    list: (activityId?: string) =>
-      request<FormAnalysis[]>(`/form${activityId ? `?activity_id=${activityId}` : ''}`),
+    list: () => request<FormAnalysis[]>('/form'),
     get: (id: string) => request<FormAnalysis>(`/form/${id}`),
     // multipart: fetch próprio (o request() força JSON)
-    upload: async (file: File, activityId?: string) => {
+    upload: async (file: File) => {
       const fd = new FormData()
       fd.append('video', file)
-      if (activityId) fd.append('activity_id', activityId)
       const token = session.get()
       const res = await fetch(`${BASE_URL}/form`, {
         method: 'POST', body: fd,
@@ -94,15 +74,4 @@ export const api = {
     save: (p: AthleteProfile) =>
       request<AthleteProfile>('/profile', { method: 'PUT', body: JSON.stringify(p) }),
   },
-  trainingLoad: {
-    list: () => request<TrainingLoadItem[]>('/training-load'),
-  },
-  fitness: {
-    get: () => request<ApiFitness>('/fitness'),
-  },
-  ask: (question: string) =>
-    request<AskResponse>('/ask', {
-      method: 'POST',
-      body: JSON.stringify({ question }),
-    }),
 }
