@@ -123,6 +123,18 @@ Como a API oficial de Health da Garmin é fechada para uso corporativo, utilizam
 **O Parser `.FIT` (Python): `fitdecode`**
 Assim que o Python baixa o arquivo, ele mesmo faz o parsing com a biblioteca `fitdecode` (ou o `garmin-fit-sdk` oficial), implementando a abstração `BaseTelemetryParser`. Parsear alguns milhares de registros é I/O leve — Python resolve em milissegundos, sem necessidade de Rust aqui.
 
+**Import multiusuário: Strava OAuth (`BaseActivityImporter` → `StravaImporter`)**
+O `garminconnect` (acima) é ótimo pro dono/single-user (fidelidade total do `.FIT`), mas é
+não-oficial e exigiria a **senha de cada usuário** — inviável pra usuários reais. Pra multiusuário, o
+import entra por **Strava OAuth** (auth oficial, sem senha): o usuário faz *login com Strava*
+(`AuthService.login_strava`, paralelo ao Google), e o **histórico importa em background pela fila de
+jobs** — o endpoint só enfileira, um worker (`StravaImporter.import_history`) puxa `GET
+/athlete/activities`, mapeia `sport_type → primary_type` e faz upsert idempotente por
+`strava_activity_id`. Trade-off consciente: o Strava **descarta as running dynamics avançadas**
+(oscilação vertical, tempo de contato) que o `.FIT` traz — por isso o **upload de `.FIT` continua** como
+caminho de fidelidade pro power user. `BaseActivityImporter` mantém a fonte trocável (Garmin/Polar
+amanhã) sem mexer em quem dispara o import.
+
 > **Decisão de arquitetura:** o Rust **não** parseia o `.FIT`. Parsing é I/O leve e não se beneficia de código nativo. O Rust foi reposicionado para o **kernel de computação numérica** (ver Seção 3), onde ganha 50–500x de verdade sobre Python por ser CPU-bound e travar no GIL.
 
 ---
@@ -600,6 +612,14 @@ onde **L** = requisições simultâneas (concorrência), **λ** = taxa de chegad
 
 Workers = 1 · conexões = 1 (a reutilizável) · servidores = 1 · simultâneas = 1.
 Concorrência zero → fila/pool/Postgres/múltiplos workers seriam **overengineering**.
+
+**Costura de job (`core/jobs.py`):** o processamento pesado que não pode bloquear a resposta HTTP
+(transcode+pose+métricas de vídeo; import de histórico do Strava) passa por uma `JobQueue`. Hoje é
+`LocalJobQueue` — fila em memória + pool de 2 workers (limite de concorrência) + recuperação de
+órfãos no boot (crash: linha 'processing' → 'failed'). **A API só enfileira; não sabe quem
+processa.** Na Fase F, uma `CeleryJobQueue` implementa a MESMA interface e a troca é de 1 linha
+(`deps.get_job_queue`) — nada de quem enfileira muda. É a costura que evita reescrever quando
+hospedar (§10 Fase F): fila leve agora, Celery/Redis quando o volume/multiusuário justificar.
 
 ### 9.3 Fase 2 (hospedado): calcular, não chutar
 
