@@ -89,6 +89,17 @@ export default function App() {
     setRoute('dashboard')
   }, [setRoute])
 
+  // Retorno do OAuth do Strava: o callback do backend redireciona pra cá com o token no
+  // fragmento (#strava_token=...). Guarda a sessão, limpa a URL e entra logado. O histórico
+  // já está importando em background (o front vê os treinos popularem).
+  useEffect(() => {
+    const m = window.location.hash.match(/strava_token=([^&]+)/)
+    if (!m) return
+    session.set(decodeURIComponent(m[1]))
+    window.history.replaceState(null, '', PATHS.dashboard)
+    api.auth.me().then(onAuthed).catch(() => session.clear())
+  }, [onAuthed])
+
   const onLogout = useCallback(() => {
     session.clear()
     localStorage.removeItem('se_guest')
