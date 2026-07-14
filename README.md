@@ -21,7 +21,7 @@ Frontend web (React/Vite)  ──REST──►  API (FastAPI, controllers finos)
    upload de vídeo ──► fila de jobs (core/jobs.py) ──► worker:
        ffmpeg (transcode) → stride_vision (pose YOLO11 via ONNX) → métricas (JSON)
                                           │
-   plano corretivo ◄── FormCoach ◄── RAG híbrido (denso+BM25 + reranking + grounding)
+   plano corretivo ◄── FormCoach ◄── RAG híbrido (denso+BM25 + contextual retrieval + grounding)
                                           │
    Dados: DuckDB (auth, análises, perfil) · base RAG num .db separado (bge-m3)
 ```
@@ -29,12 +29,12 @@ Frontend web (React/Vite)  ──REST──►  API (FastAPI, controllers finos)
 **O que faz:** pose estimation por vídeo → biomecânica (cadência via FFT, contato/voo, ângulos
 articulares no apoio, inclinação de tronco, assimetria, pisada) com guarda de confiabilidade;
 diagnóstico determinístico (medido × ideal personalizado); plano corretivo com exercícios citados
-(RAG híbrido + reranking + grounding anti-alucinação, fontes PMC/DOI/PubMed).
+(RAG híbrido denso+BM25 + contextual retrieval + grounding anti-alucinação, fontes PMC/DOI/PubMed).
 
 ## Stack
 
 Python · **Rust** (`stride_vision`, motor de pose standalone via ONNX) · **DuckDB** ·
-**Ollama** (Qwen 7B + 1.5B rerank + bge-m3) · FastAPI · React/Vite · structlog. Sem custo de token.
+**Ollama** (Qwen 7B + bge-m3) · FastAPI · React/Vite · structlog. Sem custo de token.
 
 ## Como rodar
 
@@ -47,7 +47,7 @@ pip install ".[dev]"
 
 # 2. motor de visão (Rust standalone) + modelos locais
 cargo build --release --manifest-path stride_vision/Cargo.toml
-ollama pull qwen2.5:7b-instruct && ollama pull qwen2.5:1.5b-instruct && ollama pull bge-m3
+ollama pull qwen2.5:7b-instruct && ollama pull bge-m3
 ollama serve &                                    # deixa rodando
 python -m rag.knowledge_base                       # indexa o corpus de ciência do esporte
 

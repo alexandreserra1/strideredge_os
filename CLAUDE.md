@@ -27,9 +27,9 @@ Autossuficiente: só precisa de uma câmera, 100% no aparelho, sem depender de A
   rodado por subprocesso. Buildado pelo próprio cargo (`cargo build --release`), NÃO por maturin.
 - **DuckDB** (`storage/strideredge.db`) — auth, análises de forma, perfil; conexão reutilizável em
   `core/database.py`. Base RAG num `.db` separado (`storage/knowledge.db`).
-- **LLM local via Ollama**: `qwen2.5:7b-instruct` (coach/geração) + `qwen2.5:1.5b-instruct`
-  (reranking) + `bge-m3` (embeddings RAG). Sem token.
-- **RAG** em `rag/` (busca híbrida densa+BM25, reranking, contextual retrieval, grounding).
+- **LLM local via Ollama**: `qwen2.5:7b-instruct` (coach/geração) + `bge-m3` (embeddings RAG). Sem token.
+- **RAG** em `rag/` (busca híbrida densa+BM25, contextual retrieval, grounding). O reranking foi
+  removido por decisão de eval (degradava num corpus curado — ver `AI-STRATEGY.md`).
 - **Frontend** React em `frontend/apps/web` (Vite). O produto = login → análise de forma.
 
 ## Comandos

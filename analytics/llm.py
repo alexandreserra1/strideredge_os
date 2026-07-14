@@ -2,7 +2,7 @@
 
 OllamaClient implementa BaseLLMClient (polimorfismo: trocar o "cérebro" sem mexer em
 quem usa). Servido pelo Ollama, 100% local, sem token. Usado pelo FormCoach (plano
-corretivo), pelo reranker do RAG e pelo LLM-judge dos evals.
+corretivo), pelo ContextGenerator (indexação) e pelo LLM-judge dos evals.
 """
 
 import json

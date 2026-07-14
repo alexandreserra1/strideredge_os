@@ -28,12 +28,15 @@ guardrails, visão computacional, ML clássico — tudo transferível).
 RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas avançadas ~63%.
 1. **[FEITO] Busca híbrida** — embeddings densos + **BM25** (FTS do DuckDB), fusão base=similaridade
    + bônus de desempate (calibrado no conjunto-ouro; sobe com a escala). `rag/knowledge_base.py`.
-2. **[FEITO] Reranking** — LLM local como cross-encoder (`rag/rerank.py`), componível, sempre
-   ligado no coach corretivo (DESLIGADO no veredito em streaming, por latência do 1º token).
-   **Cacheado** (singleton em `deps.py`) + otimizado p/ latência: modelo pequeno dedicado
-   (`qwen2.5:1.5b-instruct`, não o 7B do coach), `num_predict` baixo (resposta é só índices),
-   `keep_alive` longo (sem troca de modelo a cada chamada), conexão HTTP persistente
-   (`httpx.Client` reusado), payload por candidato menor (160 chars) e `fetch_k` 8→6.
+2. **[REMOVIDO — decisão de eval] Reranking** — tínhamos um reranker por LLM local (cross-encoder).
+   Medido no golden set (`analytics/rag_eval`, hit@1/hit@2), ele **degradava** a recuperação num
+   corpus curado onde a busca híbrida já é forte: base 10/10 no top-2 → com o rerank 1.5b caía a
+   7/10; o 7b ficava neutro (8/10 no hit@1 mas 9/10 no top-2) e custava a latência. Também testamos
+   reranquear pelo `search_text` (texto+contexto) — não ajudou. **Conclusão eval-driven:** o
+   reranker não pagava o próprio custo aqui; removido (`rag/rerank.py` deletado). A lição vale mais
+   que a peça: técnica avançada só entra se o eval provar ganho — e num corpus pequeno/curado a
+   fusão densa+BM25 já basta. (Reintroduzir faz sentido quando o corpus escalar pra centenas+ de
+   fontes, onde reranking rende de verdade.)
 3. **[FEITO] Contextual Retrieval** (Anthropic, set/2024): `rag/contextualize.py` gera 1 frase de
    contexto por chunk (LLM 7B, offline no reindex) e injeta SÓ no índice BM25 (`search_text`) —
    o embedding denso continua do texto puro. Achado empírico: prefixar contexto ANTES de embedar

@@ -11,14 +11,13 @@ from api.auth import AuthService
 from api.form import FormService
 from api.profile import ProfileService
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
-from rag.rerank import LLMReranker, RerankedRetriever
 
 
-# SINGLETONS: a base e o reranker são reusados entre requests pra o CACHE do reranker
-# persistir (senão cada request criaria um novo, com cache vazio). São stateless o bastante
-# (o KB abre a conexao DuckDB por consulta; o reranker só guarda o cache em memória).
+# SINGLETON: a base é reusada entre requests (o KB abre a conexao DuckDB por consulta,
+# então é stateless o bastante). O reranking foi REMOVIDO: o eval (analytics/rag_eval)
+# mostrou que num corpus curado a busca híbrida densa+BM25 já acerta 10/10 no top-2, e o
+# reranker pelo LLM pequeno DEGRADAVA a recuperação (10→7). Ver AI-STRATEGY.md.
 _KB = None
-_RERANKER = None
 _JOB_QUEUE = None
 
 
@@ -38,21 +37,6 @@ def _knowledge_base() -> KnowledgeBase:
     return _KB
 
 
-def _reranked_knowledge():
-    """Base de conhecimento com RAG híbrido + reranking pelo LLM local (sempre ligado — a
-    qualidade extra vale a latência no plano corretivo)."""
-    kb = _knowledge_base()
-    global _RERANKER
-    if _RERANKER is None:
-        # Modelo PEQUENO dedicado ao rerank (so ordena indices — nao precisa do 7B). temp=0
-        # (ordem deterministica) + num_predict baixo (a resposta e so "2,0,1,3") + keep_alive
-        # longo (fica quente na memoria do Ollama, sem troca de modelo a cada chamada).
-        rerank_llm = OllamaClient(model="qwen2.5:1.5b-instruct", temperature=0.0,
-                                  num_predict=40, keep_alive="30m")
-        _RERANKER = LLMReranker(rerank_llm)
-    return RerankedRetriever(kb, _RERANKER, fetch_k=6)
-
-
 def get_auth_service() -> AuthService:
     return AuthService()
 
@@ -67,5 +51,5 @@ def get_profile_service() -> ProfileService:
 
 def get_form_coach() -> FormCoach:
     """Algoritmo corretivo: alvos personalizados + exercícios citados (LLM local + RAG
-    híbrido com reranking)."""
-    return FormCoach(llm=OllamaClient(), knowledge=_reranked_knowledge())
+    híbrido denso+BM25)."""
+    return FormCoach(llm=OllamaClient(), knowledge=_knowledge_base())
