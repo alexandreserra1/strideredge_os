@@ -59,6 +59,10 @@ const METRIC_DEFS = [
   },
 ]
 const LEVEL_COLOR: Record<string, string> = { ok: '#34D399', warn: '#FBBF24', risk: '#F87171' }
+// Faixa de risco de lesão (relativa, aterrada na literatura)
+const RISK_COLOR: Record<string, string> = {
+  baixo: '#34D399', moderado: '#FBBF24', elevado: '#FB923C', alto: '#F87171',
+}
 
 // Códigos PMC não dizem nada pro atleta — mostramos um nome legível (a fonte real fica no hover)
 const SOURCE_LABEL: Record<string, string> = {
@@ -255,6 +259,24 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                   Plano corretivo
                   <InfoHint text="Compara suas métricas com as faixas ideais (ajustadas ao seu perfil) e recomenda exercícios amparados por estudos — cada um com a fonte citada." />
                 </h4>
+
+                {/* Faixa de risco de lesão — RELATIVA, aterrada na literatura (não é probabilidade) */}
+                {plan.risk && (
+                  <div className="rounded-xl border p-3"
+                    style={{ borderColor: RISK_COLOR[plan.risk.risk_band] + '55', background: RISK_COLOR[plan.risk.risk_band] + '12' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: RISK_COLOR[plan.risk.risk_band] }} />
+                      <span className="text-xs font-semibold">Risco de lesão: <span className="capitalize">{plan.risk.risk_band}</span></span>
+                      <InfoHint text={plan.risk.caveat} />
+                    </div>
+                    {plan.risk.factors.length > 0 && (
+                      <p className="text-[10px] text-text-muted mt-1">
+                        Puxado por: {plan.risk.factors.slice(0, 3).map(f => f.label).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {plan.deviations.length === 0 && (
                   <p className="text-sm text-text-secondary leading-relaxed">{plan.verdict}</p>
                 )}

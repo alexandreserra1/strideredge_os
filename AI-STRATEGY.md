@@ -52,11 +52,25 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
    rubrica) + `Benchmark.context_precision()` (novo) + `retrieval_report()['hit_rate']` (Context
    Recall). `Benchmark.ragas_report()` monta o boletim combinado.
 
-### Fase 2 — superfície AI-first
-5. **Coach agêntico**: unificar text-to-SQL (DuckDB) + RAG + métricas de forma num agente que
-   PLANEJA ("o que o atleta precisa?") → consulta dados, recupera ciência, sintetiza (Agentic RAG).
-6. **Gerador de plano adaptativo** (plan.md §0.3, estilo Runna) aterrado no ACWR/fitness + ciência.
-7. Mais fontes de dado (Strava/Garmin live, HRV/sono) alimentando a mesma análise.
+### Modelo de RISCO de lesão (pós-pivot — o eixo do produto)
+
+- **[FEITO] v1 — score transparente aterrado na literatura** (`analytics/injury_risk.py`). SEM
+  outcomes de lesão rotulados, NÃO dá pra treinar um classificador honesto (RF/XGBoost precisam de
+  `y` real). O que dá: regressão logística / score aditivo cujos PESOS vêm da força de associação
+  publicada de cada fator biomecânico com lesão (cada peso citando a fonte via `biomechanics`). Reusa
+  `diagnose` (severidade do desvio) × peso de risco → **FAIXA relativa** (baixo/moderado/elevado/alto)
+  + os fatores que a puxaram + caveat. **NUNCA "X% de chance"** (score de log-odds não calibrado não
+  promete probabilidade). Alimenta a GenAI: a saída estruturada + o LLM redige/amarra ao corretivo.
+- **Próximo — treinado (quando houver dados)**: logar biomecânica por análise + lesão auto-reportada
+  ao longo do tempo → dataset rotulado. Aí **random forest / XGBoost** (padrão pra tabular de lesão),
+  feito certinho: class weights (não SMOTE, que distorce calibração), **PR-AUC/recall** (não acurácia
+  — lesão é rara), calibração Platt/isotonic, validação **subject-wise** (vídeos do mesmo atleta em
+  folds ≠ = leakage). Mesma interface: o modelo da literatura é o `prior`; o treinado é o upgrade.
+
+### Fase 2 — superfície AI-first (roteiro amplo — reavaliar pós-pivot)
+5. **Coach agêntico**: unificar RAG + métricas de forma + risco num agente que PLANEJA.
+6. Comparar forma AO LONGO DO TEMPO (deriva = fadiga/risco) → janela temporal do risco.
+7. Mais fatores frontais (RTMPose/Halpe26 → pronação real) alimentando o mesmo modelo de risco.
 
 ### Fase 3 — especialização de modelo (só quando houver dados)
 8. **Fine-tune LoRA** (Qwen 1.5–7B) em 500–2000 pares (métricas→veredito/plano) pra travar

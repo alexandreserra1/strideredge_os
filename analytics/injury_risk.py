@@ -1,0 +1,83 @@
+"""analytics/injury_risk.py — modelo de risco de lesão TRANSPARENTE, aterrado na literatura.
+
+Por que NÃO é um random forest (ainda): treinar um classificador supervisionado exige
+OUTCOMES rotulados — atletas acompanhados no tempo, com lesão registrada. Não temos esse
+dado. O honesto com o que temos (tamanhos de efeito publicados, não dado bruto) é uma
+**regressão logística / score aditivo** cujos PESOS vêm da força de associação de cada fator
+biomecânico com lesão — cada peso citando o estudo (via a fonte do alvo em biomechanics).
+
+Saída = **FAIXA de risco RELATIVA** (baixo/moderado/elevado/alto), NUNCA "X% de chance": um
+score de log-odds não calibrado não pode prometer probabilidade. É explicável (mostra os
+fatores que puxaram o risco), auditável (cada fator cita a fonte) e é o `prior` que um modelo
+TREINADO (XGBoost, com class weights + calibração + validação subject-wise) recalibra quando
+houver outcomes reais. Ver AI-STRATEGY.md.
+
+Design: REUSA `diagnose` (biomechanics) — que já dá o desvio de cada métrica (severity = quão
+longe do ideal, normalizado; + source + plain + label). Aqui só pesamos por risco e agregamos.
+"""
+
+from typing import Optional
+
+from analytics.biomechanics import ideal_targets, diagnose
+
+
+# Peso de RISCO por fator = quão forte a literatura liga o desvio a LESÃO (não a performance).
+# Ordinal de propósito (3=forte, 2=moderado, 1=leitura) — seria FALSO cravar um odds ratio
+# exato pra cada um sem o estudo na mão. Os mais fortes: cadência baixa (6-7x risco tibial) e os
+# sinais do plano frontal (queda pélvica / valgo → dor patelofemoral, banda IT). A FONTE de cada
+# um é a mesma do alvo em biomechanics.ideal_targets (rastreável).
+RISK_WEIGHT = {
+    "cadence_spm": 3.0,              # < ~166 spm: 6-7x risco de lesão tibial
+    "pelvic_drop_deg": 3.0,         # queda pélvica → PFP / banda IT
+    "knee_valgus_deg": 3.0,         # valgo dinâmico → dor patelofemoral
+    "knee_contact_deg": 2.0,        # overstriding (joelho reto no apoio) → impacto direto
+    "vertical_oscillation_pct": 2.0,
+    "asymmetry_pct": 2.0,           # assimetria → lesão unilateral
+    "ground_contact_ms": 1.0,
+    "trunk_lean_deg": 1.0,
+}
+
+
+def _band(score: float) -> str:
+    """Faixa RELATIVA a partir do score ponderado (não é probabilidade)."""
+    if score <= 0.0:
+        return "baixo"
+    if score < 1.5:
+        return "moderado"
+    if score < 4.0:
+        return "elevado"
+    return "alto"
+
+
+def assess(metrics: dict, profile: Optional[dict] = None,
+           history: Optional[dict] = None) -> dict:
+    """Avalia o risco RELATIVO de lesão a partir das métricas de forma. Devolve a faixa + os
+    fatores que a puxaram (do maior contribuinte pro menor) + o caveat honesto.
+
+    `score` = Σ (severidade_do_desvio × peso_de_risco) sobre os fatores fora do ideal. Só
+    considera o que o vídeo mediu (uma vista lateral não mede queda pélvica, e vice-versa —
+    o quadro completo pede as duas vistas)."""
+    targets = ideal_targets(profile, history)
+    devs = diagnose(metrics, targets)   # já traz severity, source, plain, label, side
+
+    factors, score = [], 0.0
+    for d in devs:
+        weight = RISK_WEIGHT.get(d["metric"], 1.0)
+        contribution = round(d["severity"] * weight, 3)
+        score += contribution
+        factors.append({
+            "metric": d["metric"], "label": d["label"], "value": d["value"],
+            "unit": d["unit"], "side": d["side"], "source": d["source"],
+            "plain": d["plain"], "weight": weight, "contribution": contribution,
+        })
+    factors.sort(key=lambda f: f["contribution"], reverse=True)
+
+    return {
+        "risk_band": _band(score),      # baixo | moderado | elevado | alto (RELATIVO)
+        "score": round(score, 2),       # score ponderado — NÃO é probabilidade
+        "factors": factors,             # o que puxou o risco, do maior pro menor
+        "model": "literatura",          # 'literatura' (prior) hoje; 'treinado' quando houver dados
+        "caveat": "Indicativo e RELATIVO — não é diagnóstico nem probabilidade de lesão. Reflete "
+                  "quantos fatores estão fora do ideal e quão forte a ciência os liga a lesão. "
+                  "Quadro completo pede a análise de lado E de frente.",
+    }

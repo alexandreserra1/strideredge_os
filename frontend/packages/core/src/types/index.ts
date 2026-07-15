@@ -47,12 +47,33 @@ export interface FormDeviation {
   plain: string        // explicação em linguagem simples do que o desvio significa
 }
 
+// Risco de lesão — score RELATIVO aterrado na literatura (não é probabilidade)
+export interface RiskFactor {
+  metric: string
+  label: string
+  value: number
+  unit: string
+  source: string
+  plain: string
+  weight: number
+  contribution: number
+}
+
+export interface InjuryRisk {
+  risk_band: 'baixo' | 'moderado' | 'elevado' | 'alto'
+  score: number
+  factors: RiskFactor[]      // o que puxou o risco, do maior pro menor
+  model: string              // 'literatura' | 'treinado'
+  caveat: string
+}
+
 export interface FormPlan {
   analysis_id: string
   verdict: string
   actions: string[]        // exercícios/ajustes gerados pelo coach (citados)
   citations: string[]
   deviations: FormDeviation[]   // o que corrigir — determinístico (medido × ideal)
+  risk?: InjuryRisk        // faixa de risco relativa (aterrada, citada)
 }
 
 export interface AthleteProfile {

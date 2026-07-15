@@ -13,6 +13,7 @@ from typing import Optional
 from core.framework.interfaces import BaseLLMClient, BaseRetriever
 from analytics.grounding import GroundingGuard
 from analytics.biomechanics import ideal_targets, diagnose
+from analytics.injury_risk import assess as assess_risk
 
 
 # O QUE corrigir (os desvios) ja vem estruturado do biomechanics.py — deterministico.
@@ -93,12 +94,13 @@ class FormCoach:
             }
 
         devs = diagnose(metrics, targets)
+        risk = assess_risk(metrics, profile, history)   # faixa de risco RELATIVA (aterrada, citada)
 
         if not devs:
             return {
                 "verdict": "Sua forma esta dentro das faixas ideais nas metricas medidas. "
                            "Mantenha o trabalho e refaca a analise conforme evoluir.",
-                "actions": [], "citations": [], "targets": targets, "deviations": [],
+                "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
             }
 
         query = " ".join(d["query"] for d in devs[:3])
@@ -116,6 +118,7 @@ class FormCoach:
             "citations": self._cited(text, hits),
             "targets": targets,
             "deviations": devs,
+            "risk": risk,
         }
 
     @staticmethod
