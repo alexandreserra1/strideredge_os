@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Footprints, Dumbbell, Boxes, Lock, Clapperboard } from 'lucide-react'
+import { Footprints, Dumbbell, Boxes, Lock, Clapperboard, MoveHorizontal, User } from 'lucide-react'
 import FormAnalysisCard from '../components/ui/FormAnalysis'
 
 // Seletor de modalidade. Só Corrida funciona hoje (o motor é de corrida); Hyrox/CrossFit
@@ -10,8 +10,16 @@ const MODALITIES = [
   { id: 'crossfit', label: 'CrossFit', icon: Dumbbell, ready: false },
 ] as const
 
+// Vista da câmera: cada uma mede coisas diferentes. Lateral (de lado) = cadência, pisada,
+// contato/voo. Frontal (de frente/costas) = queda pélvica e valgo de joelho (risco de lesão).
+const VIEWS = [
+  { id: 'lateral', label: 'De lado', icon: MoveHorizontal, hint: 'cadência, pisada, contato' },
+  { id: 'frontal', label: 'De frente', icon: User, hint: 'queda pélvica, valgo de joelho' },
+] as const
+
 export default function MovementAnalysis({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [modality, setModality] = useState<'run' | 'hyrox' | 'crossfit'>('run')
+  const [view, setView] = useState<'lateral' | 'frontal'>('lateral')
   const active = MODALITIES.find(m => m.id === modality)!
 
   return (
@@ -47,8 +55,29 @@ export default function MovementAnalysis({ onNavigate }: { onNavigate: (r: strin
         })}
       </div>
 
+      {/* Seletor de vista (só faz sentido pra corrida hoje) */}
+      {active.ready && (
+        <div className="grid grid-cols-2 gap-2">
+          {VIEWS.map(({ id, label, icon: Icon, hint }) => {
+            const on = view === id
+            return (
+              <button key={id} onClick={() => setView(id)}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  on ? 'border-brand bg-brand/10' : 'border-border-light hover:border-border-medium'
+                }`}>
+                <div className="flex items-center gap-2">
+                  <Icon size={16} className={on ? 'text-brand' : 'text-text-secondary'} />
+                  <p className="text-xs font-medium">{label}</p>
+                </div>
+                <p className="text-[10px] text-text-muted mt-0.5">{hint}</p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {active.ready ? (
-        <FormAnalysisCard />
+        <FormAnalysisCard key={view} modality={modality} view={view} />
       ) : (
         <div className="card text-center py-10">
           <Lock size={22} className="mx-auto text-text-muted mb-2" />
@@ -64,7 +93,9 @@ export default function MovementAnalysis({ onNavigate }: { onNavigate: (r: strin
       )}
 
       <p className="text-[11px] text-text-muted text-center">
-        Dica: filme de lado, corpo inteiro no quadro, 20–30s.{' '}
+        Dica: {view === 'frontal'
+          ? 'filme de FRENTE (ou de costas), corpo inteiro, pernas bem visíveis, 20–30s.'
+          : 'filme de LADO, corpo inteiro no quadro, 20–30s.'}{' '}
         <button onClick={() => onNavigate('landing')} className="text-brand">Sobre o app</button>
       </p>
     </div>

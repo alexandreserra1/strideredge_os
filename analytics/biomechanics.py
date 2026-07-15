@@ -37,6 +37,11 @@ def ideal_targets(profile: Optional[dict] = None, history: Optional[dict] = None
                            "source": "PMC11135760", "label": "inclinação do tronco"},
         "asymmetry_pct": {"lo": 0.0, "hi": 10.0, "unit": "%", "dir": "lower_better",
                           "source": "PMC7241633", "label": "assimetria E/D"},
+        # --- plano FRONTAL (vista frontal) — sinais de risco de lesão mais fortes ---
+        "pelvic_drop_deg": {"lo": 0.0, "hi": 10.0, "unit": "°", "dir": "lower_better",
+                            "source": "PMC6829001", "label": "queda pélvica contralateral"},
+        "knee_valgus_deg": {"lo": 0.0, "hi": 10.0, "unit": "°", "dir": "lower_better",
+                            "source": "PMC6829001", "label": "valgo dinâmico de joelho"},
     }
 
 
@@ -57,6 +62,10 @@ PLAIN = {
         "lombar. O ideal é uma inclinação suave, a partir do tornozelo.",
     ("asymmetry_pct", "alto"): "Há uma diferença grande entre a perna esquerda e a direita — um "
         "lado está trabalhando mais que o outro (pode ser fadiga ou compensação).",
+    ("pelvic_drop_deg", "alto"): "Sua bacia cai bastante pro lado a cada apoio — sinal de quadril "
+        "fraco (glúteo médio). Isso puxa o joelho pra dentro e sobrecarrega a patela e a banda IT.",
+    ("knee_valgus_deg", "alto"): "Seu joelho 'cai pra dentro' quando você apoia (valgo). Isso "
+        "concentra carga na patela — é um dos padrões mais ligados a dor no joelho na corrida.",
 }
 
 
@@ -72,6 +81,8 @@ CORRECTIVE_QUERY = {
     ("trunk_lean_deg", "baixo"): "inclinacao do tronco postura leve pra frente eficiencia",
     ("trunk_lean_deg", "alto"): "inclinacao do tronco excessiva sobrecarga lombar postura",
     ("asymmetry_pct", "alto"): "assimetria contato solo fortalecer quadril gluteo medio",
+    ("pelvic_drop_deg", "alto"): "queda pelvica contralateral fortalecer gluteo medio abdutores quadril reeducacao de marcha",
+    ("knee_valgus_deg", "alto"): "valgo dinamico de joelho fortalecer quadril gluteo dor patelofemoral controle do joelho",
 }
 
 

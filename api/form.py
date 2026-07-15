@@ -42,11 +42,12 @@ class FormService:
 
     # ---------- escrita ----------
 
-    def create(self, video_bytes: bytes, filename: str,
-               activity_id: Optional[str] = None, modality: str = "run") -> dict:
+    def create(self, video_bytes: bytes, filename: str, activity_id: Optional[str] = None,
+               modality: str = "run", view: str = "lateral") -> dict:
         """Salva o upload, registra a análise e ENFILEIRA o processamento (background).
         Responde na hora com 'processing' — o usuário pode fechar a página e voltar depois.
-        `modality` fica pronto p/ o futuro (Hyrox/CrossFit); hoje o motor só faz 'run'."""
+        `view` = 'lateral' (métricas sagitais) ou 'frontal' (queda pélvica, valgo de joelho);
+        o motor roda o conjunto certo de métricas por vista. `modality` hoje só 'run'."""
         analysis_id = str(uuid.uuid4())
         adir = VIDEOS_DIR / analysis_id
         adir.mkdir(parents=True, exist_ok=True)
@@ -54,11 +55,12 @@ class FormService:
         original = adir / f"original.{ext}"
         original.write_bytes(video_bytes)
 
+        view = view if view in ("lateral", "frontal") else "lateral"
         get_connection().execute(
-            "INSERT INTO form_analyses (analysis_id, activity_id, status, modality) "
-            "VALUES (?, ?, 'processing', ?)",
-            [analysis_id, activity_id, modality])
-        self.queue.enqueue(self._process, analysis_id, original)
+            "INSERT INTO form_analyses (analysis_id, activity_id, status, modality, view) "
+            "VALUES (?, ?, 'processing', ?, ?)",
+            [analysis_id, activity_id, modality, view])
+        self.queue.enqueue(self._process, analysis_id, original, view)
         return {"analysis_id": analysis_id, "status": "processing"}
 
     # PATH com ffmpeg (Homebrew no macOS) pro subprocess do motor/normalização.
@@ -79,14 +81,14 @@ class FormService:
         r = subprocess.run(cmd, env={**self._ENV}, capture_output=True, text=True, timeout=300)
         return dst if r.returncode == 0 and dst.exists() else src
 
-    def _process(self, analysis_id: str, original: Path) -> None:
+    def _process(self, analysis_id: str, original: Path, view: str = "lateral") -> None:
         """Roda o motor Rust; grava métricas ou o erro. (thread própria + cursor próprio)"""
         overlay = original.parent / "overlay.mp4"
         con = get_connection()
         try:
             source = self._normalize(original)   # celular -> vídeo limpo (rotação assada)
             result = subprocess.run(
-                [str(self.binary), str(source), str(overlay)],
+                [str(self.binary), str(source), str(overlay), "--view", view],
                 env={"STRIDE_MODEL": str(self.model), **self._ENV},
                 capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
@@ -106,7 +108,8 @@ class FormService:
 
     # ---------- leitura ----------
 
-    _COLS = ("analysis_id, activity_id, status, video_path, metrics, error, created_at, modality")
+    _COLS = ("analysis_id, activity_id, status, video_path, metrics, error, created_at, "
+             "modality, view")
 
     def get(self, analysis_id: str) -> Optional[dict]:
         row = get_connection().execute(
@@ -138,6 +141,7 @@ class FormService:
             "error": r[5],
             "created_at": str(r[6]),
             "modality": r[7] if len(r) > 7 else "run",
+            "view": r[8] if len(r) > 8 else "lateral",
         }
 
 

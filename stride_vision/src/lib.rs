@@ -296,8 +296,17 @@ pub struct FormMetrics {
     pub flight_ms: Option<f32>,
     /// padrão de pisada ESTIMADO (sem keypoint de pé): "calcanhar" | "médio" | "antepé".
     pub foot_strike: Option<String>,
-    /// as métricas são confiáveis? false = enquadramento/ângulo ruim (não é vista
-    /// lateral, atleta some do quadro, ou pernas mal rastreadas). A UI avisa.
+    // ----- métricas do plano FRONTAL (só na vista frontal) -----
+    /// queda pélvica contralateral (graus): a bacia caindo pro lado da perna no ar no apoio.
+    /// >~10° associa-se a dor patelofemoral / banda IT / canelite.
+    pub pelvic_drop_deg: Option<f32>,
+    /// valgo dinâmico de joelho / FPPA (graus): desvio do joelho da linha quadril-tornozelo no
+    /// plano frontal (joelho "caindo pra dentro"). Maior = mais carga na patela.
+    pub knee_valgus_deg: Option<f32>,
+    /// vista da câmera desta análise: "lateral" (sagital) | "frontal".
+    pub view: Option<String>,
+    /// as métricas são confiáveis? false = enquadramento/ângulo ruim (vista errada, atleta
+    /// some do quadro, ou pernas mal rastreadas). A UI avisa.
     pub reliable: bool,
     /// por que não é confiável (vazio quando reliable=true)
     pub quality_note: Option<String>,
@@ -312,12 +321,44 @@ fn amplitude(series: &[f32]) -> Option<f32> {
     Some(p(0.95) - p(0.05))
 }
 
-/// Consolida as séries por frame em métricas de forma.
-/// `leg_len_px` = mediana da distância quadril->tornozelo (escala do corpo).
+/// Métricas vazias (base): tudo None, só frames/fps/detecção + reliable/nota. O main preenche o
+/// que fizer sentido por vista.
+fn empty_metrics(total_frames: usize, fps: f32, detection: f32, view: &str,
+                 reliable: bool, note: Option<String>) -> FormMetrics {
+    FormMetrics {
+        frames: total_frames, fps, detection_rate_pct: detection,
+        cadence_spm: None, cadence_left: None, cadence_right: None, asymmetry_pct: None,
+        vertical_oscillation_pct: None, knee_contact_deg: None, hip_contact_deg: None,
+        trunk_lean_deg: None, ground_contact_ms: None, flight_ms: None, foot_strike: None,
+        pelvic_drop_deg: None, knee_valgus_deg: None, view: Some(view.to_string()),
+        reliable, quality_note: note,
+    }
+}
+
+/// Consolida as séries por frame em métricas de forma. `view` = "lateral" | "frontal" decide
+/// O QUE se mede e COMO se valida. `both_legs_ok` = as duas pernas ficaram visíveis (sinal de
+/// vista frontal boa). `leg_len_px` = mediana da distância quadril->tornozelo (escala do corpo).
 pub fn analyze_form(
     ankle_l: &[f32], ankle_r: &[f32], hip_y: &[f32],
-    leg_len_px: f32, fps: f32, total_frames: usize,
+    leg_len_px: f32, fps: f32, total_frames: usize, view: &str, both_legs_ok: bool,
 ) -> FormMetrics {
+    let detection = if total_frames > 0 {
+        ankle_l.len() as f32 / total_frames as f32 * 100.0
+    } else { 0.0 };
+
+    // ---- VISTA FRONTAL: as métricas sagitais (cadência, oscilação, pisada) não fazem sentido.
+    // Valida por detecção + as DUAS pernas visíveis (numa lateral uma perna é ocluída). O main
+    // preenche pelvic_drop/knee_valgus.
+    if view == "frontal" {
+        let note = if detection < 60.0 {
+            Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into())
+        } else if !both_legs_ok {
+            Some("Não deu pra ver as duas pernas — filme de FRENTE (ou de costas), corpo inteiro, pernas visíveis.".into())
+        } else { None };
+        return empty_metrics(total_frames, fps, detection, view, note.is_none(), note);
+    }
+
+    // ---- VISTA LATERAL (comportamento existente): cadência, assimetria, oscilação.
     let (cl, cr) = (cadence_spm(ankle_l, fps), cadence_spm(ankle_r, fps));
     // Numa vista LATERAL a perna de trás fica OCLUÍDA: seu tornozelo "pula" no rastreio e a
     // FFT lê um SUB-HARMÔNICO (metade da frequência real). Quando as pernas divergem muito,
@@ -337,10 +378,6 @@ pub fn analyze_form(
         .filter(|_| leg_len_px > 0.0)
         .map(|a| a / leg_len_px * 100.0)
         .filter(|v| *v <= 40.0);
-
-    let detection = if total_frames > 0 {
-        ankle_l.len() as f32 / total_frames as f32 * 100.0
-    } else { 0.0 };
 
     // Guarda de QUALIDADE: confia se o atleta ficou no quadro E a vista é lateral (a
     // oscilação vertical do quadril é o detector de "é lateral?" — plausível ≤40% da perna).
@@ -367,6 +404,9 @@ pub fn analyze_form(
         ground_contact_ms: None,
         flight_ms: None,
         foot_strike: None,
+        pelvic_drop_deg: None,    // frontal — None na lateral
+        knee_valgus_deg: None,
+        view: Some("lateral".to_string()),
         reliable: note.is_none(),
         quality_note: note,
     }
@@ -478,6 +518,31 @@ pub fn foot_strike(ankle_x: &[f32], ankle_y: &[f32], knee_x: &[f32],
     Some(if avg > 0.10 { "calcanhar" } else if avg < -0.06 { "antepé" } else { "médio" })
 }
 
+// ---------- plano FRONTAL (queda pélvica + valgo de joelho) ----------
+
+/// Percentil q (0..1) de uma série (robusto). None se curta demais.
+pub fn percentile(series: &[f32], q: f32) -> Option<f32> {
+    if series.len() < 8 { return None; }
+    let mut v = series.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    Some(v[((v.len() - 1) as f32 * q.clamp(0.0, 1.0)) as usize])
+}
+
+/// Inclinação da LINHA DO QUADRIL (kp11–kp12) em relação à horizontal, em graus (0 = bacia
+/// nivelada). Por frame; a queda pélvica é o pico dessa inclinação no apoio (ver percentile).
+pub fn hip_tilt_deg(hip_l: (f32, f32, f32), hip_r: (f32, f32, f32)) -> f32 {
+    let (dx, dy) = ((hip_r.0 - hip_l.0).abs(), (hip_r.1 - hip_l.1).abs());
+    if dx == 0.0 && dy == 0.0 { return 0.0; }
+    dy.atan2(dx).to_degrees()
+}
+
+/// Valgo dinâmico (FPPA) a partir da série do ângulo FRONTAL do joelho (quadril–joelho–
+/// tornozelo). Perna alinhada ~180°; joelho caindo pra dentro derruba o ângulo → valgo sobe.
+/// Usa a MEDIANA (a corrida passa a maior parte em apoio) pra estabilidade. None se curta.
+pub fn knee_valgus_deg(knee_angle_series: &[f32]) -> Option<f32> {
+    median(knee_angle_series).map(|m| ((180.0 - m).max(0.0) * 10.0).round() / 10.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,7 +565,7 @@ mod tests {
     fn assimetria_detecta_diferenca_de_amplitude() {
         let l = sine(1.4, 30.0, 10.0, 20.0);
         let r = sine(1.4, 30.0, 10.0, 14.0);          // perna direita 30% mais curta
-        let m = analyze_form(&l, &r, &sine(2.8, 30.0, 10.0, 4.0), 100.0, 30.0, 300);
+        let m = analyze_form(&l, &r, &sine(2.8, 30.0, 10.0, 4.0), 100.0, 30.0, 300, "lateral", true);
         let asym = m.asymmetry_pct.unwrap();
         assert!(asym > 20.0 && asym < 40.0, "assimetria {asym}");
         assert!(m.vertical_oscillation_pct.unwrap() > 5.0);
@@ -508,7 +573,7 @@ mod tests {
 
     #[test]
     fn series_curtas_degradam_gracioso() {
-        let m = analyze_form(&[1.0; 4], &[1.0; 4], &[1.0; 4], 100.0, 30.0, 4);
+        let m = analyze_form(&[1.0; 4], &[1.0; 4], &[1.0; 4], 100.0, 30.0, 4, "lateral", true);
         assert!(m.cadence_spm.is_none() && m.asymmetry_pct.is_none());
     }
 
@@ -520,7 +585,7 @@ mod tests {
         // não da média com a ocluída.
         let near = sine(1.4, 25.0, 12.0, 20.0);
         let far = sine(0.7, 25.0, 12.0, 6.0);
-        let m = analyze_form(&near, &far, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, near.len());
+        let m = analyze_form(&near, &far, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, near.len(), "lateral", true);
         assert!(m.reliable && m.quality_note.is_none(), "lateral com oclusão deve ser confiável");
         assert!(m.cadence_spm.unwrap() > 150.0, "cadência deve vir da perna visível, veio {:?}", m.cadence_spm);
     }
@@ -529,14 +594,14 @@ mod tests {
     fn guard_descarta_oscilacao_vertical_absurda() {
         // hip_y com amplitude enorme vs perna curta (vista frontal) -> osc. vertical implausível
         let l = sine(1.4, 25.0, 12.0, 20.0);
-        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 500.0), 100.0, 25.0, l.len());
+        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 500.0), 100.0, 25.0, l.len(), "lateral", true);
         assert!(m.vertical_oscillation_pct.is_none() && !m.reliable);
     }
 
     #[test]
     fn boa_entrada_e_confiavel() {
         let l = sine(1.4, 25.0, 12.0, 20.0);
-        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, l.len());
+        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, l.len(), "lateral", true);
         assert!(m.reliable && m.vertical_oscillation_pct.is_some() && m.quality_note.is_none());
     }
 
@@ -587,5 +652,34 @@ mod tests {
         assert!(trunk_lean_deg((100.0, 0.0), (100.0, 100.0)).abs() < 0.5);
         // ombro deslocado 100px pra frente sobre 100px de altura = 45°
         assert!((trunk_lean_deg((200.0, 0.0), (100.0, 100.0)) - 45.0).abs() < 0.5);
+    }
+
+    // ---------- plano frontal ----------
+
+    #[test]
+    fn hip_tilt_bacia_nivelada_e_zero() {
+        // quadris na mesma altura (y igual) = bacia nivelada = 0°
+        assert!(hip_tilt_deg((100.0, 200.0, 1.0), (160.0, 200.0, 1.0)).abs() < 0.5);
+        // 60px de largura, 60px de queda = 45°
+        assert!((hip_tilt_deg((100.0, 200.0, 1.0), (160.0, 260.0, 1.0)) - 45.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn knee_valgus_perna_alinhada_e_zero_valgo_alto() {
+        // perna alinhada (ângulo ~180°) -> valgo ~0
+        assert!(knee_valgus_deg(&[179.0; 20]).unwrap() < 2.0);
+        // joelho caindo pra dentro (ângulo 160°) -> valgo ~20°
+        assert!((knee_valgus_deg(&[160.0; 20]).unwrap() - 20.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn frontal_confia_com_duas_pernas_recusa_com_uma() {
+        let s = sine(1.0, 25.0, 12.0, 5.0);   // série qualquer, boa detecção
+        // as duas pernas visíveis -> confiável (métricas sagitais None)
+        let ok = analyze_form(&s, &s, &s, 100.0, 25.0, s.len(), "frontal", true);
+        assert!(ok.reliable && ok.cadence_spm.is_none() && ok.view.as_deref() == Some("frontal"));
+        // uma perna ocluída (both_legs_ok=false) -> recusa com nota de vista frontal
+        let bad = analyze_form(&s, &s, &s, 100.0, 25.0, s.len(), "frontal", false);
+        assert!(!bad.reliable && bad.quality_note.unwrap().to_lowercase().contains("frente"));
     }
 }

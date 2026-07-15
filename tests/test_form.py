@@ -34,7 +34,7 @@ class FakeFormService(FormService):
     def __init__(self):
         super().__init__(queue=InlineQueue())
 
-    def _process(self, analysis_id, original):
+    def _process(self, analysis_id, original, view="lateral"):
         get_connection().execute(
             "UPDATE form_analyses SET status='done', video_path=?, metrics=? WHERE analysis_id=?",
             [str(original.parent / "overlay.mp4"), json.dumps(FAKE_METRICS), analysis_id])

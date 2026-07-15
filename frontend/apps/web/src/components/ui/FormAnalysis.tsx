@@ -46,6 +46,17 @@ const METRIC_DEFS = [
     level: (_v: number) => 'ok',
     why: 'Tempo com os dois pés no ar a cada passo. Mais voo (com contato curto) indica boa fase de propulsão — leitura de elasticidade, não de risco.',
   },
+  // --- plano frontal (aparecem só na análise de FRENTE) ---
+  {
+    key: 'pelvic_drop_deg' as const, label: 'Queda pélvica', unit: '°',
+    level: (v: number) => (v < 10 ? 'ok' : v < 15 ? 'warn' : 'risk'),
+    why: 'Quanto a bacia cai pro lado a cada apoio (vista de frente). Acima de ~10° é sinal de quadril fraco — puxa o joelho pra dentro e sobrecarrega patela e banda IT.',
+  },
+  {
+    key: 'knee_valgus_deg' as const, label: 'Valgo de joelho', unit: '°',
+    level: (v: number) => (v < 10 ? 'ok' : v < 15 ? 'warn' : 'risk'),
+    why: 'O quanto o joelho "cai pra dentro" no apoio (FPPA, vista de frente). Valgo alto é um dos padrões mais ligados a dor no joelho na corrida.',
+  },
 ]
 const LEVEL_COLOR: Record<string, string> = { ok: '#34D399', warn: '#FBBF24', risk: '#F87171' }
 
@@ -73,7 +84,10 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 const sourceLabel = (id: string) => SOURCE_LABEL[id] ?? 'Estudo revisado por pares'
 
-export default function FormAnalysisCard() {
+export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }: {
+  modality?: string
+  view?: string   // 'lateral' | 'frontal' — define o conjunto de métricas do motor
+} = {}) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
@@ -107,7 +121,7 @@ export default function FormAnalysisCard() {
     setError('')
     setUploading(true)
     try {
-      const out = await api.form.upload(file)
+      const out = await api.form.upload(file, { modality, view })
       setAnalysis({ analysis_id: out.analysis_id, activity_id: null, status: 'processing',
                     video_path: null, metrics: null, error: null, created_at: '' })
     } catch {
@@ -115,7 +129,7 @@ export default function FormAnalysisCard() {
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, [modality, view])
 
   return (
     <div className="card overflow-hidden ring-1 ring-brand/20">

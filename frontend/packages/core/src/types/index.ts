@@ -15,6 +15,10 @@ export interface FormMetrics {
   ground_contact_ms: number | null
   flight_ms: number | null
   foot_strike: string | null
+  // plano frontal (vista frontal)
+  pelvic_drop_deg?: number | null
+  knee_valgus_deg?: number | null
+  view?: string | null            // 'lateral' | 'frontal'
   reliable: boolean
   quality_note: string | null
 }

@@ -63,3 +63,14 @@ def test_metrica_range_busca_por_DIRECAO():
     assert ereto["side"] == "baixo" and curvado["side"] == "alto"
     assert ereto["query"] != curvado["query"]          # direcoes -> buscas diferentes
     assert ereto["plain"] and curvado["plain"]         # ambos com explicacao (nao vazio)
+
+
+def test_metricas_frontais_pelvic_drop_e_valgo():
+    """Plano frontal: queda pélvica e valgo altos viram desvio (lower_better) com fonte + plain."""
+    t = ideal_targets()
+    devs = {d["metric"]: d for d in diagnose({"pelvic_drop_deg": 16, "knee_valgus_deg": 18}, t)}
+    assert devs["pelvic_drop_deg"]["side"] == "alto"
+    assert devs["pelvic_drop_deg"]["source"] == "PMC6829001"
+    assert devs["pelvic_drop_deg"]["plain"] and devs["knee_valgus_deg"]["plain"]
+    # dentro da faixa (≤10°) não vira desvio
+    assert diagnose({"pelvic_drop_deg": 5, "knee_valgus_deg": 4}, t) == []

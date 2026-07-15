@@ -55,9 +55,11 @@ export const api = {
     list: () => request<FormAnalysis[]>('/form'),
     get: (id: string) => request<FormAnalysis>(`/form/${id}`),
     // multipart: fetch próprio (o request() força JSON)
-    upload: async (file: File) => {
+    upload: async (file: File, opts?: { modality?: string; view?: string }) => {
       const fd = new FormData()
       fd.append('video', file)
+      fd.append('modality', opts?.modality ?? 'run')
+      fd.append('view', opts?.view ?? 'lateral')   // lateral (sagital) | frontal (queda pélvica, valgo)
       const token = session.get()
       const res = await fetch(`${BASE_URL}/form`, {
         method: 'POST', body: fd,

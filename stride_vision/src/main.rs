@@ -7,25 +7,38 @@ use image::RgbImage;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use stride_vision::{analyze_form, contact_angle, contact_flight_ms, foot_strike, draw_angles,
-                    joint_angle, median, trunk_lean_deg, draw_pose, PoseEngine, KP_NAMES};
+                    hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
+                    trunk_lean_deg, draw_pose, PoseEngine, KP_NAMES};
 
 fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida]");
+    // Separa a flag `--view <lateral|frontal>` dos posicionais (entrada [, saída]).
+    let raw: Vec<String> = std::env::args().collect();
+    let (mut view, mut pos, mut i) = ("lateral".to_string(), Vec::<String>::new(), 1usize);
+    while i < raw.len() {
+        if raw[i] == "--view" {
+            view = raw.get(i + 1).cloned().unwrap_or_else(|| "lateral".into());
+            i += 2;
+        } else {
+            pos.push(raw[i].clone());
+            i += 1;
+        }
     }
-    let input = &args[1];
+    if pos.is_empty() {
+        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal]");
+    }
+    let view = if view == "frontal" { "frontal" } else { "lateral" };
+    let input = &pos[0];
     let model = std::env::var("STRIDE_MODEL")
         .unwrap_or_else(|_| "models/yolo11n-pose.onnx".into());
     let mut engine = PoseEngine::new(&model)?;
 
     let ext = input.rsplit('.').next().unwrap_or("").to_lowercase();
     if matches!(ext.as_str(), "jpg" | "jpeg" | "png") {
-        let out = args.get(2).cloned().unwrap_or_else(|| "pose_out.jpg".into());
+        let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.jpg".into());
         run_image(&mut engine, input, &out)
     } else {
-        let out = args.get(2).cloned().unwrap_or_else(|| "pose_out.mp4".into());
-        run_video(&mut engine, input, &out)
+        let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.mp4".into());
+        run_video(&mut engine, input, &out, view)
     }
 }
 
@@ -51,9 +64,10 @@ fn run_image(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
 }
 
 /// Vídeo via ffmpeg (pipes rawvideo): decodifica -> infere+desenha -> re-encoda.
-fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
+/// `view` = "lateral" (métricas sagitais) | "frontal" (queda pélvica, valgo de joelho).
+fn run_video(engine: &mut PoseEngine, input: &str, out: &str, view: &str) -> Result<()> {
     let (w, h, fps) = probe(input)?;
-    println!("vídeo {w}x{h} @ {fps:.1}fps");
+    println!("vídeo {w}x{h} @ {fps:.1}fps (vista: {view})");
 
     let mut dec = Command::new("ffmpeg")
         .args(["-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
@@ -76,6 +90,7 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     // séries X (posição horizontal) p/ padrão de pisada + direção "pra frente"
     let (mut ax_l, mut ax_r, mut kx_l, mut kx_r) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let mut nose_dx = Vec::new();   // nariz − quadril-médio (sinal = direção da corrida)
+    let mut pelvic_tilt = Vec::new();   // inclinação da linha do quadril por frame (plano frontal)
     let t = std::time::Instant::now();
 
     loop {
@@ -106,8 +121,12 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
                 let hp = ((kp[11].0 + kp[12].0) / 2.0, (kp[11].1 + kp[12].1) / 2.0);
                 trunk.push(trunk_lean_deg(sh, hp));
             }
+            // queda pélvica (plano frontal): inclinação da linha do quadril quando ela é confiável
+            if kp[11].2 > 0.4 && kp[12].2 > 0.4 {
+                pelvic_tilt.push(hip_tilt_deg(kp[11], kp[12]));
+            }
             draw_pose(&mut img, &pose);
-            draw_angles(&mut img, &pose);
+            if view == "lateral" { draw_angles(&mut img, &pose); }   // goniômetros sagitais só na lateral
         }
         dst.write_all(img.as_raw())?;
         frames += 1;
@@ -120,31 +139,49 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     // métricas consolidadas -> JSON ao lado do vídeo (o backend lê daqui)
     leg_lens.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let leg_len = leg_lens.get(leg_lens.len() / 2).copied().unwrap_or(0.0);
-    let mut metrics = analyze_form(&ankle_l, &ankle_r, &hip_y, leg_len, fps, frames as usize);
-    // ângulo no APOIO do pé, medido na perna mais visível (fase fixa = número estável)
-    let right = conf_r >= conf_l;
-    let (knee_ser, hip_ser, ankle_ser) = if right {
-        (&knee_r, &hip_r, &ankle_r)
+    // as DUAS pernas consistentemente visíveis? (numa lateral uma é ocluída -> baixa conf.)
+    let both_legs_ok = frames > 0
+        && conf_l / frames as f32 > 0.35 && conf_r / frames as f32 > 0.35;
+    let mut metrics = analyze_form(&ankle_l, &ankle_r, &hip_y, leg_len, fps, frames as usize,
+                                   view, both_legs_ok);
+
+    if view == "frontal" {
+        // plano frontal: queda pélvica (pico da inclinação da bacia) + valgo (pior perna)
+        metrics.pelvic_drop_deg = percentile(&pelvic_tilt, 0.90).map(|v| (v * 10.0).round() / 10.0);
+        let valgus = knee_valgus_deg(&knee_l).into_iter()
+            .chain(knee_valgus_deg(&knee_r))
+            .fold(None, |acc: Option<f32>, v| Some(acc.map_or(v, |a| a.max(v))));
+        metrics.knee_valgus_deg = valgus;
     } else {
-        (&knee_l, &hip_l, &ankle_l)
-    };
-    metrics.knee_contact_deg = contact_angle(knee_ser, ankle_ser);
-    metrics.hip_contact_deg = contact_angle(hip_ser, ankle_ser);
-    metrics.trunk_lean_deg = median(&trunk).map(|v| (v * 10.0).round() / 10.0);
-    // contato/voo (usa os dois pés) + padrão de pisada (perna de análise)
-    let (gct, flight) = contact_flight_ms(&ankle_l, &ankle_r, fps);
-    metrics.ground_contact_ms = gct;
-    metrics.flight_ms = flight;
-    let facing = median(&nose_dx).unwrap_or(0.0);
-    let (ax, kx) = if right { (&ax_r, &kx_r) } else { (&ax_l, &kx_l) };
-    metrics.foot_strike = foot_strike(ax, ankle_ser, kx, facing, leg_len).map(|s| s.to_string());
+        // vista lateral: ângulo no APOIO (perna mais visível), contato/voo, pisada, tronco
+        let right = conf_r >= conf_l;
+        let (knee_ser, hip_ser, ankle_ser) = if right {
+            (&knee_r, &hip_r, &ankle_r)
+        } else {
+            (&knee_l, &hip_l, &ankle_l)
+        };
+        metrics.knee_contact_deg = contact_angle(knee_ser, ankle_ser);
+        metrics.hip_contact_deg = contact_angle(hip_ser, ankle_ser);
+        metrics.trunk_lean_deg = median(&trunk).map(|v| (v * 10.0).round() / 10.0);
+        let (gct, flight) = contact_flight_ms(&ankle_l, &ankle_r, fps);
+        metrics.ground_contact_ms = gct;
+        metrics.flight_ms = flight;
+        let facing = median(&nose_dx).unwrap_or(0.0);
+        let (ax, kx) = if right { (&ax_r, &kx_r) } else { (&ax_l, &kx_l) };
+        metrics.foot_strike = foot_strike(ax, ankle_ser, kx, facing, leg_len).map(|s| s.to_string());
+    }
     let mpath = format!("{}.metrics.json", out.trim_end_matches(".mp4"));
     std::fs::write(&mpath, serde_json::to_string_pretty(&metrics)?)?;
 
-    match metrics.cadence_spm {
-        Some(c) => println!("CADÊNCIA: {c:.0} spm | assimetria: {:?}% | osc. vertical: {:?}%",
-                            metrics.asymmetry_pct, metrics.vertical_oscillation_pct),
-        None => println!("cadência: série curta demais (filme >5s)"),
+    if view == "frontal" {
+        println!("FRONTAL | queda pélvica: {:?}° | valgo joelho: {:?}° | confiável: {}",
+                 metrics.pelvic_drop_deg, metrics.knee_valgus_deg, metrics.reliable);
+    } else {
+        match metrics.cadence_spm {
+            Some(c) => println!("CADÊNCIA: {c:.0} spm | assimetria: {:?}% | osc. vertical: {:?}%",
+                                metrics.asymmetry_pct, metrics.vertical_oscillation_pct),
+            None => println!("cadência: série curta demais (filme >5s)"),
+        }
     }
     println!("vídeo: {out}\nmétricas: {mpath}");
     Ok(())

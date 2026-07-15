@@ -135,14 +135,14 @@ def auth_me(request: Request, auth: AuthService = Depends(get_auth_service)):
 
 @app.post("/api/v1/form", status_code=201)
 async def form_upload(video: UploadFile = File(...), modality: str = Form("run"),
-                      svc: FormService = Depends(get_form_service)):
+                      view: str = Form("lateral"), svc: FormService = Depends(get_form_service)):
     """Recebe o vídeo, salva no filesystem e ENFILEIRA o processamento (motor Rust em
     background). Responde 'processing' na hora — o usuário pode fechar a página e voltar.
-    `modality` hoje só 'run' (Hyrox/CrossFit no roteiro)."""
+    `view` = 'lateral' | 'frontal' (conjunto de métricas por vista). `modality` hoje só 'run'."""
     data = await video.read()
     if len(data) > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Vídeo grande demais (max 300MB)")
-    return svc.create(data, video.filename or "video.mp4", None, modality or "run")
+    return svc.create(data, video.filename or "video.mp4", None, modality or "run", view or "lateral")
 
 
 @app.get("/api/v1/form")
