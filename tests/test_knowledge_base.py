@@ -91,9 +91,6 @@ class _FakeLLM:
             raise RuntimeError("llm off")
         return self.reply
 
-    def chat_stream(self, system_prompt, user_prompt):
-        yield self.reply
-
 
 def _search_text_row(base, chunk_id=0):
     con = duckdb.connect(base.db_path, read_only=True)

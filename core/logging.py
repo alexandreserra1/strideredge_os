@@ -6,8 +6,8 @@ são — são UX de terminal.
 
 Uso (importa a classe no lugar do print):
     from core.logging import Logger
-    log = Logger("garmin_sync")
-    log.info("treino_importado", garmin_id=42, status="imported")
+    log = Logger("form")
+    log.info("form_done", analysis_id="abc", status="done")
     log = log.bind(trace_id="abc123")   # contexto que acompanha os eventos
 """
 

@@ -12,9 +12,6 @@ class _FakeLLM:
     def chat(self, system_prompt, user_prompt):
         return self.reply
 
-    def chat_stream(self, system_prompt, user_prompt):
-        yield self.reply
-
 
 class _FakeKB:
     def retrieve(self, query, k=3):

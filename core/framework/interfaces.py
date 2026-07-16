@@ -7,7 +7,7 @@ de aterramento anti-alucinacao).
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class BaseLLMClient(ABC):
@@ -21,12 +21,6 @@ class BaseLLMClient(ABC):
     def chat(self, system_prompt: str, user_prompt: str) -> str:
         """Recebe persona (system) + dados (user) e devolve a resposta gerada."""
         ...
-
-    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
-        """Gera em STREAMING (tokens conforme nascem). Padrao: a resposta inteira num
-        unico chunk — provedores com suporte real (Ollama) sobrescrevem. Assim fakes de
-        teste e clientes antigos funcionam sem mudar nada."""
-        yield self.chat(system_prompt, user_prompt)
 
 
 class BaseEmbedder(ABC):
@@ -76,9 +70,6 @@ class BaseGuard(ABC):
     def issues(self, output: str, reference: str) -> Dict[str, list]:
         """Problemas da 'output' frente ao texto de 'reference' (dict de listas; vazio = ok)."""
         ...
-
-    def is_clean(self, output: str, reference: str) -> bool:
-        return not any(self.issues(output, reference).values())
 
     def enforce(self, llm: "BaseLLMClient", system_prompt: str, user_prompt: str,
                 max_retries: int = 2, first: Optional[str] = None) -> str:

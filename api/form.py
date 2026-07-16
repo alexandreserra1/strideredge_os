@@ -4,12 +4,8 @@ Desenho: Python só ORQUESTRA (constituição §1) — todo o cálculo pesado (p
 FFT, métricas) roda no binário Rust via subprocess. O vídeo fica no filesystem
 (storage/videos/{id}/); o banco guarda caminho + métricas JSON.
 
-Processamento é assíncrono (thread): um vídeo de 30s leva ~1min em CPU.
-A conexão DuckDB é thread-safe por cursor (core/database).
-
-ISOLAMENTO: a análise de vídeo escreve APENAS em `form_analyses`. Nunca toca em
-`dim_activities`/tabelas de fato. A cadência da câmera e a do `.fit` (relógio) são
-medidas por caminhos independentes — o vídeo jamais altera os dados do Garmin.
+Processamento é em BACKGROUND (fila de jobs): o upload responde 'processing' na hora
+e um worker roda o motor depois. A conexão DuckDB é thread-safe por cursor (core/database).
 """
 
 import json

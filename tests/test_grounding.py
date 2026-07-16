@@ -14,7 +14,6 @@ def test_issues_detecta_numero_inventado_e_causa():
 def test_issues_limpo_quando_aterrado():
     iss = guard.issues("cadencia 163 spm, sinal de fadiga", "dados: 163 spm")
     assert iss == {"invented_numbers": [], "banned_causes": []}
-    assert guard.is_clean("cadencia 163, fadiga", "dados 163")
 
 
 def test_numbers_virgula_decimal():

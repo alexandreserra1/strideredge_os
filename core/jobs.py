@@ -1,9 +1,9 @@
 """core/jobs.py — costura de execução de tarefas em BACKGROUND.
 
 Um só padrão pra tudo que é lento e não pode bloquear a resposta HTTP: processar
-vídeo (transcode + pose + métricas) e importar histórico (Strava). O request só
-ENFILEIRA e responde na hora ("recebido"); um worker processa depois. O usuário
-pode fechar a página e voltar — o status fica no banco.
+vídeo (transcode + pose + métricas). O request só ENFILEIRA e responde na hora
+("recebido"); um worker processa depois. O usuário pode fechar a página e voltar —
+o status fica no banco.
 
 Desenho (constituição §4 polimorfismo, §2 sem infra pesada até hospedar):
   - JobQueue (contrato) -> LocalJobQueue (impl leve, sem dependência: fila em

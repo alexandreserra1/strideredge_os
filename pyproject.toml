@@ -18,7 +18,6 @@ dependencies = [
     "uvicorn",    # servidor que roda a API
     "structlog",  # logs estruturados em JSON
     "httpx",      # cliente HTTP (Ollama, embeddings, RAG)
-    "ddgs",       # busca na web (fallback do RAG)
 ]
 
 [project.optional-dependencies]

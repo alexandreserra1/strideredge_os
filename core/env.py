@@ -1,7 +1,7 @@
 """core/env.py — carrega o .env pro ambiente, sem dependência externa.
 
 Usa setdefault: variáveis JÁ definidas no ambiente têm precedência sobre o .env
-(padrão 12-factor). Gitignored. Chamado no boot da API e pelo garmin_sync.
+(padrão 12-factor). Gitignored. Chamado no boot da API (credenciais do Google login).
 """
 
 import os

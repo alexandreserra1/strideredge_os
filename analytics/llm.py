@@ -5,9 +5,6 @@ quem usa). Servido pelo Ollama, 100% local, sem token. Usado pelo FormCoach (pla
 corretivo), pelo ContextGenerator (indexação) e pelo LLM-judge dos evals.
 """
 
-import json
-from typing import Iterator
-
 import httpx
 
 from core.framework.interfaces import BaseLLMClient
@@ -29,7 +26,7 @@ class OllamaClient(BaseLLMClient):
         self.num_predict = num_predict   # teto de tokens de saida (-1 = sem teto)
         self.keep_alive = keep_alive     # mantem o modelo "quente" na memoria do Ollama
 
-    def _payload(self, system_prompt: str, user_prompt: str, stream: bool) -> dict:
+    def _payload(self, system_prompt: str, user_prompt: str) -> dict:
         options = {"temperature": self.temperature}
         if self.num_predict > 0:
             options["num_predict"] = self.num_predict
@@ -39,27 +36,12 @@ class OllamaClient(BaseLLMClient):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "stream": stream,
+            "stream": False,
             "keep_alive": self.keep_alive,
             "options": options,
         }
 
     def chat(self, system_prompt: str, user_prompt: str) -> str:
-        response = _HTTP.post(self.url, json=self._payload(system_prompt, user_prompt, False))
+        response = _HTTP.post(self.url, json=self._payload(system_prompt, user_prompt))
         response.raise_for_status()
         return response.json()["message"]["content"]
-
-    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
-        """Tokens conforme o Ollama gera (NDJSON: um objeto por linha, 'done' no fim)."""
-        with _HTTP.stream("POST", self.url,
-                          json=self._payload(system_prompt, user_prompt, True)) as response:
-            response.raise_for_status()
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                data = json.loads(line)
-                token = data.get("message", {}).get("content", "")
-                if token:
-                    yield token
-                if data.get("done"):
-                    break
