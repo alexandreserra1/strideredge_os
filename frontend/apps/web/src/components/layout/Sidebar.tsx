@@ -1,4 +1,4 @@
-import { Clapperboard } from 'lucide-react'
+import { Clapperboard, HeartPulse } from 'lucide-react'
 
 interface SidebarProps {
   currentRoute: string
@@ -7,6 +7,7 @@ interface SidebarProps {
 
 const menu = [
   { id: 'video', label: 'Análise de Forma', icon: Clapperboard },
+  { id: 'injuries', label: 'Minhas Lesões', icon: HeartPulse },
 ]
 
 export default function Sidebar({ currentRoute, onNavigate }: SidebarProps) {

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from core.logging import Logger
 from analytics.form_coach import FormCoach
+from analytics.injury_taxonomy import taxonomy_payload
 from api.auth import AuthError, AuthService
 from api.form import FormService
 from api.injuries import InjuryError, InjuryService
@@ -234,6 +235,12 @@ def put_profile(req: ProfileRequest, request: Request,
 
 
 # ---------- Lesões do atleta (log OSTRC — base do modelo de risco treinado) ----------
+
+@app.get("/api/v1/injuries/taxonomy")
+def injury_taxonomy():
+    """Vocabulário controlado (região→diagnóstico→lado) pro picker do frontend. Público (só vocab)."""
+    return taxonomy_payload()
+
 
 @app.get("/api/v1/injuries")
 def list_injuries(request: Request, auth: AuthService = Depends(get_auth_service),

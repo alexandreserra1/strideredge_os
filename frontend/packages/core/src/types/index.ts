@@ -83,6 +83,40 @@ export interface AthleteProfile {
   goal?: string | null
 }
 
+// ---- Lesões (log OSTRC — fonte do dataset de risco) ----
+
+export interface InjuryDiagnosis {
+  id: string
+  label: string
+  region: string
+  is_mapped: boolean   // false = logável, mas sem análise biomecânica citável ainda
+}
+
+export interface InjuryTaxonomy {
+  regions: string[]
+  sides: string[]
+  diagnoses: InjuryDiagnosis[]
+}
+
+// As 4 respostas OSTRC (0–3 cada). Enviadas no log; severidade 0–100 vem computada na leitura.
+export interface OstrcAnswers {
+  q_participation?: number | null
+  q_volume?: number | null
+  q_performance?: number | null
+  q_pain?: number | null
+}
+
+export interface InjuryReport extends OstrcAnswers {
+  id: string
+  region: string | null
+  diagnosis: string | null
+  side: string | null
+  onset_date: string | null
+  notes: string | null
+  reported_at: string
+  severity: number     // 0–100, computada na leitura
+}
+
 // ---- Auth ----
 
 export interface AuthUser { user_id: string; name: string; email: string }

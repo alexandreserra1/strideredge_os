@@ -4,7 +4,19 @@ import type {
   FormAnalysis,
   FormPlan,
   AthleteProfile,
+  InjuryReport,
+  InjuryTaxonomy,
+  OstrcAnswers,
 } from '../types'
+
+// Payload do log de lesão: taxonomia + OSTRC (tudo opcional no contrato; o form valida forte)
+export interface InjuryLogInput extends OstrcAnswers {
+  region?: string | null
+  diagnosis?: string | null
+  side?: string | null
+  onset_date?: string | null
+  notes?: string | null
+}
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -75,5 +87,11 @@ export const api = {
     get: () => request<AthleteProfile>('/profile'),
     save: (p: AthleteProfile) =>
       request<AthleteProfile>('/profile', { method: 'PUT', body: JSON.stringify(p) }),
+  },
+  injuries: {
+    taxonomy: () => request<InjuryTaxonomy>('/injuries/taxonomy'),
+    list: () => request<InjuryReport[]>('/injuries'),
+    log: (report: InjuryLogInput) =>
+      request<InjuryReport>('/injuries', { method: 'POST', body: JSON.stringify(report) }),
   },
 }

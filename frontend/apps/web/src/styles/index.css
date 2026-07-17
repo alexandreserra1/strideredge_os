@@ -81,6 +81,10 @@
   .kpi-card {
     @apply bg-[var(--surface-100)] rounded-2xl border border-[var(--border-light)] p-4 md:p-5 flex flex-col gap-1;
   }
+  .input-base {
+    @apply px-4 py-3 rounded-xl bg-[var(--surface-200)] border border-[var(--border-light)]
+           text-sm focus:border-[var(--brand)] focus:outline-none;
+  }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .text-balance { text-wrap: balance; }

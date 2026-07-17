@@ -75,3 +75,15 @@ def factors_for(dx: str) -> list:
 def diagnoses_for_region(region: str) -> list:
     """IDs de diagnóstico daquela região (pra montar o picker do log em cascata)."""
     return [dx for dx, d in DIAGNOSES.items() if d["region"] == region]
+
+
+def taxonomy_payload() -> dict:
+    """Vocabulário controlado p/ o picker do frontend (single-source: região→diagnóstico→lado)."""
+    return {
+        "regions": list(REGIONS),
+        "sides": list(SIDES),
+        "diagnoses": [
+            {"id": dx, "label": d["label"], "region": d["region"], "is_mapped": is_mapped(dx)}
+            for dx, d in DIAGNOSES.items()
+        ],
+    }

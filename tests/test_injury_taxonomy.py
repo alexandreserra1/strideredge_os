@@ -2,7 +2,8 @@
 
 from analytics.biomechanics import ideal_targets
 from analytics.injury_taxonomy import (
-    DIAGNOSES, REGIONS, valid_diagnosis, is_mapped, factors_for, diagnoses_for_region,
+    DIAGNOSES, REGIONS, SIDES, valid_diagnosis, is_mapped, factors_for, diagnoses_for_region,
+    taxonomy_payload,
 )
 from analytics.exercises import EXERCISES, PHASES, for_factors
 
@@ -34,6 +35,15 @@ def test_helpers_diagnostico():
     assert valid_diagnosis("pfp") and not valid_diagnosis("inexistente")
     assert "pfp" in diagnoses_for_region("joelho_frente")
     assert is_mapped("plantar") and "cadence_spm" in factors_for("plantar")  # mapeada (proxy de carga)
+
+
+def test_taxonomy_payload_para_o_picker():
+    p = taxonomy_payload()
+    assert p["regions"] == list(REGIONS) and p["sides"] == list(SIDES)
+    ids = {d["id"] for d in p["diagnoses"]}
+    assert ids == set(DIAGNOSES)                       # todas as lesões expostas
+    for d in p["diagnoses"]:                            # shape do picker: id+label+region+is_mapped
+        assert d["label"] and d["region"] in REGIONS and isinstance(d["is_mapped"], bool)
 
 
 def test_exercicios_citados_e_com_fase_valida():

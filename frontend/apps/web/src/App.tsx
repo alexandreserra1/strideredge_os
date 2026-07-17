@@ -4,16 +4,17 @@ import { ThemeProvider } from './components/layout/ThemeProvider'
 import Layout from './components/layout/Layout'
 import Landing from './pages/Landing'
 import MovementAnalysis from './pages/MovementAnalysis'
+import MyInjuries from './pages/MyInjuries'
 import Login from './pages/Login'
 import ThemeToggle from './components/layout/ThemeToggle'
 import { api, session } from '@strideredge/core'
 
-type Route = 'landing' | 'login' | 'video'
+type Route = 'landing' | 'login' | 'video' | 'injuries'
 
 // Rota <-> URL: digitar/copiar /movimento passa pela MESMA guarda — sem sessão, qualquer
 // caminho protegido cai no /login (nada de entrar pela URL).
 const PATHS: Record<Route, string> = {
-  landing: '/', login: '/login', video: '/movimento',
+  landing: '/', login: '/login', video: '/movimento', injuries: '/lesoes',
 }
 const PUBLIC: Route[] = ['landing', 'login']
 const routeFromPath = (path: string): Route =>
@@ -88,6 +89,8 @@ export default function App() {
         return <Landing onNavigate={navigate} />
       case 'video':
         return <MovementAnalysis onNavigate={navigate} />
+      case 'injuries':
+        return <MyInjuries />
       default:
         return <MovementAnalysis onNavigate={navigate} />
     }

@@ -1,4 +1,4 @@
-import { Clapperboard } from 'lucide-react'
+import { Clapperboard, HeartPulse } from 'lucide-react'
 
 interface BottomNavProps {
   currentRoute: string
@@ -7,6 +7,7 @@ interface BottomNavProps {
 
 const items = [
   { id: 'video', icon: Clapperboard, label: 'Forma' },
+  { id: 'injuries', icon: HeartPulse, label: 'Lesões' },
 ]
 
 export default function BottomNav({ currentRoute, onNavigate }: BottomNavProps) {
