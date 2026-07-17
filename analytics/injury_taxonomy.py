@@ -6,8 +6,9 @@ mapa `lesão → fatores biomecânicos que a literatura associa` (chaves de `bio
 fonte única). Esse mapa entra no ML em três lugares: define o RÓTULO (y), dá o PRIOR de quais
 features importam por lesão, e habilita a VALIDAÇÃO do modelo de risco contra outcome real.
 
-Honestidade: mapa (factors+source) SÓ nas lesões com fonte no corpus. Fascite plantar e Aquiles
-entram no LOG (o atleta pode reportar) com `mapped=False` até adicionarmos a fonte verificada.
+Honestidade: mapa (factors+source) SÓ com fonte citável. As 6 lesões estão mapeadas; fascite plantar
+e Aquiles usam fatores PROXY de carga (o risco primário delas — dorsiflexão/pronação do pé — não é
+medível com o pose COCO-17 atual; migra pra primário no upgrade Halpe26 — ver docs/adr/0001).
 """
 
 # Regiões do corpo (pra agrupar o picker do log e a correlação por região).
@@ -38,12 +39,19 @@ DIAGNOSES = {
         "factors": ["cadence_spm", "vertical_oscillation_pct"],
         "source": "PMC8192811",
     },
-    # Sem fonte no corpus ainda -> entram no log, mas sem mapa citado (mapped=False).
+    # Fatores PROXY: o risco primário destas duas (dorsiflexão de tornozelo reduzida + pronação do
+    # retropé) NÃO é medível com o pose atual (COCO-17 não tem keypoints de pé). Mapeamos os proxies
+    # de CARGA que a literatura também liga a elas e que já medimos; migram p/ os fatores primários
+    # quando o motor subir p/ Halpe26/RTMPose (ver ADR 0001 + AI-STRATEGY.md:99).
     "plantar": {
-        "label": "Fascite plantar", "region": "pe", "factors": [], "source": None,
+        "label": "Fascite plantar", "region": "pe",
+        "factors": ["cadence_spm", "vertical_oscillation_pct"],
+        "source": "PMC11878588",
     },
     "achilles": {
-        "label": "Tendinopatia do Aquiles", "region": "tornozelo", "factors": [], "source": None,
+        "label": "Tendinopatia do Aquiles", "region": "tornozelo",
+        "factors": ["cadence_spm", "knee_contact_deg"],
+        "source": "PMC9845578",
     },
 }
 

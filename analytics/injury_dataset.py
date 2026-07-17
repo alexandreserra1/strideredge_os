@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from core.database import get_connection
 from analytics.biomechanics import ideal_targets, diagnose
-from analytics.injury_taxonomy import factors_for, is_mapped
+from analytics.injury_taxonomy import factors_for, is_mapped, valid_diagnosis
 
 _FACTOR_KEYS = tuple(ideal_targets().keys())
 
@@ -48,9 +48,13 @@ def build_dataset(window_weeks: int = 8) -> list:
     con = get_connection()
     injuries = con.execute(
         "SELECT user_id, diagnosis, region, onset_date FROM injury_reports "
-        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL").fetchall()
+        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL "
+        "AND diagnosis IS NOT NULL").fetchall()
     out = []
     for user_id, dx, region, onset in injuries:
+        # rótulo tem que estar no vocabulário vigente (dx de versão antiga da taxonomia não treina)
+        if not valid_diagnosis(dx):
+            continue
         feats = _mean_features(_analyses_before(con, user_id, onset, window_weeks))
         if feats:
             out.append({"user_id": str(user_id), "label_dx": dx, "label_region": region,

@@ -33,7 +33,7 @@ def test_regiao_de_toda_lesao_e_valida():
 def test_helpers_diagnostico():
     assert valid_diagnosis("pfp") and not valid_diagnosis("inexistente")
     assert "pfp" in diagnoses_for_region("joelho_frente")
-    assert factors_for("plantar") == []   # não mapeada
+    assert is_mapped("plantar") and "cadence_spm" in factors_for("plantar")  # mapeada (proxy de carga)
 
 
 def test_exercicios_citados_e_com_fase_valida():

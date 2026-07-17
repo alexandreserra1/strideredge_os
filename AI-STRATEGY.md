@@ -75,8 +75,11 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   2. **`lesão↔fatores biomecânicos`** — QUAIS métricas de `biomechanics.ideal_targets` a literatura
      liga a cada lesão (PFP/ITBS ← `pelvic_drop_deg`+`knee_valgus_deg`; MTSS/fratura ← `cadence_spm`).
      Hoje é referência pra `validate_literature_model`; no modelo treinado vira o PRIOR que regulariza
-     com pouco dado. Só as 4 lesões com fonte no corpus têm mapa (`mapped=True`) — fascite/Aquiles
-     entram no log (`mapped=False`) até o corpus ganhar a citação real. Mapa só onde há fonte.
+     com pouco dado. **As 6 lesões têm mapa (`mapped=True`) com fonte citável.** Fascite/Aquiles usam
+     fatores PROXY de carga (`cadence_spm`+`vertical_oscillation_pct` / `cadence_spm`+`knee_contact_deg`)
+     porque o risco primário delas (dorsiflexão/pronação do pé) **não é medível com o pose COCO-17
+     atual** — migra pra fator primário quando o motor subir p/ Halpe26 (ver `docs/adr/0001`). Mapa
+     só onde há fonte.
   3. **`fator↔exercício`** (`analytics/exercises.py`, seed) — biblioteca determinística e citada que o
      FormCoach pode usar como fonte de verdade (o LLM personaliza a entrega, não inventa exercício).
 - **[FEITO] Coleta**: `injury_reports` (migration 014) + `InjuryService` (`api/injuries.py`, espelha
