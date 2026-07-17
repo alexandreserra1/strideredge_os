@@ -47,6 +47,15 @@ cd frontend/apps/web && npm run dev                # sobe o frontend (localhost:
 
 `BaseLLMClient`, `BaseEmbedder`, `BaseRetriever`, `BaseGuard` (em `core/framework/interfaces.py`).
 
+## Taxonomia de lesão (conceito central)
+
+`analytics/injury_taxonomy.py` (vocabulário controlado região+diagnóstico+fatores biomecânicos
+citados) e `injury_reports` (log OSTRC por atleta, `api/injuries.py`) são a fundação do modelo de
+risco TREINADO — hoje `analytics/injury_risk.py` usa um score aterrado na literatura (sem outcomes
+rotulados ainda não dá pra treinar honesto). `analytics/injury_dataset.py` liga lesão↔histórico de
+análises (`form_analyses.user_id`) numa janela ANTES do onset — a ponte pro dataset supervisionado.
+Ver `AI-STRATEGY.md` § "Taxonomia + coleta + pipeline de risco treinado".
+
 ## Notas
 
 - **App de prevenção de lesão:** conselho corretivo tem que ser correto e aterrado. Grounding

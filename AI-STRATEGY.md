@@ -67,6 +67,32 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   — lesão é rara), calibração Platt/isotonic, validação **subject-wise** (vídeos do mesmo atleta em
   folds ≠ = leakage). Mesma interface: o modelo da literatura é o `prior`; o treinado é o upgrade.
 
+### Taxonomia + coleta (OSTRC) + ponte pro ML — a fundação do outcome
+
+- **[FEITO] `analytics/injury_taxonomy.py`**: vocabulário controlado (região + diagnóstico) das 6
+  lesões dominantes de corrida. Guarda 3 mapas citáveis:
+  1. **`lesão` (o rótulo `y`)** — sem taxonomia não há classe pra prever.
+  2. **`lesão↔fatores biomecânicos`** — QUAIS métricas de `biomechanics.ideal_targets` a literatura
+     liga a cada lesão (PFP/ITBS ← `pelvic_drop_deg`+`knee_valgus_deg`; MTSS/fratura ← `cadence_spm`).
+     Hoje é referência pra `validate_literature_model`; no modelo treinado vira o PRIOR que regulariza
+     com pouco dado. Só as 4 lesões com fonte no corpus têm mapa (`mapped=True`) — fascite/Aquiles
+     entram no log (`mapped=False`) até o corpus ganhar a citação real. Mapa só onde há fonte.
+  3. **`fator↔exercício`** (`analytics/exercises.py`, seed) — biblioteca determinística e citada que o
+     FormCoach pode usar como fonte de verdade (o LLM personaliza a entrega, não inventa exercício).
+- **[FEITO] Coleta**: `injury_reports` (migration 014) + `InjuryService` (`api/injuries.py`, espelha
+  `ProfileService`) grava as 4 perguntas OSTRC (0–3) por lesão; severidade 0–100 computada na leitura.
+  Endpoints autenticados `POST/GET /api/v1/injuries`.
+- **[FEITO] Ponte análise↔lesão (`analytics/injury_dataset.py`)**: lesão é LONGITUDINAL — correlaciona
+  com o padrão biomecânico ANTES do onset, não um vídeo isolado. Pré-requisito: `form_analyses.user_id`
+  (migration 015, capturado do token no upload, opcional — convidado fica NULL).
+  - `build_dataset(window_weeks=8)`: junta lesão × análises do atleta na janela anterior → exemplo
+    rotulado `(X=fatores médios, y=diagnóstico)`. É o insumo do XGBoost quando houver casos.
+  - `validate_literature_model()`: o que dá pra fazer JÁ com poucos casos — checa se as análises
+    anteriores flaguearam os fatores que a taxonomia liga àquela lesão (face-validity do prior contra
+    outcome REAL, antes de treinar).
+- **Próximo**: tela "Minhas lesões" (picker região→diagnóstico→lado→data→OSTRC) — fonte principal do
+  dataset; e o treino real quando `build_dataset()` tiver casos suficientes (ver seção acima).
+
 ### Fase 2 — superfície AI-first (roteiro amplo — reavaliar pós-pivot)
 5. **Coach agêntico**: unificar RAG + métricas de forma + risco num agente que PLANEJA.
 6. Comparar forma AO LONGO DO TEMPO (deriva = fadiga/risco) → janela temporal do risco.

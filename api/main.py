@@ -21,9 +21,10 @@ from core.logging import Logger
 from analytics.form_coach import FormCoach
 from api.auth import AuthError, AuthService
 from api.form import FormService
+from api.injuries import InjuryError, InjuryService
 from api.profile import ProfileService
-from api.deps import (get_auth_service, get_form_coach, get_form_service, get_job_queue,
-                      get_profile_service)
+from api.deps import (get_auth_service, get_form_coach, get_form_service, get_injury_service,
+                      get_job_queue, get_profile_service)
 
 
 class RegisterRequest(BaseModel):
@@ -46,6 +47,18 @@ class ProfileRequest(BaseModel):
     weight_kg: Optional[float] = None
     years_running: Optional[float] = None
     goal: Optional[str] = None
+
+
+class InjuryRequest(BaseModel):
+    region: Optional[str] = None
+    diagnosis: Optional[str] = None
+    side: Optional[str] = None
+    onset_date: Optional[str] = None
+    q_participation: Optional[int] = None
+    q_volume: Optional[int] = None
+    q_performance: Optional[int] = None
+    q_pain: Optional[int] = None
+    notes: Optional[str] = None
 
 
 @asynccontextmanager
@@ -134,15 +147,24 @@ def auth_me(request: Request, auth: AuthService = Depends(get_auth_service)):
 # ---------- Análise de Forma por vídeo (stride-vision) ----------
 
 @app.post("/api/v1/form", status_code=201)
-async def form_upload(video: UploadFile = File(...), modality: str = Form("run"),
-                      view: str = Form("lateral"), svc: FormService = Depends(get_form_service)):
+async def form_upload(request: Request, video: UploadFile = File(...), modality: str = Form("run"),
+                      view: str = Form("lateral"), svc: FormService = Depends(get_form_service),
+                      auth: AuthService = Depends(get_auth_service)):
     """Recebe o vídeo, salva no filesystem e ENFILEIRA o processamento (motor Rust em
     background). Responde 'processing' na hora — o usuário pode fechar a página e voltar.
-    `view` = 'lateral' | 'frontal' (conjunto de métricas por vista). `modality` hoje só 'run'."""
+    `view` = 'lateral' | 'frontal' (conjunto de métricas por vista). Liga ao usuário se logado
+    (pra correlação com lesão); convidado fica anônimo."""
     data = await video.read()
     if len(data) > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Vídeo grande demais (max 300MB)")
-    return svc.create(data, video.filename or "video.mp4", None, modality or "run", view or "lateral")
+    user_id = None
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    try:
+        user_id = auth.me(token)["user_id"]
+    except AuthError:
+        pass   # convidado -> análise anônima (degrada gracioso)
+    return svc.create(data, video.filename or "video.mp4", None, modality or "run",
+                      view or "lateral", user_id)
 
 
 @app.get("/api/v1/form")
@@ -209,3 +231,23 @@ def put_profile(req: ProfileRequest, request: Request,
                 auth: AuthService = Depends(get_auth_service),
                 profiles: ProfileService = Depends(get_profile_service)):
     return profiles.upsert(_user_id(request, auth), req.model_dump())
+
+
+# ---------- Lesões do atleta (log OSTRC — base do modelo de risco treinado) ----------
+
+@app.get("/api/v1/injuries")
+def list_injuries(request: Request, auth: AuthService = Depends(get_auth_service),
+                  injuries: InjuryService = Depends(get_injury_service)):
+    """Lesões reportadas pelo atleta logado (com severidade OSTRC computada)."""
+    return injuries.list(_user_id(request, auth))
+
+
+@app.post("/api/v1/injuries", status_code=201)
+def log_injury(req: InjuryRequest, request: Request,
+               auth: AuthService = Depends(get_auth_service),
+               injuries: InjuryService = Depends(get_injury_service)):
+    """Registra uma lesão (vocabulário controlado da taxonomia + 4 perguntas OSTRC)."""
+    try:
+        return injuries.log(_user_id(request, auth), req.model_dump())
+    except InjuryError as e:
+        raise HTTPException(status_code=422, detail=str(e))

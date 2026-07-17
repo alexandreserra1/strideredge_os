@@ -72,10 +72,17 @@ do gap medido→exercícios citados pelo corpus) · **corpus RAG expandido** (~2
 análise & saúde, **página dedicada de Análise de Forma** (vídeo), landing de marketing com hero em
 vídeo, tema light/dark, auth com guarda de rota.
 
-**Próximo (produto):** **upgrade de pose RTMPose** (26 keypoints c/ pés → pisada/pronação REAIS +
-vista de trás; hoje a pisada é estimativa) · **gerador de plano adaptativo** (§0.3) · motores de
-movimento **HYROX/CrossFit** (classificar exercício, contar reps, ginástica×LPO) · dado ao vivo
-(Connect IQ) · app mobile · **Hospedar = por último** (§10).
+**Feito (NOVO — taxonomia + outcome, ver AI-STRATEGY.md):** `injury_taxonomy.py` (vocabulário
+controlado de 6 lesões + mapa `lesão↔fatores biomecânicos` citado) · `exercises.py` (mapa
+`fator↔exercício`, seed) · log OSTRC (`injury_reports` + `InjuryService`) · **dado de lesão é
+NÍVEL ATLETA e LONGITUDINAL** — `form_analyses.user_id` liga cada análise ao atleta logado (opcional;
+convidado fica anônimo), e `analytics/injury_dataset.py` junta lesão×análises-antes-do-onset numa
+janela (`build_dataset`) — a ponte que vai alimentar o modelo treinado quando houver casos.
+
+**Próximo (produto):** tela "Minhas lesões" (log estruturado) · **upgrade de pose RTMPose** (26
+keypoints c/ pés → pisada/pronação REAIS + vista de trás; hoje a pisada é estimativa) · **gerador de
+plano adaptativo** (§0.3) · motores de movimento **HYROX/CrossFit** (classificar exercício, contar
+reps, ginástica×LPO) · dado ao vivo (Connect IQ) · app mobile · **Hospedar = por último** (§10).
 
 ---
 

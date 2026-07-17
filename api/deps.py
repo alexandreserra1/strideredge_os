@@ -9,6 +9,7 @@ from analytics.form_coach import FormCoach
 from analytics.llm import OllamaClient
 from api.auth import AuthService
 from api.form import FormService
+from api.injuries import InjuryService
 from api.profile import ProfileService
 from rag.knowledge_base import KnowledgeBase, OllamaEmbedder
 
@@ -47,6 +48,10 @@ def get_form_service() -> FormService:
 
 def get_profile_service() -> ProfileService:
     return ProfileService()
+
+
+def get_injury_service() -> InjuryService:
+    return InjuryService()
 
 
 def get_form_coach() -> FormCoach:

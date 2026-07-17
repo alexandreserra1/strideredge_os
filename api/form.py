@@ -39,11 +39,12 @@ class FormService:
     # ---------- escrita ----------
 
     def create(self, video_bytes: bytes, filename: str, activity_id: Optional[str] = None,
-               modality: str = "run", view: str = "lateral") -> dict:
+               modality: str = "run", view: str = "lateral", user_id: Optional[str] = None) -> dict:
         """Salva o upload, registra a análise e ENFILEIRA o processamento (background).
         Responde na hora com 'processing' — o usuário pode fechar a página e voltar depois.
-        `view` = 'lateral' (métricas sagitais) ou 'frontal' (queda pélvica, valgo de joelho);
-        o motor roda o conjunto certo de métricas por vista. `modality` hoje só 'run'."""
+        `view` = 'lateral' (métricas sagitais) ou 'frontal' (queda pélvica, valgo de joelho).
+        `user_id` (do token, opcional): liga a análise ao atleta pra correlação com lesão (o
+        convidado fica NULL e não entra no dataset)."""
         analysis_id = str(uuid.uuid4())
         adir = VIDEOS_DIR / analysis_id
         adir.mkdir(parents=True, exist_ok=True)
@@ -53,9 +54,9 @@ class FormService:
 
         view = view if view in ("lateral", "frontal") else "lateral"
         get_connection().execute(
-            "INSERT INTO form_analyses (analysis_id, activity_id, status, modality, view) "
-            "VALUES (?, ?, 'processing', ?, ?)",
-            [analysis_id, activity_id, modality, view])
+            "INSERT INTO form_analyses (analysis_id, activity_id, status, modality, view, user_id) "
+            "VALUES (?, ?, 'processing', ?, ?, ?)",
+            [analysis_id, activity_id, modality, view, user_id])
         self.queue.enqueue(self._process, analysis_id, original, view)
         return {"analysis_id": analysis_id, "status": "processing"}
 
