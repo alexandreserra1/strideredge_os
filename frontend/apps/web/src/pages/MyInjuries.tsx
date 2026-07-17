@@ -22,11 +22,11 @@ export default function MyInjuries() {
     loadReports()
   }, [loadReports])
 
-  const onSubmit = useCallback(async (report: InjuryLogInput) => {
+  const onSubmit = useCallback(async (reports: InjuryLogInput[]) => {
     setSaving(true)
     setError('')
     try {
-      await api.injuries.log(report)
+      await Promise.all(reports.map((r) => api.injuries.log(r)))   // 1 linha por região marcada
       loadReports()
     } catch {
       setError('Não foi possível registrar. Revise os campos e tente de novo.')

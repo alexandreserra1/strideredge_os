@@ -16,6 +16,7 @@ export interface InjuryLogInput extends OstrcAnswers {
   side?: string | null
   onset_date?: string | null
   notes?: string | null
+  symptom_text?: string | null
 }
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'

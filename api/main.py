@@ -59,6 +59,7 @@ class InjuryRequest(BaseModel):
     q_volume: Optional[int] = None
     q_performance: Optional[int] = None
     q_pain: Optional[int] = None
+    symptom_text: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -68,8 +69,10 @@ async def lifespan(_app: FastAPI):
     jobs e recupera análises órfãs (crash: linhas 'processing' de quando o servidor caiu no
     meio do job de vídeo)."""
     from api.form import recover_orphaned_analyses
+    from core.database import get_connection, run_migrations
     from core.env import load_dotenv
     load_dotenv()
+    run_migrations(get_connection())   # idempotente (IF NOT EXISTS) — schema sempre em dia no boot
     get_job_queue().start()
     recover_orphaned_analyses()
     yield

@@ -14,7 +14,7 @@ from analytics.injury_taxonomy import valid_diagnosis, DIAGNOSES, REGIONS, SIDES
 # As 4 perguntas do OSTRC (cada uma 0–3). A severidade 0–100 é a média normalizada (estilo OSTRC-BR).
 _Q = ("q_participation", "q_volume", "q_performance", "q_pain")
 _COLS = ("id, user_id, region, diagnosis, side, onset_date, q_participation, q_volume, "
-         "q_performance, q_pain, notes, reported_at")
+         "q_performance, q_pain, notes, symptom_text, reported_at")
 
 
 class InjuryError(Exception):
@@ -47,11 +47,12 @@ class InjuryService:
         rid = str(uuid.uuid4())
         get_connection().execute(
             "INSERT INTO injury_reports (id, user_id, region, diagnosis, side, onset_date, "
-            "q_participation, q_volume, q_performance, q_pain, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "q_participation, q_volume, q_performance, q_pain, notes, symptom_text) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [rid, user_id, region, dx, side, report.get("onset_date"),
              report.get("q_participation"), report.get("q_volume"),
-             report.get("q_performance"), report.get("q_pain"), report.get("notes")])
+             report.get("q_performance"), report.get("q_pain"), report.get("notes"),
+             report.get("symptom_text")])
         return self.get(rid)
 
     def get(self, injury_id: str) -> Optional[dict]:
@@ -71,5 +72,5 @@ class InjuryService:
         return {
             "id": str(r[0]), "user_id": r[1], "region": r[2], "diagnosis": r[3], "side": r[4],
             "onset_date": str(r[5]) if r[5] else None, **answers, "notes": r[10],
-            "reported_at": str(r[11]), "severity": cls.severity(answers),
+            "symptom_text": r[11], "reported_at": str(r[12]), "severity": cls.severity(answers),
         }

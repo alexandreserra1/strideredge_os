@@ -9,22 +9,20 @@ interface InjuryListProps {
 
 interface Group {
   key: string
-  dxLabel: string
   regionLabel: string
   sideLabel: string
   reports: InjuryReport[]   // do mais recente pro mais antigo
 }
 
-// Agrupa por diagnóstico+lado (a decisão de design: log append-only, evolução visível por grupo).
-function groupReports(reports: InjuryReport[], taxonomy: InjuryTaxonomy | null): Group[] {
-  const dxLabelOf = (id: string | null) =>
-    taxonomy?.diagnoses.find((d) => d.id === id)?.label ?? id ?? '—'
+// Agrupa por REGIÃO+lado (o reframe: a região é a verdade estruturada; o atleta não auto-diagnostica).
+// Log append-only → evolução de severidade visível por grupo.
+function groupReports(reports: InjuryReport[], _taxonomy: InjuryTaxonomy | null): Group[] {
   const groups = new Map<string, Group>()
   for (const r of reports) {
-    const key = `${r.diagnosis}|${r.side}`
+    const key = `${r.region}|${r.side}`
     const g = groups.get(key) ?? {
-      key, dxLabel: dxLabelOf(r.diagnosis),
-      regionLabel: r.region ? REGION_LABELS[r.region] ?? r.region : '',
+      key,
+      regionLabel: r.region ? REGION_LABELS[r.region] ?? r.region : '—',
       sideLabel: r.side ? SIDE_LABELS[r.side] ?? r.side : '',
       reports: [],
     }
@@ -56,10 +54,12 @@ export default function InjuryList({ reports, taxonomy }: InjuryListProps) {
           <div key={g.key} className="rounded-2xl border border-border-light bg-surface-100 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-text-primary">{g.dxLabel}</p>
-                <p className="text-xs text-text-secondary">
-                  {[g.regionLabel, g.sideLabel].filter(Boolean).join(' · ')}
+                <p className="font-semibold text-text-primary">
+                  {g.regionLabel}{g.sideLabel && <span className="text-text-secondary font-normal"> · {g.sideLabel}</span>}
                 </p>
+                {latest.symptom_text && (
+                  <p className="text-xs text-text-secondary italic">"{latest.symptom_text}"</p>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <p className={`text-sm font-bold ${band.tone}`}>{band.label}</p>

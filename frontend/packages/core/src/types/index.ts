@@ -109,10 +109,11 @@ export interface OstrcAnswers {
 export interface InjuryReport extends OstrcAnswers {
   id: string
   region: string | null
-  diagnosis: string | null
+  diagnosis: string | null      // NULL até o LLM mapear symptom_text num termo da taxonomia (coach-time)
   side: string | null
   onset_date: string | null
   notes: string | null
+  symptom_text: string | null   // texto livre: o que o atleta sente / laudo do médico (contexto p/ coach)
   reported_at: string
   severity: number     // 0–100, computada na leitura
 }

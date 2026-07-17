@@ -1,66 +1,59 @@
-import { useMemo, useState } from 'react'
-import type { InjuryTaxonomy } from '@strideredge/core'
-import type { InjuryLogInput } from '@strideredge/core'
+import { useState } from 'react'
+import type { InjuryTaxonomy, InjuryLogInput } from '@strideredge/core'
+import BodyMap from './BodyMap'
 import RatingSegments from './RatingSegments'
 import { REGION_LABELS, SIDE_LABELS, OSTRC_QUESTIONS } from './injuryCopy'
 
 interface InjuryFormProps {
   taxonomy: InjuryTaxonomy
-  onSubmit: (report: InjuryLogInput) => Promise<void>
+  onSubmit: (reports: InjuryLogInput[]) => Promise<void>
   saving: boolean
 }
 
 const TODAY = new Date().toISOString().slice(0, 10)
+type RegionEntry = { answers: Record<string, number>; symptom: string }
+const emptyEntry = (): RegionEntry => ({ answers: {}, symptom: '' })
 
-// Form do log OSTRC. Cascata região→diagnóstico→lado→data→4 perguntas. `diagnosis` é OBRIGATÓRIO
-// no cliente (o backend aceita null de propósito; a trava real do dataset é no consumidor).
+// Reframe: o atleta marca ONDE dói no mapa (região = verdade estruturada), não auto-diagnostica.
+// Cada região marcada tem seu próprio OSTRC (append-only: vira uma linha por região). O texto livre
+// descreve o sintoma/laudo — vira contexto do coach e candidato a rótulo via LLM em coach-time.
 export default function InjuryForm({ taxonomy, onSubmit, saving }: InjuryFormProps) {
-  const [region, setRegion] = useState('')
-  const [diagnosis, setDiagnosis] = useState('')
+  const [regions, setRegions] = useState<string[]>([])
   const [side, setSide] = useState('')
   const [onsetDate, setOnsetDate] = useState('')
-  const [answers, setAnswers] = useState<Record<string, number>>({})
   const [notes, setNotes] = useState('')
+  const [entries, setEntries] = useState<Record<string, RegionEntry>>({})
 
-  const dxOptions = useMemo(
-    () => taxonomy.diagnoses.filter((d) => !region || d.region === region),
-    [taxonomy.diagnoses, region],
-  )
-  const selectedDx = taxonomy.diagnoses.find((d) => d.id === diagnosis)
-  const canSubmit = !!diagnosis && !!onsetDate && !saving
+  const canSubmit = regions.length > 0 && !!onsetDate && !saving
 
-  const onRegionChange = (r: string) => {
-    setRegion(r)
-    setDiagnosis('')   // troca de região invalida o diagnóstico
+  const toggleRegion = (r: string) => {
+    setRegions((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r])
+    setEntries((prev) => prev[r] ? prev : { ...prev, [r]: emptyEntry() })
   }
+  const patch = (r: string, e: Partial<RegionEntry>) =>
+    setEntries((prev) => ({ ...prev, [r]: { ...prev[r], ...e } }))
+  const copyPrev = (r: string, prevR: string) => patch(r, { answers: { ...entries[prevR].answers } })
 
   const submit = async () => {
     if (!canSubmit) return
-    await onSubmit({
-      region: region || selectedDx?.region || null,
-      diagnosis, side: side || null, onset_date: onsetDate,
-      notes: notes.trim() || null, ...answers,
-    })
-    setRegion(''); setDiagnosis(''); setSide(''); setOnsetDate(''); setAnswers({}); setNotes('')
+    const reports: InjuryLogInput[] = regions.map((r) => ({
+      region: r, side: side || null, onset_date: onsetDate,
+      symptom_text: entries[r]?.symptom.trim() || null,
+      notes: notes.trim() || null, ...entries[r]?.answers,
+    }))
+    await onSubmit(reports)
+    setRegions([]); setSide(''); setOnsetDate(''); setNotes(''); setEntries({})
   }
 
   return (
     <div className="space-y-5 rounded-2xl border border-border-light bg-surface-100 p-5">
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium">Onde dói? <span className="text-red-400">*</span></p>
+        <p className="text-xs text-text-secondary">Toque em um ou mais pontos. Não precisa saber o nome da lesão.</p>
+        <BodyMap selected={regions} onToggle={toggleRegion} />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1.5">
-          <span className="text-sm font-medium">Região</span>
-          <select value={region} onChange={(e) => onRegionChange(e.target.value)} className="input-base w-full">
-            <option value="">Todas</option>
-            {taxonomy.regions.map((r) => <option key={r} value={r}>{REGION_LABELS[r] ?? r}</option>)}
-          </select>
-        </label>
-        <label className="space-y-1.5">
-          <span className="text-sm font-medium">Diagnóstico <span className="text-red-400">*</span></span>
-          <select value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} className="input-base w-full">
-            <option value="">Selecione…</option>
-            {dxOptions.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-          </select>
-        </label>
         <label className="space-y-1.5">
           <span className="text-sm font-medium">Lado</span>
           <select value={side} onChange={(e) => setSide(e.target.value)} className="input-base w-full">
@@ -75,20 +68,34 @@ export default function InjuryForm({ taxonomy, onSubmit, saving }: InjuryFormPro
         </label>
       </div>
 
-      <div className="space-y-4 border-t border-border-light pt-4">
-        <p className="text-xs text-text-secondary">Nas últimas semanas, por causa desta lesão:</p>
-        {OSTRC_QUESTIONS.map((q) => (
-          <RatingSegments key={q.key} label={q.label} options={q.options}
-            value={answers[q.key] ?? null}
-            onChange={(v) => setAnswers((a) => ({ ...a, [q.key]: v }))} />
-        ))}
-      </div>
+      {regions.map((r, i) => (
+        <div key={r} className="space-y-4 rounded-xl border border-border-light p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-lime">{REGION_LABELS[r] ?? r}</p>
+            {i > 0 && (
+              <button type="button" onClick={() => copyPrev(r, regions[i - 1])}
+                className="text-xs text-text-secondary hover:text-text-primary underline">
+                copiar respostas do anterior
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-text-secondary">Nas últimas semanas, por causa desta lesão:</p>
+          {OSTRC_QUESTIONS.map((q) => (
+            <RatingSegments key={q.key} label={q.label} options={q.options}
+              value={entries[r]?.answers[q.key] ?? null}
+              onChange={(v) => patch(r, { answers: { ...entries[r]?.answers, [q.key]: v } })} />
+          ))}
+          <textarea value={entries[r]?.symptom ?? ''} onChange={(e) => patch(r, { symptom: e.target.value })}
+            rows={2} placeholder="Descreva o que sente, ou o diagnóstico se um médico te deu (opcional)"
+            className="input-base w-full resize-none" />
+        </div>
+      ))}
 
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-        placeholder="Notas (opcional)" className="input-base w-full resize-none" />
+        placeholder="Notas gerais (opcional)" className="input-base w-full resize-none" />
 
       <button onClick={submit} disabled={!canSubmit} className="btn-primary w-full">
-        {saving ? 'Salvando…' : 'Registrar lesão'}
+        {saving ? 'Salvando…' : `Registrar ${regions.length > 1 ? `${regions.length} lesões` : 'lesão'}`}
       </button>
     </div>
   )

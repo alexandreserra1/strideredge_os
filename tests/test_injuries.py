@@ -38,6 +38,19 @@ def test_log_e_list_por_usuario():
         get_connection().execute("DELETE FROM injury_reports WHERE user_id = ?", [uid])
 
 
+def test_log_por_regiao_com_texto_livre_sem_diagnostico():
+    """Reframe: o atleta marca a região (mapa corporal) + texto livre; NÃO auto-diagnostica.
+    diagnosis fica NULL (candidato a rótulo via LLM em coach-time); region é o y confiável."""
+    uid = _uid()
+    try:
+        out = svc.log(uid, {"region": "canela", "side": "esquerdo", "onset_date": "2026-07-01",
+                            "q_pain": 3, "symptom_text": "arde na canela ao correr"})
+        assert out["region"] == "canela" and out["diagnosis"] is None
+        assert out["symptom_text"] == "arde na canela ao correr" and out["severity"] > 0
+    finally:
+        get_connection().execute("DELETE FROM injury_reports WHERE user_id = ?", [uid])
+
+
 def test_diagnostico_invalido_recusado():
     with pytest.raises(InjuryError):
         svc.log(_uid(), {"diagnosis": "inexistente"})
