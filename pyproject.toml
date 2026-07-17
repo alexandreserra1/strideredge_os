@@ -18,6 +18,7 @@ dependencies = [
     "uvicorn",    # servidor que roda a API
     "structlog",  # logs estruturados em JSON
     "httpx",      # cliente HTTP (Ollama, embeddings, RAG)
+    "scikit-learn",  # Random Forest do modelo de risco TREINADO (tabular; AI-STRATEGY)
 ]
 
 [project.optional-dependencies]
