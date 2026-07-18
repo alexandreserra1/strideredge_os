@@ -61,11 +61,17 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   `diagnose` (severidade do desvio) × peso de risco → **FAIXA relativa** (baixo/moderado/elevado/alto)
   + os fatores que a puxaram + caveat. **NUNCA "X% de chance"** (score de log-odds não calibrado não
   promete probabilidade). Alimenta a GenAI: a saída estruturada + o LLM redige/amarra ao corretivo.
-- **Próximo — treinado (quando houver dados)**: logar biomecânica por análise + lesão auto-reportada
-  ao longo do tempo → dataset rotulado. Aí **random forest / XGBoost** (padrão pra tabular de lesão),
-  feito certinho: class weights (não SMOTE, que distorce calibração), **PR-AUC/recall** (não acurácia
-  — lesão é rara), calibração Platt/isotonic, validação **subject-wise** (vídeos do mesmo atleta em
-  folds ≠ = leakage). Mesma interface: o modelo da literatura é o `prior`; o treinado é o upgrade.
+- **[FEITO — pipeline] treinado (Random Forest)** (`analytics/injury_model.py` + `injury_synth.py`).
+  O `RiskModel` treina com **class weights** (não SMOTE), avalia por **PR-AUC**, valida **subject-wise**
+  (GroupKFold quando há `user_id`, senão StratifiedKFold), e o `predict()` devolve a **MESMA interface**
+  do `assess` (drop-in prior→treinado; `form_coach` não muda). Banda vem da probabilidade do RF; peso
+  do fator vem de `feature_importances_`; explicação/citação reusa `diagnose`.
+  - **Honestidade:** hoje treina em **dados sintéticos** aterrados nas faixas citadas (`injury_synth`).
+    O RF reaprende a regra gerada (PR-AUC=1.0 = circular) → **prova o encanamento, não a validade
+    preditiva**. Serve pra travar interface/serialização/avaliação antes do dado real.
+  - **Próximo — dado real:** trocar o sintético por `injury_dataset.build_dataset` (outcomes dos
+    usuários) OU um dataset externo permissivo (ver "Dados externos" abaixo). Faltam ainda: calibração
+    Platt/isotonic e o wire do modo `treinado` no `form_coach` (hoje o coach usa o `prior`).
 
 ### Taxonomia + coleta (OSTRC) + ponte pro ML — a fundação do outcome
 
@@ -89,12 +95,45 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   com o padrão biomecânico ANTES do onset, não um vídeo isolado. Pré-requisito: `form_analyses.user_id`
   (migration 015, capturado do token no upload, opcional — convidado fica NULL).
   - `build_dataset(window_weeks=8)`: junta lesão × análises do atleta na janela anterior → exemplo
-    rotulado `(X=fatores médios, y=diagnóstico)`. É o insumo do XGBoost quando houver casos.
+    rotulado `(X=fatores médios, y)`. **A REGIÃO é o `y` primário** (confiável, vem do mapa corporal);
+    `diagnosis` é rótulo opcional e mais fino. Filtra `diagnosis IS NOT NULL + valid_diagnosis` (trava
+    de integridade no CONSUMIDOR — a API fica permissiva de propósito).
   - `validate_literature_model()`: o que dá pra fazer JÁ com poucos casos — checa se as análises
     anteriores flaguearam os fatores que a taxonomia liga àquela lesão (face-validity do prior contra
     outcome REAL, antes de treinar).
-- **Próximo**: tela "Minhas lesões" (picker região→diagnóstico→lado→data→OSTRC) — fonte principal do
-  dataset; e o treino real quando `build_dataset()` tiver casos suficientes (ver seção acima).
+- **[FEITO] Tela "Minhas lesões"** (`frontend`, rota `/lesoes`) — fonte principal do dataset.
+  **Reframe importante:** o atleta NÃO auto-diagnostica (não somos médicos + gera rótulo lixo). Marca
+  ONDE dói num **mapa muscular anatômico clicável** (`react-body-highlighter`, MIT) → a **região** é o
+  `y` estruturado; o diagnóstico virou **texto livre opcional** (sintoma/laudo) — contexto do coach e
+  candidato a rótulo via o classificador LLM (abaixo). OSTRC por região; cada região = uma linha
+  (append-only). `symptom_text` na migration 016. Migrations rodam no boot da API.
+
+### Classificador LLM texto→diagnóstico (coach-time — refina o rótulo)
+
+- **Objetivo:** o `symptom_text` livre ("dói ao descer escada") → um diagnóstico da taxonomia (`pfp`…).
+  Produz o rótulo FINO que refina a região; a região já rotula sozinha, então isto é upgrade, não
+  bloqueador.
+- **Design (anti-alucinação):** classificação de **conjunto FECHADO com abstenção**, não geração livre.
+  A região já é conhecida (mapa) → prior: só os diagnósticos daquela região são candidatos
+  (`diagnoses_for_region`). O LLM (`OllamaClient`, mesmo Qwen local) devolve `{diagnosis|null, confiança}`;
+  valida contra a taxonomia; se não casar → `null`. Abstenção não polui o dataset (o guardrail de
+  `build_dataset` já barra `diagnosis` nulo/inválido).
+- **Quando:** coach-time (preguiçoso), não no submit do form (sem latência de LLM no clique). Grava só
+  com confiança alta. **Status: desenhado, ainda não implementado.**
+
+### Dados externos + licença (fusão de estudos)
+
+- **Datasets públicos existem e casam com nossas features:** Running Injury Clinic (N=1.798, Nature
+  Sci Data 2024) tem rótulo de lesão (pfp/itbs/aquiles/plantar) + OSTRC-style + cadência/queda pélvica/
+  flexão de joelho — 4 das nossas 8 features batem direto, 4 são deriváveis. Fukuchi (PMC5426356) é
+  CC-BY mas SEM rótulo de lesão (só calibração).
+- **Bloqueio:** a licença do Running Injury Clinic é ambígua/NC-ND (não confirmada pra uso comercial).
+  Pendência: confirmar no Figshare+, ou achar rotulado+permissivo. Uso não-comercial (portfólio) é ok.
+- **Domain shift:** datasets são 3D de laboratório; nós somos 2D de vídeo → treinar a estrutura no
+  externo e **recalibrar** no dado dos usuários (prior→treinado, mesma interface).
+- **Fusão de estudos honesta:** meta-análise das **estatísticas PUBLICADAS** (odds ratios / médias por
+  grupo), não do dado bruto — estatística resumida não tem copyright → **sem problema de licença**. É a
+  forma legalmente limpa de "combinar estudos" no modelo.
 
 ### Fase 2 — superfície AI-first (roteiro amplo — reavaliar pós-pivot)
 5. **Coach agêntico**: unificar RAG + métricas de forma + risco num agente que PLANEJA.
