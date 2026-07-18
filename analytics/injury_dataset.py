@@ -62,6 +62,38 @@ def build_dataset(window_weeks: int = 8) -> list:
     return out
 
 
+def build_training_set(window_weeks: int = 8) -> list:
+    """Dataset BINÁRIO p/ o RiskModel: positivos (lesionados, features médias PRÉ-onset, label 1) +
+    negativos (atletas com análise e SEM lesão, features médias, label 0). É o `build_dataset`
+    fechado com a classe negativa — sem negativo não dá pra treinar lesionado-vs-saudável."""
+    con = get_connection()
+    out = []
+    # positivos: lesionados com análise na janela anterior
+    injuries = con.execute(
+        "SELECT user_id, onset_date FROM injury_reports "
+        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL AND diagnosis IS NOT NULL").fetchall()
+    injured_users = set()
+    for user_id, onset in injuries:
+        injured_users.add(str(user_id))
+        feats = _mean_features(_analyses_before(con, user_id, onset, window_weeks))
+        if feats:
+            out.append({"user_id": str(user_id), "features": feats, "label": 1})
+    # negativos: atletas com análise 'done' e SEM nenhuma lesão registrada
+    rows = con.execute(
+        "SELECT DISTINCT user_id FROM form_analyses WHERE user_id IS NOT NULL AND status = 'done'"
+    ).fetchall()
+    for (user_id,) in rows:
+        if str(user_id) in injured_users:
+            continue
+        metrics = [json.loads(r[0]) for r in con.execute(
+            "SELECT metrics FROM form_analyses WHERE user_id = ? AND status = 'done' "
+            "AND metrics IS NOT NULL", [user_id]).fetchall()]
+        feats = _mean_features(metrics)
+        if feats:
+            out.append({"user_id": str(user_id), "features": feats, "label": 0})
+    return out
+
+
 def validate_literature_model(window_weeks: int = 8) -> dict:
     """Face-validity do modelo de risco da literatura contra outcome real: pra cada lesão MAPEADA,
     as análises anteriores flaguearam os fatores que a taxonomia liga a ela?"""
