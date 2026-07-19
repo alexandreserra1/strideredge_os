@@ -20,6 +20,7 @@ from sklearn.model_selection import StratifiedKFold, GroupKFold
 
 from analytics.biomechanics import ideal_targets, diagnose
 from analytics.injury_synth import FEATURE_ORDER
+from analytics.injury_quality import clean
 
 
 def _band(prob: float) -> str:
@@ -57,14 +58,16 @@ class RiskModel:
         self.trained = False
 
     def train(self, dataset: list) -> dict:
-        """Treina no dataset `[{features, label}]`. Devolve o boletim de avaliação (PR-AUC)."""
+        """Treina no dataset `[{features, label}]`. Filtra dado ruidoso ANTES (nenhum valor
+        impossível/duplicata treina). Devolve o boletim (PR-AUC + relatório de limpeza)."""
+        dataset, quality = clean(dataset)   # §7: dado validado, nunca chutado
         x = np.array([_vectorize(e["features"], self._targets) for e in dataset])
         y = np.array([e["label"] for e in dataset])
         groups = [e.get("user_id") for e in dataset]
         report = self._evaluate(x, y, groups)
         self._rf.fit(x, y)
         self.trained = True
-        return report
+        return {**report, "quality": quality}
 
     def _evaluate(self, x, y, groups) -> dict:
         """PR-AUC por validação cruzada. Subject-wise (GroupKFold) quando há user_id em todos —
