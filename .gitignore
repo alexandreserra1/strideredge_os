@@ -39,3 +39,6 @@ storage/coach_gold.json
 # macOS
 .DS_Store
 storage/.auth_secret
+
+# datasets externos (grandes + licença de terceiros — não versionar)
+data/
