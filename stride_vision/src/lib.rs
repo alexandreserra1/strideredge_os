@@ -17,6 +17,10 @@ use ort::session::{builder::GraphOptimizationLevel, Session};
 use rustfft::{num_complex::Complex, FftPlanner};
 
 pub const INPUT: u32 = 640;
+// Duração mínima do vídeo p/ análise confiável: menos que isso = poucos ciclos de passada, FFT de
+// cadência instável e amostra pequena de cada métrica. A 15s (~21 passadas/perna @170spm) há sinal
+// suficiente p/ ver o que está certo/errado com robustez. Predição de lesão exige amostra boa.
+pub const MIN_DURATION_S: f32 = 15.0;
 pub const KP_NAMES: [&str; 17] = [
     "nariz", "olho_e", "olho_d", "orelha_e", "orelha_d", "ombro_e", "ombro_d",
     "cotovelo_e", "cotovelo_d", "punho_e", "punho_d", "quadril_e", "quadril_d",
@@ -375,6 +379,15 @@ pub fn analyze_form(
         ankle_l.len() as f32 / total_frames as f32 * 100.0
     } else { 0.0 };
 
+    // Vídeo curto demais: poucos ciclos de passada -> métricas instáveis. Barra ANTES de tudo
+    // (vale p/ lateral e frontal) — melhor pedir um vídeo maior do que analisar com pouco sinal.
+    let duration_s = if fps > 0.0 { total_frames as f32 / fps } else { 0.0 };
+    if duration_s < MIN_DURATION_S {
+        let nota = format!("Vídeo curto demais ({duration_s:.0}s) — filme pelo menos {:.0}s \
+            correndo, sem cortes, pra dar pra analisar com confiança.", MIN_DURATION_S);
+        return empty_metrics(total_frames, fps, detection, view, false, Some(nota), "too_short");
+    }
+
     // ---- VISTA FRONTAL: as métricas sagitais (cadência, oscilação, pisada) não fazem sentido.
     // Valida por detecção + as DUAS pernas visíveis (numa lateral uma perna é ocluída). O main
     // preenche pelvic_drop/knee_valgus.
@@ -638,9 +651,9 @@ mod tests {
     fn assimetria_nula_na_lateral_perna_ocluida() {
         // Na LATERAL a perna de trás é ocluída -> assimetria bilateral não é medível (seria
         // fantasma, ~40%, inflando o risco). Deve ser None; a oscilação vertical segue medida.
-        let l = sine(1.4, 30.0, 10.0, 20.0);
-        let r = sine(1.4, 30.0, 10.0, 14.0);          // amplitudes diferentes (oclusão)
-        let m = analyze_form(&l, &r, &sine(2.8, 30.0, 10.0, 4.0), 100.0, 30.0, 300, "lateral", true);
+        let l = sine(1.4, 30.0, 16.0, 20.0);
+        let r = sine(1.4, 30.0, 16.0, 14.0);          // amplitudes diferentes (oclusão)
+        let m = analyze_form(&l, &r, &sine(2.8, 30.0, 16.0, 4.0), 100.0, 30.0, 480, "lateral", true);
         assert!(m.asymmetry_pct.is_none(), "assimetria deve ser None na lateral");
         assert!(m.vertical_oscillation_pct.unwrap() > 5.0);
     }
@@ -657,9 +670,9 @@ mod tests {
         // (amp menor, cadência com erro de oitava, 0.7Hz). A oscilação vertical plausível
         // confirma que é lateral → confia, e a cadência vem da perna VISÍVEL (~168 spm),
         // não da média com a ocluída.
-        let near = sine(1.4, 25.0, 12.0, 20.0);
-        let far = sine(0.7, 25.0, 12.0, 6.0);
-        let m = analyze_form(&near, &far, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, near.len(), "lateral", true);
+        let near = sine(1.4, 25.0, 16.0, 20.0);
+        let far = sine(0.7, 25.0, 16.0, 6.0);
+        let m = analyze_form(&near, &far, &sine(2.8, 25.0, 16.0, 8.0), 100.0, 25.0, near.len(), "lateral", true);
         assert!(m.reliable && m.quality_note.is_none(), "lateral com oclusão deve ser confiável");
         assert!(m.cadence_spm.unwrap() > 150.0, "cadência deve vir da perna visível, veio {:?}", m.cadence_spm);
     }
@@ -667,24 +680,32 @@ mod tests {
     #[test]
     fn guard_descarta_oscilacao_vertical_absurda() {
         // hip_y com amplitude enorme vs perna curta (vista frontal) -> osc. vertical implausível
-        let l = sine(1.4, 25.0, 12.0, 20.0);
-        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 500.0), 100.0, 25.0, l.len(), "lateral", true);
+        let l = sine(1.4, 25.0, 16.0, 20.0);
+        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 16.0, 500.0), 100.0, 25.0, l.len(), "lateral", true);
         assert!(m.vertical_oscillation_pct.is_none() && !m.reliable);
     }
 
     #[test]
     fn boa_entrada_e_confiavel() {
-        let l = sine(1.4, 25.0, 12.0, 20.0);
-        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, l.len(), "lateral", true);
+        let l = sine(1.4, 25.0, 16.0, 20.0);
+        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 16.0, 8.0), 100.0, 25.0, l.len(), "lateral", true);
         assert!(m.reliable && m.vertical_oscillation_pct.is_some() && m.quality_note.is_none());
+    }
+
+    #[test]
+    fn video_curto_demais_rejeita() {
+        // 8s @25fps = 200 frames < 15s -> too_short, não analisa
+        let s = sine(1.4, 25.0, 8.0, 20.0);
+        let m = analyze_form(&s, &s, &s, 100.0, 25.0, s.len(), "lateral", true);
+        assert!(!m.reliable && m.reason == "too_short" && m.cadence_spm.is_none());
     }
 
     #[test]
     fn tronco_fora_do_quadro_rejeita_com_motivo_certo() {
         // tornozelos cheios (detecção ok) mas quadril confiável em POUCOS frames (tronco fora) ->
         // motivo 'torso_not_visible', não o enganoso 'not_lateral'
-        let ankles = sine(1.4, 25.0, 12.0, 20.0);        // 300 frames
-        let hip_sparse = vec![100.0f32; 40];             // 40/300 < 0.5
+        let ankles = sine(1.4, 25.0, 16.0, 20.0);        // 400 frames (>15s)
+        let hip_sparse = vec![100.0f32; 40];             // 40/400 < 0.5
         let m = analyze_form(&ankles, &ankles, &hip_sparse, 100.0, 25.0, ankles.len(), "lateral", true);
         assert!(!m.reliable && m.reason == "torso_not_visible");
     }
@@ -758,7 +779,7 @@ mod tests {
 
     #[test]
     fn frontal_confia_com_duas_pernas_recusa_com_uma() {
-        let s = sine(1.0, 25.0, 12.0, 5.0);   // série qualquer, boa detecção
+        let s = sine(1.0, 25.0, 16.0, 5.0);   // série qualquer (>15s), boa detecção
         // as duas pernas visíveis -> confiável (métricas sagitais None)
         let ok = analyze_form(&s, &s, &s, 100.0, 25.0, s.len(), "frontal", true);
         assert!(ok.reliable && ok.cadence_spm.is_none() && ok.view.as_deref() == Some("frontal"));

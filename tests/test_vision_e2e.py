@@ -36,7 +36,7 @@ def test_e2e_motor_produz_metricas_com_observabilidade(tmp_path):
     assert m["frames"] > 0 and isinstance(m["reliable"], bool)
     # observabilidade nova: os insumos da decisão estão expostos
     assert "reason" in m and m["reason"] in (
-        "ok", "low_detection", "not_lateral", "both_legs_missing", "torso_not_visible")
+        "ok", "low_detection", "not_lateral", "both_legs_missing", "torso_not_visible", "too_short")
     assert "diag_vert_osc_pct" in m and "diag_leg_len_px" in m
 
 
