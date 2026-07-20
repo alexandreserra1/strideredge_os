@@ -393,8 +393,13 @@ pub fn analyze_form(
     // oscilação vertical do quadril é o detector de "é lateral?" — plausível ≤40% da perna).
     // NÃO exigimos que as duas pernas concordem: numa lateral boa a de trás é ocluída, então
     // divergência de cadência entre pernas é ESPERADA, não sinal de erro.
+    // fração de frames com quadril CONFIÁVEL (hip_y só entra com kp confiante no main). Baixa =
+    // tronco fora do quadro (só pernas) — motivo DIFERENTE de "não-lateral", guia o usuário certo.
+    let hip_seen = if total_frames > 0 { hip_y.len() as f32 / total_frames as f32 } else { 0.0 };
     let (note, reason): (Option<String>, &str) = if detection < 60.0 {
         (Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into()), "low_detection")
+    } else if hip_seen < 0.5 {
+        (Some("Não deu pra rastrear o quadril com confiança — filme o CORPO INTEIRO (tronco visível), não só as pernas.".into()), "torso_not_visible")
     } else if vert_osc.is_none() {
         (Some("Ângulo parece não ser lateral — filme de LADO, corpo inteiro no quadro.".into()), "not_lateral")
     } else { (None, "ok") };
@@ -651,6 +656,16 @@ mod tests {
         let l = sine(1.4, 25.0, 12.0, 20.0);
         let m = analyze_form(&l, &l, &sine(2.8, 25.0, 12.0, 8.0), 100.0, 25.0, l.len(), "lateral", true);
         assert!(m.reliable && m.vertical_oscillation_pct.is_some() && m.quality_note.is_none());
+    }
+
+    #[test]
+    fn tronco_fora_do_quadro_rejeita_com_motivo_certo() {
+        // tornozelos cheios (detecção ok) mas quadril confiável em POUCOS frames (tronco fora) ->
+        // motivo 'torso_not_visible', não o enganoso 'not_lateral'
+        let ankles = sine(1.4, 25.0, 12.0, 20.0);        // 300 frames
+        let hip_sparse = vec![100.0f32; 40];             // 40/300 < 0.5
+        let m = analyze_form(&ankles, &ankles, &hip_sparse, 100.0, 25.0, ankles.len(), "lateral", true);
+        assert!(!m.reliable && m.reason == "torso_not_visible");
     }
 
     #[test]
