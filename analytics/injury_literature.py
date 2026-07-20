@@ -20,8 +20,12 @@ LIT_PARAMS = {
         "source": "PMC7664858", "note": "preditor mais forte; N=19",
     },
     "cadence_spm": {
-        "healthy": (181.0, 8.0), "injured": (174.4, 8.3),  # cadência baixa ~ risco tibial
-        "source": "PMC7664858", "note": "grupo propenso 174→181 spm com correção; N=19",
+        # NÍVEL calibrado com dado real (Fukuchi, 39 corredores recreativos @ 3.5 m/s: 161.5±10.7 spm
+        # — o "180" era otimista). EFEITO (lesionado ~7 spm abaixo) preservado do estudo RF. Combinar
+        # nível de um estudo + efeito de outro evita o domain shift de trocar médias de populações ≠.
+        "healthy": (161.5, 10.7), "injured": (154.5, 10.7),
+        "source": "PMC5426356+PMC7664858",
+        "note": "nível: Fukuchi recreativo real; efeito -7 spm: estudo RF",
     },
 }
 

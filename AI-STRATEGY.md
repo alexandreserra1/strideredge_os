@@ -134,6 +134,13 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
 - **Fusão de estudos honesta:** meta-análise das **estatísticas PUBLICADAS** (odds ratios / médias por
   grupo), não do dado bruto — estatística resumida não tem copyright → **sem problema de licença**. É a
   forma legalmente limpa de "combinar estudos" no modelo.
+- **[FEITO] Calibração com dado real (Fukuchi, CC-BY):** processei os marcadores 3D de 39 corredores
+  saudáveis reais → cadência real recreativa @3.5 m/s = **161.5±10.7 spm** (o sintético usava 181, alto
+  demais — "180" é meio mito). Recalibrei o NÍVEL da cadência com a Fukuchi + preservei o EFEITO (-7 spm
+  no lesionado) do estudo RF, evitando domain shift. Dado sem rótulo de lesão só calibra distribuição.
+- **Veredito da busca (jul/2026):** dataset público com NOSSAS features de vídeo + rótulo de lesão +
+  licença livre **não existe** (confirmado no catálogo awesome-biomechanics). Os externos falham 1
+  critério cada. → o **dado dos usuários** (vídeo + log) é o diferencial; nenhum download substitui.
 
 ### Fase 2 — superfície AI-first (roteiro amplo — reavaliar pós-pivot)
 5. **Coach agêntico**: unificar RAG + métricas de forma + risco num agente que PLANEJA.
