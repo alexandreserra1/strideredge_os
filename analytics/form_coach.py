@@ -14,6 +14,7 @@ from core.framework.interfaces import BaseLLMClient, BaseRetriever
 from analytics.grounding import GroundingGuard
 from analytics.biomechanics import ideal_targets, diagnose
 from analytics.injury_risk import assess as assess_risk
+from analytics.injury_quality import sanitize_metrics
 
 
 # O QUE corrigir (os desvios) ja vem estruturado do biomechanics.py — deterministico.
@@ -95,6 +96,10 @@ class FormCoach:
                 "actions": [], "citations": [], "targets": targets, "deviations": [],
                 "unreliable": True,
             }
+
+        # Defesa em profundidade: nulifica métrica impossível do motor (ex.: gct 2000ms) antes de
+        # virar desvio/risco — não depende só do flag reliable. §7 (dado validado) no caminho vivo.
+        metrics, _nulled = sanitize_metrics(metrics)
 
         devs = diagnose(metrics, targets)
         risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)

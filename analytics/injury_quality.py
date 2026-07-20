@@ -41,6 +41,20 @@ def _clip_row(features: dict) -> tuple:
     return clean, clipped
 
 
+def sanitize_metrics(metrics: dict) -> tuple:
+    """Caminho AO VIVO (defesa em profundidade): NULIFICA métrica do motor fisiologicamente
+    impossível antes da análise de lesão. Diferente do treino (que clipa), aqui viramos NULL —
+    valor impossível = 'não medido' (§5 degrada gracioso), nunca vira desvio/risco falso. Devolve
+    (metrics_saneadas, lista de métricas nulificadas). É a rede que não depende só do reliable."""
+    clean_m, nulled = dict(metrics), []
+    for k, bounds in PLAUSIBLE.items():
+        v = metrics.get(k)
+        if v is not None and not (bounds[0] <= v <= bounds[1]):
+            clean_m[k] = None
+            nulled.append(k)
+    return clean_m, nulled
+
+
 def clean(examples: list) -> tuple:
     """Filtra dados ruidosos. Devolve (limpos, relatório). Relatório = o que foi clipado/descartado."""
     out, seen = [], set()
