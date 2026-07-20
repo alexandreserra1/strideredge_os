@@ -235,3 +235,53 @@ FONTE: Training Load Capacity, Cumulative Risk, and Bone Stress Injuries — Nar
 
 Treino guiado por variabilidade da frequencia cardiaca (HRV) melhora a modulacao vagal (recuperacao autonomica) e reduz o numero de nao-respondedores, mas o ganho de VO2max e de desempenho em relacao a um plano fixo e pequeno e nao significativo. Util para individualizar a carga (treinar forte so quando o corpo esta pronto), nao como atalho magico de performance.
 FONTE: Heart Rate Variability-Guided Training for Cardiac-Vagal Modulation, Aerobic Fitness and Endurance — Systematic Review with Meta-Analysis (PMC8507742)
+
+---
+
+Tenis MUITO amortecido (maximalista) nao reduz o impacto como se pensa: aumenta a rigidez da perna e AMPLIFICA a taxa de carga vertical em 7 a 14 por cento e o pico de impacto em 6 a 12 por cento, sobretudo em ritmos mais rapidos. O amortecimento cria uma falsa sensacao de protecao e o corredor tende a bater mais forte no calcanhar. Mais amortecimento nao e sinonimo de menos lesao.
+FONTE: Running in Highly Cushioned Shoes Increases Leg Stiffness and Amplifies Impact Loading (PMC6269547)
+
+---
+
+Nao ha evidencia concreta de que um TIPO de tenis (minimalista, tradicional ou maximalista) reduza a chance de lesao por si so — a relacao e individual. A escolha deve considerar o corredor: peso corporal, historico de pisada e adaptacao gradual, nao a moda do calcado. O tenis e uma ferramenta de ajuste de carga, nao uma cura.
+FONTE: Running Injury Paradigms and Their Influence on Footwear Design Features — Focused Review (Frontiers Sports Act Living 2022, doi 10.3389/fspor.2022.815675)
+
+---
+
+Trocar para tenis minimalista aumenta a dor e o risco de lesao no pe e na perna no curto prazo (ate 12 semanas), mas fortalece os flexores plantares no longo prazo (cerca de 20 semanas) SE a transicao for gradual. Corredores acima de 85 kg tiveram cerca de 3x mais lesao em minimalista que os abaixo de 71 kg — peso corporal importa muito na decisao.
+FONTE: Running Injury Paradigms and Their Influence on Footwear Design Features — Focused Review (Frontiers Sports Act Living 2022, doi 10.3389/fspor.2022.815675)
+
+---
+
+Tenis maximalista (muito amortecido) REDUZ a carga plantar sob o pe todo e sob o antepe durante a corrida. Pode fazer sentido quando o objetivo e diminuir forcas e pressoes sob o pe (ex: dor plantar), mesmo que nao reduza a carga nas articulacoes acima. A pisada e o objetivo guiam a escolha, nao o marketing.
+FONTE: Comparison of In-Shoe Plantar Loading Forces Between Minimalist and Maximalist Cushion Running Shoes (Foot Ankle research)
+
+---
+
+Fraqueza dos abdutores de quadril (glutео medio) associa-se a sindrome da banda iliotibial e a dor patelofemoral em corredores: o quadril que nao estabiliza deixa o joelho cair para dentro (valgo) e a bacia pender. Fortalecer o abdutor melhora a dor, a funcao e a cinematica do membro inferior nessas lesoes.
+FONTE: Effects of Conservative Treatment Strategies for Iliotibial Band Syndrome on Pain and Function in Runners — Systematic Review (PMC11377285)
+
+---
+
+Maior forca ECCENTRICA de abducao de quadril reduz o risco de DESENVOLVER dor patelofemoral em corredores novatos que iniciam um programa por conta propria, em acompanhamento de 1 ano. E um dos poucos sinais prospectivos de PROTECAO (nao so tratamento) — priorizar forca de gluteo antes de subir volume.
+FONTE: High Eccentric Hip Abduction Strength Reduces the Risk of Developing Patellofemoral Pain Among Novice Runners — 1-Year Observational Study (JOSPT 2015, doi 10.2519/jospt.2015.5091)
+
+---
+
+Exercicios de fortalecimento do abdutor de quadril (ex: caminhada lateral com faixa / "monster walk", elevacao de pelve, agachamento unipodal) sao a base pratica para atacar valgo de joelho e queda pelvica. Ativam o gluteo medio e maximo com baixa exigencia articular — bons para comecar a reeducacao antes de progredir carga.
+FONTE: Optimizing Hip Abductor Strengthening — Narrative Review on Monster Walk and Lateral Band Walk (PMC12372021)
+
+---
+
+O retorno a corrida (ou o aumento de volume) deve ser GRADUAL: progressao guiada por exposicao ao estresse, subindo volume OU intensidade (nunca os dois juntos) em ate cerca de 10 por cento por semana. Aumentos subitos de carga sao fator de risco consistente de lesao. Melhor demorar do que recair.
+FONTE: Return to Running — Graded Exposure Consensus (clinico; alinhado a Maupin et al. ACWR, PMC7047972)
+
+---
+
+Antes de voltar a correr apos lesao, checar criterios objetivos de prontidao: caminhar 30 min sem dor, equilibrar no membro lesionado por 30 s, fazer 20 a 30 elevacoes de panturrilha unipodais e saltitar sem dor nessa perna. So depois iniciar intervalos caminhada-corrida, aumentando a parte de corrida aos poucos. Volume normal so ao retomar 75 a 80 por cento do quilometragem pre-lesao.
+FONTE: Basic Return-to-Running Guideline — Criterios de Prontidao (consenso clinico de reabilitacao)
+
+---
+
+Aumentar a cadencia em 5 a 10 por cento reduz a taxa de carga e as forcas de impacto; o ganho e maior quando combinado com fortalecimento de quadril e progressao gradual de volume. Reeducacao de marcha com metronomo funciona melhor como PROGRAMA (varias sessoes ao longo de semanas), nao como ajuste unico — a mudanca precisa virar automatica.
+FONTE: The Influence of Running Cadence on Biomechanics and Injury Prevention — Systematic Review (PMC12440572)
