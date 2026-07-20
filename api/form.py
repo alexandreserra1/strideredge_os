@@ -96,7 +96,13 @@ class FormService:
                 [str(overlay), metrics, analysis_id])
             original.unlink(missing_ok=True)   # original descartado: métricas + overlay bastam
             (original.parent / "normalized.mp4").unlink(missing_ok=True)
-            _log.info("form_done", analysis_id=analysis_id)
+            # Observabilidade do quality gate: loga os INSUMOS da decisão de confiabilidade, pra
+            # calibrar o limiar com dado real (agregar por `reason`) em vez de no chute.
+            m = json.loads(metrics)
+            _log.info("form_done", analysis_id=analysis_id, reliable=m.get("reliable"),
+                      reason=m.get("reason"), detection_rate=m.get("detection_rate_pct"),
+                      raw_vert_osc_pct=m.get("diag_vert_osc_pct"), leg_len_px=m.get("diag_leg_len_px"),
+                      view=view)
         except Exception as e:  # noqa: BLE001 — qualquer falha vira status 'failed'
             con.execute(
                 "UPDATE form_analyses SET status='failed', error=? WHERE analysis_id=?",

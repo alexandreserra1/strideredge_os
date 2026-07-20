@@ -310,6 +310,14 @@ pub struct FormMetrics {
     pub reliable: bool,
     /// por que não é confiável (vazio quando reliable=true)
     pub quality_note: Option<String>,
+    // ---- Observabilidade do quality gate: os INSUMOS crus da decisão, pra calibrar o limiar com
+    // dado real (não no chute). Preservados MESMO quando a métrica é rejeitada/nulificada.
+    /// código machine-readable do motivo: ok | low_detection | not_lateral | both_legs_missing
+    pub reason: String,
+    /// oscilação vertical CRUA (%) — antes do filtro ≤40% (ver se a rejeição foi borderline 41 ou lixo 200)
+    pub diag_vert_osc_pct: Option<f32>,
+    /// comprimento de perna em px (denominador da razão) — ver se a rejeição foi encurtamento de perspectiva
+    pub diag_leg_len_px: f32,
 }
 
 /// amplitude robusta de uma série (p95 - p5; ignora outliers de detecção)
@@ -323,8 +331,8 @@ fn amplitude(series: &[f32]) -> Option<f32> {
 
 /// Métricas vazias (base): tudo None, só frames/fps/detecção + reliable/nota. O main preenche o
 /// que fizer sentido por vista.
-fn empty_metrics(total_frames: usize, fps: f32, detection: f32, view: &str,
-                 reliable: bool, note: Option<String>) -> FormMetrics {
+fn empty_metrics(total_frames: usize, fps: f32, detection: f32, view: &str, reliable: bool,
+                 note: Option<String>, reason: &str) -> FormMetrics {
     FormMetrics {
         frames: total_frames, fps, detection_rate_pct: detection,
         cadence_spm: None, cadence_left: None, cadence_right: None, asymmetry_pct: None,
@@ -332,6 +340,7 @@ fn empty_metrics(total_frames: usize, fps: f32, detection: f32, view: &str,
         trunk_lean_deg: None, ground_contact_ms: None, flight_ms: None, foot_strike: None,
         pelvic_drop_deg: None, knee_valgus_deg: None, view: Some(view.to_string()),
         reliable, quality_note: note,
+        reason: reason.to_string(), diag_vert_osc_pct: None, diag_leg_len_px: 0.0,
     }
 }
 
@@ -350,12 +359,12 @@ pub fn analyze_form(
     // Valida por detecção + as DUAS pernas visíveis (numa lateral uma perna é ocluída). O main
     // preenche pelvic_drop/knee_valgus.
     if view == "frontal" {
-        let note = if detection < 60.0 {
-            Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into())
+        let (note, reason) = if detection < 60.0 {
+            (Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into()), "low_detection")
         } else if !both_legs_ok {
-            Some("Não deu pra ver as duas pernas — filme de FRENTE (ou de costas), corpo inteiro, pernas visíveis.".into())
-        } else { None };
-        return empty_metrics(total_frames, fps, detection, view, note.is_none(), note);
+            (Some("Não deu pra ver as duas pernas — filme de FRENTE (ou de costas), corpo inteiro, pernas visíveis.".into()), "both_legs_missing")
+        } else { (None, "ok") };
+        return empty_metrics(total_frames, fps, detection, view, note.is_none(), note, reason);
     }
 
     // ---- VISTA LATERAL (comportamento existente): cadência, assimetria, oscilação.
@@ -374,20 +383,21 @@ pub fn analyze_form(
     };
     // oscilação vertical realista fica bem abaixo de ~20% da perna. Acima de 40% é
     // sinal de vista NÃO-lateral (perspectiva) ou perna mal rastreada -> descarta o número.
-    let vert_osc = amplitude(hip_y)
+    // `raw_vert` guarda o valor CRU (observabilidade) mesmo quando rejeitado.
+    let raw_vert = amplitude(hip_y)
         .filter(|_| leg_len_px > 0.0)
-        .map(|a| a / leg_len_px * 100.0)
-        .filter(|v| *v <= 40.0);
+        .map(|a| a / leg_len_px * 100.0);
+    let vert_osc = raw_vert.filter(|v| *v <= 40.0);
 
     // Guarda de QUALIDADE: confia se o atleta ficou no quadro E a vista é lateral (a
     // oscilação vertical do quadril é o detector de "é lateral?" — plausível ≤40% da perna).
     // NÃO exigimos que as duas pernas concordem: numa lateral boa a de trás é ocluída, então
     // divergência de cadência entre pernas é ESPERADA, não sinal de erro.
-    let note = if detection < 60.0 {
-        Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into())
+    let (note, reason): (Option<String>, &str) = if detection < 60.0 {
+        (Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into()), "low_detection")
     } else if vert_osc.is_none() {
-        Some("Ângulo parece não ser lateral — filme de LADO, corpo inteiro no quadro.".into())
-    } else { None };
+        (Some("Ângulo parece não ser lateral — filme de LADO, corpo inteiro no quadro.".into()), "not_lateral")
+    } else { (None, "ok") };
 
     FormMetrics {
         frames: total_frames,
@@ -409,6 +419,9 @@ pub fn analyze_form(
         view: Some("lateral".to_string()),
         reliable: note.is_none(),
         quality_note: note,
+        reason: reason.to_string(),
+        diag_vert_osc_pct: raw_vert.map(|v| (v * 10.0).round() / 10.0),
+        diag_leg_len_px: (leg_len_px * 10.0).round() / 10.0,
     }
 }
 
