@@ -478,8 +478,15 @@ pub fn contact_flight_ms(ankle_l: &[f32], ankle_r: &[f32], fps: f32) -> (Option<
     let (runs_l, down_l) = stance_runs(ankle_l);
     let (runs_r, down_r) = stance_runs(ankle_r);
 
-    let gct = if runs_l.len() >= 2 && runs_r.len() >= 2 {
-        let all: Vec<usize> = runs_l.iter().chain(runs_r.iter()).copied().collect();
+    // Descarta apoios de duração IMPOSSÍVEL: um apoio de corrida dura ~60–500ms. Um "apoio" mais
+    // longo é artefato (sinal achatado/vista não-lateral colapsa vários frames num run gigante) —
+    // se entrasse na média, dava GCT absurdo (ex.: 2000ms). Na fonte, não deixa o número-lixo sair.
+    let plausivel = |r: &usize| { let ms = *r as f32 / fps * 1000.0; (60.0..=500.0).contains(&ms) };
+    let ok_l: Vec<usize> = runs_l.iter().copied().filter(|r| plausivel(r)).collect();
+    let ok_r: Vec<usize> = runs_r.iter().copied().filter(|r| plausivel(r)).collect();
+
+    let gct = if ok_l.len() >= 2 && ok_r.len() >= 2 {
+        let all: Vec<usize> = ok_l.iter().chain(ok_r.iter()).copied().collect();
         Some(to_ms(all.iter().sum::<usize>() as f32 / all.len() as f32))
     } else { None };
 
@@ -559,6 +566,34 @@ mod tests {
         // 1.4 Hz por pé -> 1.4*2*60 = 168 spm
         let c = cadence_spm(&sine(1.4, 30.0, 10.0, 20.0), 30.0).unwrap();
         assert!((c - 168.0).abs() < 6.0, "cadência {c} fora do esperado");
+    }
+
+    /// sinal de apoio: `air` frames no ar (y baixo) + `ground` frames no chão (y alto), repetido.
+    fn stance_signal(air: usize, ground: usize, cycles: usize) -> Vec<f32> {
+        let mut v = Vec::new();
+        for _ in 0..cycles {
+            v.extend(std::iter::repeat(10.0).take(air));
+            v.extend(std::iter::repeat(100.0).take(ground));
+        }
+        v
+    }
+
+    #[test]
+    fn gct_plausivel_em_sinal_normal() {
+        // apoios de 6 frames @25fps = 240ms
+        let s = stance_signal(6, 6, 8);
+        let (gct, _) = contact_flight_ms(&s, &s, 25.0);
+        let g = gct.expect("devia calcular gct");
+        assert!((60.0..=500.0).contains(&g), "gct fora do plausível: {g}");
+    }
+
+    #[test]
+    fn gct_descarta_apoio_impossivel() {
+        // sinal quase todo "no chão" (vista ruim) -> apoios gigantes -> descartados, gct None
+        let mut s = vec![100.0f32; 200];
+        for i in (0..200).step_by(50) { s[i] = 10.0; }
+        let (gct, _) = contact_flight_ms(&s, &s, 25.0);
+        assert!(gct.is_none(), "apoio impossível deveria virar None, veio {gct:?}");
     }
 
     #[test]
