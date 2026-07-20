@@ -41,6 +41,9 @@ pub struct Pose {
 
 pub struct PoseEngine {
     session: Session,
+    // centro (640-space) da pessoa rastreada no frame anterior — consistência temporal p/ NÃO
+    // trocar de pessoa em vídeo com várias (corredor + apresentadores parados). None = reacquire.
+    last_center: Option<(f32, f32)>,
 }
 
 impl PoseEngine {
@@ -49,7 +52,7 @@ impl PoseEngine {
             .with_optimization_level(GraphOptimizationLevel::Level3))?
             .with_intra_threads(4))?
             .commit_from_file(model_path))?;
-        Ok(Self { session })
+        Ok(Self { session, last_center: None })
     }
 
     /// Detecta a pessoa mais confiante no frame. None = ninguém acima do limiar.
@@ -75,15 +78,32 @@ impl PoseEngine {
         let n = out.shape()[2];
         let at = |c: usize, i: usize| out[[0, c, i]];
 
-        // melhor âncora (1 pessoa por frame é o caso do spike)
-        let mut best: Option<(f32, usize)> = None;
+        // candidatos acima do limiar — podem ser PESSOAS DIFERENTES no quadro (corredor +
+        // apresentadores). Escolhe por CONSISTÊNCIA TEMPORAL: a mais próxima do frame anterior
+        // (não troca de pessoa); na 1ª vez (ou reacquire), a de maior confiança.
+        let mut cands: Vec<(f32, usize, f32, f32)> = Vec::new();   // (conf, i, cx, cy) em 640-space
         for i in 0..n {
-            let conf = at(4, i);
-            if conf > best.as_ref().map(|(c, _)| *c).unwrap_or(0.35) {
-                best = Some((conf, i));
+            if at(4, i) > 0.35 {
+                cands.push((at(4, i), i, at(0, i), at(1, i)));
             }
         }
-        let Some((conf, i)) = best else { return Ok(None) };
+        if cands.is_empty() { return Ok(None); }
+        let (conf, i) = match self.last_center {
+            Some((lx, ly)) => {
+                let b = cands.iter()
+                    .min_by(|a, b| {
+                        let da = (a.2 - lx).powi(2) + (a.3 - ly).powi(2);
+                        let db = (b.2 - lx).powi(2) + (b.3 - ly).powi(2);
+                        da.partial_cmp(&db).unwrap()
+                    }).unwrap();
+                (b.0, b.1)
+            }
+            None => {
+                let b = cands.iter().max_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+                (b.0, b.1)
+            }
+        };
+        self.last_center = Some((at(0, i), at(1, i)));
 
         let mut kps = [(0f32, 0f32, 0f32); 17];
         for k in 0..17 {
@@ -377,10 +397,10 @@ pub fn analyze_form(
         (Some(l), Some(r)) => Some(if (l - r).abs() / l.max(r) > 0.25 { l.max(r) } else { (l + r) / 2.0 }),
         (a, b) => a.or(b),
     };
-    let asymmetry = match (amplitude(ankle_l), amplitude(ankle_r)) {
-        (Some(a), Some(b)) if a.max(b) > 0.0 => Some((a - b).abs() / a.max(b) * 100.0),
-        _ => None,
-    };
+    // Assimetria bilateral NÃO é medível em vista LATERAL: a perna de trás é ocluída, então sua
+    // amplitude é sempre menor -> "assimetria" fantasma (~40%) que inflaria o risco (peso 2.0).
+    // Precisa das duas pernas igualmente visíveis (frontal/posterior). Aqui é sempre None.
+    let asymmetry: Option<f32> = None;
     // oscilação vertical realista fica bem abaixo de ~20% da perna. Acima de 40% é
     // sinal de vista NÃO-lateral (perspectiva) ou perna mal rastreada -> descarta o número.
     // `raw_vert` guarda o valor CRU (observabilidade) mesmo quando rejeitado.
@@ -615,12 +635,13 @@ mod tests {
     }
 
     #[test]
-    fn assimetria_detecta_diferenca_de_amplitude() {
+    fn assimetria_nula_na_lateral_perna_ocluida() {
+        // Na LATERAL a perna de trás é ocluída -> assimetria bilateral não é medível (seria
+        // fantasma, ~40%, inflando o risco). Deve ser None; a oscilação vertical segue medida.
         let l = sine(1.4, 30.0, 10.0, 20.0);
-        let r = sine(1.4, 30.0, 10.0, 14.0);          // perna direita 30% mais curta
+        let r = sine(1.4, 30.0, 10.0, 14.0);          // amplitudes diferentes (oclusão)
         let m = analyze_form(&l, &r, &sine(2.8, 30.0, 10.0, 4.0), 100.0, 30.0, 300, "lateral", true);
-        let asym = m.asymmetry_pct.unwrap();
-        assert!(asym > 20.0 && asym < 40.0, "assimetria {asym}");
+        assert!(m.asymmetry_pct.is_none(), "assimetria deve ser None na lateral");
         assert!(m.vertical_oscillation_pct.unwrap() > 5.0);
     }
 
