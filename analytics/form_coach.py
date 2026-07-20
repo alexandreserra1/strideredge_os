@@ -8,7 +8,7 @@ COM fonte. Reusa a mesma disciplina do veredito: `GroundingGuard` (sem número i
 """
 
 import re
-from typing import Optional
+from typing import Callable, Optional
 
 from core.framework.interfaces import BaseLLMClient, BaseRetriever
 from analytics.grounding import GroundingGuard
@@ -34,11 +34,14 @@ SYSTEM = (
 class FormCoach:
     """Plano corretivo a partir das métricas de forma (composição: LLM + RAG + guarda)."""
 
-    def __init__(self, llm: BaseLLMClient, knowledge: Optional[BaseRetriever] = None, k: int = 4):
+    def __init__(self, llm: BaseLLMClient, knowledge: Optional[BaseRetriever] = None, k: int = 4,
+                 risk_assessor: Optional[Callable] = None):
         self.llm = llm
         self.knowledge = knowledge
         self.k = k
         self.guard = GroundingGuard()
+        # avaliador de risco (drop-in prior↔treinado). Default = prior da literatura (seguro).
+        self._assess_risk = risk_assessor or assess_risk
 
     # remove o "(Fonte: PMCxxxx)" cru do texto do exercício — a fonte vira chip legível na UI
     _FONTE_RE = re.compile(r"\s*[\(\[]?\s*fonte:?\s*PMC\d+\s*[\)\]]?\.?\s*$", re.IGNORECASE)
@@ -94,7 +97,7 @@ class FormCoach:
             }
 
         devs = diagnose(metrics, targets)
-        risk = assess_risk(metrics, profile, history)   # faixa de risco RELATIVA (aterrada, citada)
+        risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)
 
         if not devs:
             return {

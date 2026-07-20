@@ -56,5 +56,7 @@ def get_injury_service() -> InjuryService:
 
 def get_form_coach() -> FormCoach:
     """Algoritmo corretivo: alvos personalizados + exercícios citados (LLM local + RAG
-    híbrido denso+BM25)."""
-    return FormCoach(llm=OllamaClient(), knowledge=_knowledge_base())
+    híbrido denso+BM25). Risco: modelo TREINADO se há dado real suficiente, senão o prior."""
+    from analytics.risk_assessor import current_assessor
+    return FormCoach(llm=OllamaClient(), knowledge=_knowledge_base(),
+                     risk_assessor=current_assessor())

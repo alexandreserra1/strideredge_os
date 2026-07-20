@@ -26,14 +26,17 @@ def clear_synthetic(con) -> None:
     con.execute("DELETE FROM form_analyses WHERE user_id LIKE ?", [like])
 
 
-def seed(con, n: int = 400, seed_val: int = 42, window_weeks: int = 8) -> dict:
-    """Semeia `n` usuários sintéticos. Devolve contagem {injured, healthy}."""
-    clear_synthetic(con)
+def seed(con, n: int = 400, seed_val: int = 42, window_weeks: int = 8,
+         prefix: str = SYNTHETIC_PREFIX) -> dict:
+    """Semeia `n` usuários. Devolve contagem {injured, healthy}. `prefix` marca as linhas
+    (default sintético; testes podem simular usuário real com outro prefixo)."""
+    if prefix == SYNTHETIC_PREFIX:
+        clear_synthetic(con)
     onset = date(2026, 6, 1)
     before = onset - timedelta(weeks=window_weeks // 2)   # análise dentro da janela pré-onset
     injured = 0
     for ex in generate(n=n, seed=seed_val):
-        uid = SYNTHETIC_PREFIX + str(uuid.uuid4())
+        uid = prefix + str(uuid.uuid4())
         _insert_analysis(con, uid, ex["features"], before if ex["label"] else onset)
         if ex["label"]:
             _insert_injury(con, uid, ex["diagnosis"], onset)
