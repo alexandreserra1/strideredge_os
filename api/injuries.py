@@ -66,6 +66,21 @@ class InjuryService:
             [user_id]).fetchall()
         return [self._row(r) for r in rows]
 
+    def classify(self, injury_id: str, classifier) -> Optional[dict]:
+        """Coach-time: mapeia o texto livre → diagnóstico da taxonomia via LLM e PERSISTE só se
+        veio um id válido (confiança alta). Não sobrescreve um diagnóstico já existente."""
+        report = self.get(injury_id)
+        if not report:
+            return None
+        if report.get("diagnosis"):
+            return report                     # já rotulado — não reclassifica
+        result = classifier.classify(report.get("symptom_text"), report.get("region"))
+        if result["diagnosis"]:
+            get_connection().execute(
+                "UPDATE injury_reports SET diagnosis = ? WHERE id = ?",
+                [result["diagnosis"], injury_id])
+        return self.get(injury_id)
+
     @classmethod
     def _row(cls, r) -> dict:
         answers = {"q_participation": r[6], "q_volume": r[7], "q_performance": r[8], "q_pain": r[9]}

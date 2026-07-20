@@ -54,6 +54,12 @@ def get_injury_service() -> InjuryService:
     return InjuryService()
 
 
+def get_diagnosis_classifier():
+    """Classificador texto→diagnóstico (LLM local, conjunto fechado + abstenção)."""
+    from analytics.injury_classifier import DiagnosisClassifier
+    return DiagnosisClassifier(llm=OllamaClient())
+
+
 def get_form_coach() -> FormCoach:
     """Algoritmo corretivo: alvos personalizados + exercícios citados (LLM local + RAG
     híbrido denso+BM25). Risco: modelo TREINADO se há dado real suficiente, senão o prior."""

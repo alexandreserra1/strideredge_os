@@ -119,7 +119,9 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   valida contra a taxonomia; se não casar → `null`. Abstenção não polui o dataset (o guardrail de
   `build_dataset` já barra `diagnosis` nulo/inválido).
 - **Quando:** coach-time (preguiçoso), não no submit do form (sem latência de LLM no clique). Grava só
-  com confiança alta. **Status: desenhado, ainda não implementado.**
+  com confiança alta. **[FEITO]** `analytics/injury_classifier.py` (`DiagnosisClassifier`, espelha
+  LLMJudge) + `InjuryService.classify` (persiste só id válido, não reclassifica) + `POST
+  /injuries/{id}/classify`. Verificado com Ollama real: pfp/mtss/achilles certos, "não sei" abstém.
 
 ### Dados externos + licença (fusão de estudos)
 

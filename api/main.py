@@ -24,8 +24,8 @@ from api.auth import AuthError, AuthService
 from api.form import FormService
 from api.injuries import InjuryError, InjuryService
 from api.profile import ProfileService
-from api.deps import (get_auth_service, get_form_coach, get_form_service, get_injury_service,
-                      get_job_queue, get_profile_service)
+from api.deps import (get_auth_service, get_diagnosis_classifier, get_form_coach, get_form_service,
+                      get_injury_service, get_job_queue, get_profile_service)
 
 
 class RegisterRequest(BaseModel):
@@ -261,3 +261,17 @@ def log_injury(req: InjuryRequest, request: Request,
         return injuries.log(_user_id(request, auth), req.model_dump())
     except InjuryError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/v1/injuries/{injury_id}/classify")
+def classify_injury(injury_id: str, request: Request,
+                    auth: AuthService = Depends(get_auth_service),
+                    injuries: InjuryService = Depends(get_injury_service),
+                    classifier=Depends(get_diagnosis_classifier)):
+    """Coach-time: mapeia o texto livre → diagnóstico da taxonomia (LLM, conjunto fechado +
+    abstenção). Persiste só com confiança alta; do contrário mantém sem diagnóstico."""
+    _user_id(request, auth)   # exige sessão
+    report = injuries.classify(injury_id, classifier)
+    if report is None:
+        raise HTTPException(status_code=404, detail="lesão não encontrada")
+    return report
