@@ -24,6 +24,10 @@ MODEL = PROJECT_ROOT / "stride_vision" / "models" / "yolo11n-pose.onnx"
 
 _log = Logger("form")
 
+# Tentativas de processamento antes de marcar 'failed' (1 original + 2 retries). Falha transitória
+# passa; falha determinística (vídeo corrompido) esgota rápido e falha honesto.
+_MAX_ATTEMPTS = 3
+
 
 class FormService:
     """Ciclo de vida de uma análise de forma (criar -> processar -> consultar).
@@ -78,7 +82,8 @@ class FormService:
         r = subprocess.run(cmd, env={**self._ENV}, capture_output=True, text=True, timeout=300)
         return dst if r.returncode == 0 and dst.exists() else src
 
-    def _process(self, analysis_id: str, original: Path, view: str = "lateral") -> None:
+    def _process(self, analysis_id: str, original: Path, view: str = "lateral",
+                 attempt: int = 1) -> None:
         """Roda o motor Rust; grava métricas ou o erro. (thread própria + cursor próprio)"""
         overlay = original.parent / "overlay.mp4"
         con = get_connection()
@@ -103,11 +108,19 @@ class FormService:
                       reason=m.get("reason"), detection_rate=m.get("detection_rate_pct"),
                       raw_vert_osc_pct=m.get("diag_vert_osc_pct"), leg_len_px=m.get("diag_leg_len_px"),
                       view=view)
-        except Exception as e:  # noqa: BLE001 — qualquer falha vira status 'failed'
+        except Exception as e:  # noqa: BLE001 — qualquer falha vira retry ou status 'failed'
+            # Retry com re-enfileiramento: falha transitória (timeout sob carga, glitch do ffmpeg)
+            # costuma passar na 2ª. Re-enfileira até _MAX_ATTEMPTS mantendo 'processing'; só marca
+            # 'failed' ao esgotar. O original só é apagado no SUCESSO, então o arquivo existe p/ retry.
+            if attempt < _MAX_ATTEMPTS and original.exists():
+                _log.info("form_retry", analysis_id=analysis_id, attempt=attempt,
+                          error=str(e)[:200])
+                self.queue.enqueue(self._process, analysis_id, original, view, attempt + 1)
+                return
             con.execute(
                 "UPDATE form_analyses SET status='failed', error=? WHERE analysis_id=?",
                 [str(e)[:300], analysis_id])
-            _log.error("form_failed", analysis_id=analysis_id, error=str(e)[:200])
+            _log.error("form_failed", analysis_id=analysis_id, attempts=attempt, error=str(e)[:200])
 
     # ---------- leitura ----------
 
