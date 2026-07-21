@@ -486,3 +486,75 @@ fracao dos treinos e subir aos poucos, nunca migrar 100% da quilometragem de uma
 somada a aumento de carga e a receita de lesao por sobrecarga.
 FONTE: Running Injury Paradigms and Their Influence on Footwear Design Features — Focused Review (Frontiers Sports Act Living 2022, doi 10.3389/fspor.2022.815675)
 DOMINIO: calcado
+
+---
+
+Retorno a corrida apos lesao ossea por estresse (fratura por estresse) da tibia e GRADUAL e guiado por sintoma: pre-requisito e caminhar sem dor; entao inicia-se corrida em intervalos curtos (30 a 60 segundos) intercalados com caminhada, em dias alternados, aumentando a duracao de corrida aos poucos. Progride DISTANCIA antes de velocidade, comeca em superficie plana ou esteira (menos aceleracao na tibia) e recua ao menor nivel se a dor voltar.
+FONTE: Criteria and Guidelines for Returning to Running Following a Tibial Bone Stress Injury — Scoping Review (Sports Medicine 2024, doi 10.1007/s40279-024-02051-y)
+DOMINIO: lesao
+
+---
+
+Nem toda fratura por estresse da tibia e igual: as de baixo risco (borda posteromedial da diafise, as mais comuns em corredores) cicatrizam bem e o retorno pode comecar mais cedo sem imagem de controle; as de alto risco (cortex anterior da tibia) exigem confirmacao de consolidacao por imagem e retorno mais lento (ate cerca de 17 semanas nos graus altos). A regra dos 10 por cento de progressao NAO serve pra todo mundo — individualizar por gravidade e experiencia do corredor.
+FONTE: Criteria and Guidelines for Returning to Running Following a Tibial Bone Stress Injury — Scoping Review (Sports Medicine 2024, doi 10.1007/s40279-024-02051-y)
+DOMINIO: lesao
+
+---
+
+Na volta apos fratura por estresse, o teste de saltito unipodal (single-leg hop) sem dor e um bom indicador de prontidao funcional, e ajuda a decidir quando progredir a carga. Alem do sintoma local, tratar os fatores contribuintes ao longo de toda a reabilitacao: deficiencia energetica relativa no esporte (RED-S), disponibilidade energetica, saude menstrual e erros de treino — senao a lesao recidiva (fratura por estresse tem alta taxa de recorrencia).
+FONTE: Criteria and Guidelines for Returning to Running Following a Tibial Bone Stress Injury — Scoping Review (Sports Medicine 2024, doi 10.1007/s40279-024-02051-y)
+DOMINIO: treino
+
+---
+
+Na tendinopatia do Aquiles NAO e preciso parar de correr: um modelo de MONITORAMENTO DA DOR permite manter a corrida durante a reabilitacao desde que a dor durante e apos a atividade fique em ate 5 numa escala de 0 a 10, nao aumente semana a semana e ceda ate a manha seguinte. Continuar a carga com esse controle deu resultado igual ao de parar a atividade — o tendao responde a carga progressiva, nao a repouso.
+FONTE: Silbernagel et al., Continued Sports Activity Using a Pain-Monitoring Model during Rehabilitation in Achilles Tendinopathy — Randomized Controlled Study (Am J Sports Med 2007, doi 10.1177/0363546506298279)
+DOMINIO: lesao
+
+---
+
+Carga pesada e lenta (Heavy Slow Resistance) e o exercicio excentrico pesado dao resultado clinico IGUAL e duradouro na tendinopatia cronica de porcao media do Aquiles (12 semanas de tratamento, reavaliado em 52 semanas). A HSR usa so 3 sessoes por semana (contra o excentrico diario) e teve maior satisfacao/adesao aos 12 meses — menos volume, mesmo efeito. O tendao responde a carga pesada e controlada.
+FONTE: Beyer et al., Heavy Slow Resistance Versus Eccentric Training as Treatment for Achilles Tendinopathy — Randomized Controlled Trial (Am J Sports Med 2015, doi 10.1177/0363546515584760)
+DOMINIO: forca
+
+---
+
+Na dor patelofemoral, o retorno a corrida vem DEPOIS que a dor cede e os criterios de forca sao atingidos: usa-se um programa estruturado de caminhada-corrida, aumentando aos poucos o trecho continuo de corrida (metronomo ajuda a firmar a cadencia mais alta), progredindo distancia antes de velocidade. Forcar corrida continua antes de recuperar forca de quadril/joelho tende a recair.
+FONTE: A Contemporary Approach to Patellofemoral Pain in Runners — Clinical Review (PMC7740062)
+DOMINIO: lesao
+
+---
+
+Na fascite plantar, um protocolo de FORCA de alta carga (elevacao de panturrilha unipodal com uma toalha sob os dedos pra tensionar a fascia via mecanismo de cabrestante/windlass), feito em dias alternados, reduziu mais a dor e melhorou mais a funcao aos 3 meses do que so alongar (indice de funcao do pe 29 pontos menor). Aos 12 meses os grupos se igualaram — ou seja, a carga ACELERA a recuperacao, nao muda o destino final. Vale pra quem quer melhorar mais rapido.
+FONTE: Rathleff et al., High-Load Strength Training Improves Outcome in Plantar Fasciitis — RCT with 12-Month Follow-up (Scand J Med Sci Sports 2015, doi 10.1111/sms.12313)
+DOMINIO: lesao
+
+---
+
+Na sindrome da banda iliotibial em corredoras, um programa de fortalecimento MULTIPLANAR dos abdutores do quadril ao longo de 8 semanas (prancha lateral com abducao, monster walk com faixa, hip hike, agachamento unipodal — progredindo de ~2x10 pra 3x15 com faixa) superou tanto o alongamento quanto o fortalecimento convencional em dor e funcao. Atacar o quadril nos tres planos, nao so abducao pura no plano frontal.
+FONTE: Iliotibial Band Syndrome Rehabilitation in Female Runners — Randomized Controlled Trial (J Orthop Surg Res 2020, doi 10.1186/s13018-020-01713-7)
+DOMINIO: lesao
+
+---
+
+Pra mirar o gluteo MEDIO (o abdutor que segura o joelho de cair pra dentro), os exercicios de maior ativacao eletromiografica sao a prancha lateral com abducao de quadril (em torno de 100 por cento da contracao voluntaria maxima) e o agachamento unipodal (~80 por cento). Priorizar exercicios de alta ativacao quando o objetivo e ganhar forca de abdutor pra corrigir valgo de joelho e queda pelvica.
+FONTE: Distefano et al., Gluteal Muscle Activation During Common Therapeutic Exercises — EMG Analysis (JOSPT 2009, doi 10.2519/jospt.2009.2796)
+DOMINIO: forca
+
+---
+
+Pra mirar o gluteo MAXIMO (extensor e rotador externo do quadril, propulsao e estabilidade), a maior ativacao eletromiografica vem da prancha frontal com extensao de quadril (mais de 100 por cento da contracao voluntaria maxima) e do agachamento unipodal (~70 por cento). Alguns exercicios (como a prancha lateral e o agachamento unipodal) recrutam bem gluteo medio E maximo ao mesmo tempo — bons pra economizar tempo na reabilitacao.
+FONTE: Distefano et al., Gluteal Muscle Activation During Common Therapeutic Exercises — EMG Analysis (JOSPT 2009, doi 10.2519/jospt.2009.2796)
+DOMINIO: forca
+
+---
+
+Panturrilha: a elevacao de calcanhar com o JOELHO ESTENDIDO (em pe) recruta mais o gastrocnemio e o triceps sural como um todo e gera mais hipertrofia; com o JOELHO FLEXIONADO (sentado) o gastrocnemio se desengata e o soleo assume a carga. Como o soleo e um musculo predominantemente lento e muito exigido no apoio da corrida, treinar as DUAS posicoes (joelho reto e dobrado) cobre o triceps sural inteiro.
+FONTE: Kinoshita et al., Triceps Surae Muscle Hypertrophy Is Greater After Standing Versus Seated Calf-Raise Training (PMC10753835)
+DOMINIO: forca
+
+---
+
+Fortalecer o "core do pe" (musculos intrinsecos que sustentam o arco longitudinal medial e controlam a pronacao) previne lesao: um programa de 8 semanas de treino do pe e tornozelo reduziu em cerca de 2,4 vezes a taxa de lesao relacionada a corrida no acompanhamento de 1 ano, contra um grupo controle. O exercicio-base e o "pe curto" (short foot): encurtar o arco aproximando a base dos dedos do calcanhar sem enrolar os dedos.
+FONTE: Taddei et al., Foot Core Training to Prevent Running-Related Injuries — Single-Blind Randomized Controlled Trial (Am J Sports Med 2020, doi 10.1177/0363546520969205)
+DOMINIO: forca
