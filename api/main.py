@@ -27,7 +27,8 @@ from api.form import FormService
 from api.injuries import InjuryError, InjuryService
 from api.profile import ProfileService
 from api.deps import (get_auth_service, get_diagnosis_classifier, get_form_coach, get_form_service,
-                      get_injury_service, get_job_queue, get_plan_service, get_profile_service)
+                      get_injury_service, get_job_queue, get_plan_service, get_profile_service,
+                      get_shoe_recommender)
 
 
 class RegisterRequest(BaseModel):
@@ -224,6 +225,35 @@ def form_coach(analysis_id: str, request: Request,
         pass   # sem login -> alvos populacionais + sem histórico (degrada gracioso)
     return {"analysis_id": analysis_id,
             **coach.plan(row["metrics"], profile=profile, history=history)}
+
+
+@app.post("/api/v1/form/{analysis_id}/shoe")
+def form_shoe(analysis_id: str, request: Request, cover: bool = False,
+              form: FormService = Depends(get_form_service),
+              recommender=Depends(get_shoe_recommender),
+              profiles: ProfileService = Depends(get_profile_service),
+              auth: AuthService = Depends(get_auth_service)):
+    """Recomendação de tênis (EPIC D): pisada + oscilação (métricas do vídeo) + peso (perfil) +
+    histórico de lesão (logado) → faixa de amortecimento/drop honesta e citada. `cover=1` pede a
+    capa humana pelo LLM. Espelha o padrão do /coach; degrada gracioso sem login."""
+    _ensure_uuid(analysis_id)
+    row = form.get(analysis_id)
+    if row is None or row.get("metrics") is None:
+        raise HTTPException(status_code=404, detail="Análise não encontrada ou ainda sem métricas")
+    metrics = row["metrics"]
+    weight_kg, history = None, None
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    try:
+        uid = auth.me(token)["user_id"]
+        weight_kg = (profiles.get(uid) or {}).get("weight_kg")
+        history = injury_history(uid)   # lesão prévia por região ajusta o drop
+    except AuthError:
+        pass   # sem login -> só pisada/oscilação (degrada gracioso)
+    rec = recommender.recommend(
+        foot_strike=metrics.get("foot_strike"),
+        vertical_oscillation_pct=metrics.get("vertical_oscillation_pct"),
+        weight_kg=weight_kg, history=history, write_cover=cover)
+    return {"analysis_id": analysis_id, **rec}
 
 
 @app.post("/api/v1/form/{analysis_id}/plan")

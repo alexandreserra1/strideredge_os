@@ -66,6 +66,13 @@ def get_diagnosis_classifier():
     return DiagnosisClassifier(llm=OllamaClient())
 
 
+def get_shoe_recommender():
+    """Recomendação de tênis (EPIC D): regras determinísticas aterradas no corpus `calcado` +
+    fontes do RAG roteado + capa humana opcional pelo LLM local. Mesma disciplina do coach."""
+    from analytics.shoe import ShoeRecommender
+    return ShoeRecommender(llm=OllamaClient(), knowledge=_knowledge_base())
+
+
 def get_form_coach() -> FormCoach:
     """Algoritmo corretivo: alvos personalizados + exercícios citados (LLM local + RAG
     híbrido denso+BM25). Risco: modelo TREINADO se há dado real suficiente, senão o prior."""
