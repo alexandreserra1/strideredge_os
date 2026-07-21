@@ -343,3 +343,85 @@ DOMINIO: forca
 Aumentar a cadencia em 5 a 10 por cento reduz a taxa de carga e as forcas de impacto; o ganho e maior quando combinado com fortalecimento de quadril e progressao gradual de volume. Reeducacao de marcha com metronomo funciona melhor como PROGRAMA (varias sessoes ao longo de semanas), nao como ajuste unico — a mudanca precisa virar automatica.
 FONTE: The Influence of Running Cadence on Biomechanics and Injury Prevention — Systematic Review (PMC12440572)
 DOMINIO: forca
+
+---
+
+O drop (diferença de altura calcanhar-antepe) do tenis quase NAO muda a cinematica de tornozelo/
+joelho/quadril nem a forca de reacao do solo. Onde muda: drop MENOR tende a MAIOR taxa de carga
+vertical, e a pisada so migra pra antepe com drop 0mm (vs 8-10mm). Ou seja, drop e ajuste fino de
+onde a carga cai, nao uma revolucao na mecanica.
+FONTE: Acute Effects of Heel-to-Toe Drop and Speed on Running Biomechanics and Strike Pattern (PMC8833076)
+DOMINIO: calcado
+
+---
+
+O drop REDISTRIBUI a carga por regiao: drop alto (~10mm) associa-se a mais lesao no JOELHO e menos
+no tornozelo/pe; drop baixo desloca o impacto pro joelho pra PANTURRILHA e tendao de Aquiles.
+Pratico: corredor com historico de joelho pode migrar GRADUALMENTE pra drop menor; quem tem
+historico de panturrilha/Aquiles se beneficia de drop maior. Transicao sempre gradual.
+FONTE: Heel-to-Toe Drop of Running Shoes — Systematic Review of Biomechanical Effects (Footwear Science 2023, doi 10.1080/19424280.2023.2180542)
+DOMINIO: calcado
+
+---
+
+Casar TENIS com a PISADA: quem pisa de CALCANHAR gera um transiente de impacto rapido no retropé —
+pede amortecimento estruturado atras + drop 8-10mm pra facilitar a transicao. Quem pisa de ANTEPE/
+MEDIO ja usa o arco e o Aquiles como amortecedores naturais — combina melhor com espuma uniforme e
+drop menor (4-6mm), evitando o calcanhar interferir. Evidencia de beneficio por pisada ainda esta
+em evolucao — usar como guia, com adaptacao gradual.
+FONTE: Acute Effects of Heel-to-Toe Drop and Speed on Running Biomechanics and Strike Pattern (PMC8833076)
+DOMINIO: calcado
+
+---
+
+MITO da pronacao: prescrever tenis de estabilidade/motion-control SO pelo tipo de arco (pe estatico)
+NAO e bem amparado pela evidencia — a maioria dos "pronadores" nao precisa. Tenis anti-pronacao
+(contraforte reforcado, entressola mais densa) altera pouco a cinematica, e o efeito se perde sob
+fadiga. Escolher pelo HISTORICO de lesao + a mecanica real da corrida, nao pelo formato do pe.
+FONTE: Effects of Anti-Pronation Shoes on Lower Limb Kinematics in Female Runners with Pronated Feet — Role of Fatigue (PMC6516670)
+DOMINIO: calcado
+
+---
+
+A entressola do tenis e um FILTRO mecanico entre o corpo e o asfalto; o amortecimento tem efeito
+protetor sobre o risco de lesao em corredores recreativos, mas o NIVEL otimo (e o papel do
+amortecimento no antepe) ainda e incerto. Na duvida, conforto percebido e adaptacao gradual guiam
+mais a escolha do que o marketing de "mais tecnologia".
+FONTE: Running Shoe Cushioning at Rearfoot and Forefoot and Relationship to Injury — RCT Protocol (PMC11481106)
+DOMINIO: calcado
+
+---
+
+Fascite plantar em corredores: fatores de risco incluem dorsiflexao de tornozelo LIMITADA, IMC alto
+e muito tempo em pe; a fraqueza dos musculos intrinsecos do pe desestabiliza o arco. O tratamento
+conservador mais eficaz combina alongamento — e o alongamento ESPECIFICO da fascia plantar reduz
+mais a dor do que so o alongamento de panturrilha.
+FONTE: Calf and Plantar Fascia-Specific Stretching for Plantar Fasciitis — Systematic Review (PubMed 33218515)
+DOMINIO: lesao
+
+---
+
+Tendinopatia do Aquiles: a carga EXCENTRICA pesada (protocolo Alfredson — heel drops) tem a maior
+evidencia de eficacia na tendinopatia cronica de porcao media; alternativas como Heavy Slow
+Resistance dao resultado parecido com melhor adesao. O tendao responde a CARGA progressiva, nao a
+repouso — reintroduzir carga controlada e o tratamento.
+FONTE: Alfredson Heel-Drop Programme in Chronic Midportion Achilles Tendinopathy — 5-Year Follow-up (PMC3277725)
+DOMINIO: lesao
+
+---
+
+Overstriding (aterrar o pe a FRENTE do centro de massa, joelho estendido) aumenta a taxa de carga
+vertical (ate ~30% mais impacto por passo) e a frenagem (20-50%), sobrecarregando joelho e quadril.
+Aumentar a cadencia em 5-10% encurta a passada e reduz a forca na articulacao patelofemoral —
+estudos mostram reducao de ~20-34% na carga do joelho.
+FONTE: Increasing Running Step Rate Reduces Patellofemoral Joint Forces (PMC3925193)
+DOMINIO: biomecanica
+
+---
+
+Aquecimento NEUROMUSCULAR dinamico (estilo FIFA 11+: corrida + forca + pliometria + equilibrio antes
+do treino) reduz a incidencia de lesao de membro inferior em cerca de 30 a 46% e melhora o controle
+neuromuscular (estabilizacao mais rapida do tronco e do membro inferior). Vale como rotina fixa de
+pre-treino, nao alongamento estatico solto.
+FONTE: FIFA 11+ Warm-Up and Injury Incidence — Cluster-Randomised Controlled Trial (PLOS One 2021, doi 10.1371/journal.pone.0251839)
+DOMINIO: forca

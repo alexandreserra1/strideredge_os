@@ -27,7 +27,7 @@ GOLDEN_RETRIEVAL = [
     ("aumentei muito a carga essa semana, perigo?", "PMC7047972", None),        # ACWR
     ("como distribuir intensidade dos treinos?", "PMC11679080", None),          # polarizado
     ("estou quicando muito ao correr, gasto energia?", "PMC11127892", None),    # economia/oscilacao
-    ("minha FC sobe sozinha no fim do treino longo", "PMC12271085", None),      # deriva cardiaca
+    ("minha FC sobe sozinha no fim do treino longo", "PMC12271085", ["treino"]),  # deriva cardiaca
     ("quanto dormir para recuperar melhor?", "PMC10354314", None),              # sono/recuperacao
     ("qual o jeito certo de construir base aerobica devagar?", "PMC11986187", None),  # zona 2
     ("musculacao ajuda a correr melhor?", "PMC11052887", None),                 # forca x economia
