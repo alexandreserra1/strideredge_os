@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from core.logging import Logger
 from analytics.form_coach import FormCoach
+from analytics.injury_dataset import injury_history
 from analytics.injury_taxonomy import taxonomy_payload
 from api.auth import AuthError, AuthService
 from api.form import FormService
@@ -48,6 +49,11 @@ class ProfileRequest(BaseModel):
     weight_kg: Optional[float] = None
     years_running: Optional[float] = None
     goal: Optional[str] = None
+    goal_timeframe_weeks: Optional[int] = None
+    weekly_volume_km: Optional[float] = None
+    days_per_week: Optional[int] = None
+    current_shoe: Optional[str] = None
+    footstrike_pref: Optional[str] = None
 
 
 class InjuryRequest(BaseModel):
@@ -207,13 +213,16 @@ def form_coach(analysis_id: str, request: Request,
     row = form.get(analysis_id)
     if row is None or row.get("metrics") is None:
         raise HTTPException(status_code=404, detail="Análise não encontrada ou ainda sem métricas")
-    profile = None
+    profile, history = None, None
     token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
     try:
-        profile = profiles.get(auth.me(token)["user_id"])
+        uid = auth.me(token)["user_id"]
+        profile = profiles.get(uid)
+        history = injury_history(uid)   # lesão prévia sensibiliza o risco (preditor #1)
     except AuthError:
-        pass   # sem login -> alvos populacionais (degrada gracioso)
-    return {"analysis_id": analysis_id, **coach.plan(row["metrics"], profile=profile)}
+        pass   # sem login -> alvos populacionais + sem histórico (degrada gracioso)
+    return {"analysis_id": analysis_id,
+            **coach.plan(row["metrics"], profile=profile, history=history)}
 
 
 # ---------- Perfil do atleta (personaliza os alvos biomecânicos) ----------

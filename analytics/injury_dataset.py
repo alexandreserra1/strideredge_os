@@ -22,6 +22,22 @@ from analytics.injury_taxonomy import factors_for, is_mapped, valid_diagnosis
 _FACTOR_KEYS = tuple(ideal_targets().keys())
 
 
+def injury_history(user_id: str) -> dict:
+    """Histórico de lesão do atleta -> `{factors, diagnoses, regions}`. `factors` = união dos
+    fatores biomecânicos que a taxonomia liga às lesões já reportadas (reusa `factors_for`). É o
+    que `assess`/`ideal_targets` consomem p/ sensibilizar o risco (lesão prévia = preditor #1)."""
+    if not user_id:
+        return {"factors": [], "diagnoses": [], "regions": []}
+    rows = get_connection().execute(
+        "SELECT DISTINCT diagnosis, region FROM injury_reports WHERE user_id = ?", [user_id]).fetchall()
+    diagnoses = {d for d, _ in rows if d}
+    regions = {r for _, r in rows if r}
+    factors = set()
+    for dx in diagnoses:
+        factors |= set(factors_for(dx))
+    return {"factors": sorted(factors), "diagnoses": sorted(diagnoses), "regions": sorted(regions)}
+
+
 def _analyses_before(con, user_id: str, onset, window_weeks: int) -> list:
     """Métricas (JSON) das análises 'done' daquele atleta na janela [onset-N semanas, onset]."""
     start = onset - timedelta(weeks=window_weeks)

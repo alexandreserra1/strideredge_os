@@ -99,6 +99,7 @@ class RiskModel:
         prob = float(self._rf.predict_proba([_vectorize(metrics, targets)])[0][1])
         importances = dict(zip(FEATURE_ORDER, self._rf.feature_importances_))
 
+        sensitized = set((history or {}).get("factors", []))   # mesma forma do prior (interface)
         factors = []
         for d in diagnose(metrics, targets):
             weight = round(float(importances.get(d["metric"], 0.0)), 3)
@@ -106,6 +107,7 @@ class RiskModel:
                 "metric": d["metric"], "label": d["label"], "value": d["value"],
                 "unit": d["unit"], "side": d["side"], "source": d["source"],
                 "plain": d["plain"], "weight": weight,
+                "sensitized": d["metric"] in sensitized,
                 "contribution": round(d["severity"] * weight, 3),
             })
         factors.sort(key=lambda f: f["contribution"], reverse=True)

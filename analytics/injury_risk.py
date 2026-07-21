@@ -38,6 +38,11 @@ RISK_WEIGHT = {
 }
 
 
+# Multiplicador de risco p/ fator ligado a lesão PRÉVIA do atleta (histórico = preditor #1).
+# Moderado de propósito (não dobra): sinaliza sem dominar o score da forma atual.
+SENSITIZE = 1.5
+
+
 def _band(score: float) -> str:
     """Faixa RELATIVA a partir do score ponderado (não é probabilidade)."""
     if score <= 0.0:
@@ -60,15 +65,21 @@ def assess(metrics: dict, profile: Optional[dict] = None,
     targets = ideal_targets(profile, history)
     devs = diagnose(metrics, targets)   # já traz severity, source, plain, label, side
 
+    # Lesão PRÉVIA é o preditor #1 de nova lesão (literatura): fatores ligados a uma lesão que o
+    # atleta já teve entram SENSIBILIZADOS (peso maior) — o histórico passa a pesar no risco.
+    sensitized = set((history or {}).get("factors", []))
+
     factors, score = [], 0.0
     for d in devs:
         weight = RISK_WEIGHT.get(d["metric"], 1.0)
-        contribution = round(d["severity"] * weight, 3)
+        hit = d["metric"] in sensitized
+        contribution = round(d["severity"] * weight * (SENSITIZE if hit else 1.0), 3)
         score += contribution
         factors.append({
             "metric": d["metric"], "label": d["label"], "value": d["value"],
             "unit": d["unit"], "side": d["side"], "source": d["source"],
             "plain": d["plain"], "weight": weight, "contribution": contribution,
+            "sensitized": hit,   # True = você já teve lesão ligada a este fator
         })
     factors.sort(key=lambda f: f["contribution"], reverse=True)
 

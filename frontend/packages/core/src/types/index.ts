@@ -81,6 +81,12 @@ export interface AthleteProfile {
   weight_kg?: number | null
   years_running?: number | null
   goal?: string | null
+  // metas de treino/tênis (EPIC B) — alimentam o plano corretivo e a recomendação de tênis
+  goal_timeframe_weeks?: number | null   // "em quanto tempo quero melhorar"
+  weekly_volume_km?: number | null
+  days_per_week?: number | null
+  current_shoe?: string | null
+  footstrike_pref?: string | null        // calcanhar | medio | antepe
 }
 
 // ---- Lesões (log OSTRC — fonte do dataset de risco) ----
