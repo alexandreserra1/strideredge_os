@@ -111,6 +111,17 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   - `validate_literature_model()`: o que dá pra fazer JÁ com poucos casos — checa se as análises
     anteriores flaguearam os fatores que a taxonomia liga àquela lesão (face-validity do prior contra
     outcome REAL, antes de treinar).
+### Plano corretivo faseado (EPIC C — o "app conversa mais")
+
+- **[FEITO] `analytics/training_plan.py`** (`build_plan` + `plan_from_metrics`): do gap medido → um
+  programa de N semanas que ataca os desvios EM ORDEM DE RISCO (usa `assess`, já com perfil+histórico),
+  sequenciando as FASES da biblioteca de exercícios (ativação/mobilidade → força → drill de marcha) com
+  progressão ~10%/sem. Determinístico + citado (cada sessão tem fonte); intro humano; se um bloco não
+  tem exercício, os que existem se antecipam (sem semana vazia). Prazo vem de `goal_timeframe_weeks`.
+- **[FEITO] Persistência + API**: tabela `training_plans` (migration 018) + `PlanService` (`api/plans.py`)
+  + `POST /form/{id}/plan?weeks=N` (gera+persiste) e `GET /plans` (histórico = progressão). Não gera
+  sobre captura não-confiável. Reúso: `exercises.for_factors`, `sanitize_metrics`, `assess`.
+
 - **[FEITO] Tela "Minhas lesões"** (`frontend`, rota `/lesoes`) — fonte principal do dataset.
   **Reframe importante:** o atleta NÃO auto-diagnostica (não somos médicos + gera rótulo lixo). Marca
   ONDE dói num **mapa muscular anatômico clicável** (`react-body-highlighter`, MIT) → a **região** é o

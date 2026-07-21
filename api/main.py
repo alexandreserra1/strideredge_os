@@ -20,13 +20,14 @@ from pydantic import BaseModel
 from core.logging import Logger
 from analytics.form_coach import FormCoach
 from analytics.injury_dataset import injury_history
+from analytics.training_plan import plan_from_metrics
 from analytics.injury_taxonomy import taxonomy_payload
 from api.auth import AuthError, AuthService
 from api.form import FormService
 from api.injuries import InjuryError, InjuryService
 from api.profile import ProfileService
 from api.deps import (get_auth_service, get_diagnosis_classifier, get_form_coach, get_form_service,
-                      get_injury_service, get_job_queue, get_profile_service)
+                      get_injury_service, get_job_queue, get_plan_service, get_profile_service)
 
 
 class RegisterRequest(BaseModel):
@@ -223,6 +224,40 @@ def form_coach(analysis_id: str, request: Request,
         pass   # sem login -> alvos populacionais + sem histórico (degrada gracioso)
     return {"analysis_id": analysis_id,
             **coach.plan(row["metrics"], profile=profile, history=history)}
+
+
+@app.post("/api/v1/form/{analysis_id}/plan")
+def generate_plan(analysis_id: str, request: Request, weeks: int = 6,
+                  form: FormService = Depends(get_form_service),
+                  profiles: ProfileService = Depends(get_profile_service),
+                  plans=Depends(get_plan_service),
+                  auth: AuthService = Depends(get_auth_service)):
+    """Plano corretivo de N semanas a partir da análise: desvios+risco+histórico → programa
+    faseado citado. Usa `goal_timeframe_weeks` do perfil se `weeks` não vier. Persiste p/ logado."""
+    _ensure_uuid(analysis_id)
+    row = form.get(analysis_id)
+    if row is None or row.get("metrics") is None:
+        raise HTTPException(status_code=404, detail="Análise não encontrada ou ainda sem métricas")
+    profile, history, uid = None, None, None
+    token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    try:
+        uid = auth.me(token)["user_id"]
+        profile = profiles.get(uid)
+        history = injury_history(uid)
+    except AuthError:
+        pass
+    weeks = (profile or {}).get("goal_timeframe_weeks") or weeks   # prazo do atleta, se houver
+    plan = plan_from_metrics(row["metrics"], weeks=weeks, profile=profile, history=history)
+    if uid and not plan.get("unreliable"):
+        plans.create(uid, analysis_id, plan)   # persiste o histórico de planos do atleta
+    return {"analysis_id": analysis_id, "plan": plan}
+
+
+@app.get("/api/v1/plans")
+def list_plans(request: Request, plans=Depends(get_plan_service),
+               auth: AuthService = Depends(get_auth_service)):
+    """Planos corretivos gerados pelo atleta logado (mais recentes primeiro = progressão)."""
+    return plans.list(_user_id(request, auth))
 
 
 # ---------- Perfil do atleta (personaliza os alvos biomecânicos) ----------

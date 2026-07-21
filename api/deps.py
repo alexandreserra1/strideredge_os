@@ -54,6 +54,12 @@ def get_injury_service() -> InjuryService:
     return InjuryService()
 
 
+def get_plan_service():
+    """Persistência dos planos corretivos gerados."""
+    from api.plans import PlanService
+    return PlanService()
+
+
 def get_diagnosis_classifier():
     """Classificador texto→diagnóstico (LLM local, conjunto fechado + abstenção)."""
     from analytics.injury_classifier import DiagnosisClassifier
