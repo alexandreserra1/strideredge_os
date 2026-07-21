@@ -425,3 +425,64 @@ neuromuscular (estabilizacao mais rapida do tronco e do membro inferior). Vale c
 pre-treino, nao alongamento estatico solto.
 FONTE: FIFA 11+ Warm-Up and Injury Incidence — Cluster-Randomised Controlled Trial (PLOS One 2021, doi 10.1371/journal.pone.0251839)
 DOMINIO: forca
+
+---
+
+Dosagem de FORCA pro corredor: cerca de 2 sessoes por semana de cadeia posterior (agachamento,
+levantamento terra, panturrilha, unipodais) por 10-14 semanas melhora a ECONOMIA de corrida. Cargas
+PESADAS (proximas do maximo, >=90% de 1RM) rendem mais que cargas leves. A forca da PANTURRILHA
+correlaciona com menor custo de oxigenio — priorizar triceps sural.
+FONTE: Effect of Strength Training on Running Economy at Different Speeds — Systematic Review with Meta-analysis (PMC11052887)
+DOMINIO: forca
+
+---
+
+Treino de forca PESADA (carga quase maxima) supera a pliometria para melhorar economia de corrida e
+tempo em prova; ambos ajudam, mas a resistencia pesada rende mais e ganha efeito quando feita por
+mais tempo (10-14 semanas). Forca nao e so performance: musculo forte protege o osso e a articulacao.
+FONTE: Heavy Resistance vs Plyometric Training for Running Economy and Time-Trial — Systematic Review with Meta-analysis (PMC9653533)
+DOMINIO: forca
+
+---
+
+Canelite (sindrome do estresse tibial medial): o manejo combina modificar a atividade, retreino de
+marcha (cadencia +5-10% reduz momentos articulares da perna), treino neuromuscular e carga graduada.
+Fortalecer os ABDUTORES do quadril reduz a queda pelvica e o valgo de joelho em corredores com
+canelite — atacar a causa a montante, nao so o sintoma na tibia.
+FONTE: Hip Abductors Training on Pelvic Drop and Knee Valgus in Runners with MTSS — Randomized Controlled Trial (PMC11520670)
+DOMINIO: lesao
+
+---
+
+Tempo de contato com o solo tem relacao CURVILINEA com o custo metabolico: existe um GCT OTIMO por
+corredor — nem sempre "quanto menor, melhor". Corredores treinados se auto-otimizam a ~5% do custo
+minimo. A rigidez da perna (efeito mola no apoio) captura energia livre do solo e a devolve; perna
+mole demais absorve carga passiva e alonga o contato. Ou seja, mira no SEU otimo, nao num numero fixo.
+FONTE: Humans Optimize Ground Contact Time and Leg Stiffness to Minimize Metabolic Cost of Running (PMC7739683)
+DOMINIO: biomecanica
+
+---
+
+Super-tenis com placa de carbono melhoram a economia de corrida em ~4% (mais util em ritmos rapidos),
+mas NAO ha evidencia de que reduzam lesao no uso diario. O risco vem do uso: trocar de repente pra
+TODO o volume muda a mecanica de carga e pode irritar Aquiles, panturrilha e joelho lateral se o
+tecido nao estiver preparado. Vida util curta (200-400 km). Introduzir aos poucos, so em treinos-chave.
+FONTE: Biomechanical Insights into Carbon Plate Geometry in Running Shoes (PMC12819620)
+DOMINIO: calcado
+
+---
+
+RODAR entre pelo menos 2 pares de tenis diferentes associa-se a cerca de 39% MENOS risco de lesao de
+corrida: alternar calcados expoe o corpo a padroes de carga levemente diferentes e reduz o estresse
+repetitivo no mesmo tecido. Barato e eficaz — variar o tenis (nao so o modelo da moda) e prevencao.
+FONTE: Malisoux et al., Parallel Use of Different Running Shoes Decreases Running-Related Injury Risk (Scand J Med Sci Sports 2015)
+DOMINIO: calcado
+
+---
+
+Adaptacao a mudanca de calcado (drop, amortecimento, placa) exige TRANSICAO gradual: o tecido precisa
+de tempo pra tolerar a nova distribuicao de carga. Regra pratica: introduzir o tenis novo em uma
+fracao dos treinos e subir aos poucos, nunca migrar 100% da quilometragem de uma vez — a troca subita
+somada a aumento de carga e a receita de lesao por sobrecarga.
+FONTE: Running Injury Paradigms and Their Influence on Footwear Design Features — Focused Review (Frontiers Sports Act Living 2022, doi 10.3389/fspor.2022.815675)
+DOMINIO: calcado
