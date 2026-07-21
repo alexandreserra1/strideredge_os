@@ -75,8 +75,8 @@ def test_load_corpus_parses_text_and_source(tmp_path):
     )
     chunks = load_corpus(path)
     assert chunks == [
-        ("Primeiro trecho de teste.", "Fonte A"),
-        ("Segundo trecho de teste.", "Fonte B"),
+        ("Primeiro trecho de teste.", "Fonte A", "geral"),   # sem DOMINIO -> 'geral'
+        ("Segundo trecho de teste.", "Fonte B", "geral"),
     ]
 
 
@@ -125,3 +125,23 @@ def test_context_generator_degrada_gracioso_se_llm_falha(tmp_path):
 
     text, search_text = _search_text_row(base)
     assert text == search_text == "cadencia alta reduz impacto"  # sem contexto
+
+
+def test_retrieve_roteia_por_dominio(tmp_path):
+    """Roteamento: `domains` restringe a busca ao(s) domínio(s) — evita bleed multi-domínio."""
+    base = KnowledgeBase(embedder=FakeEmbedder(), db_path=tmp_path / "kr.db", min_similarity=0.0)
+    base.index([
+        ("A cadencia ideal fica entre 170 e 180.", "FonteBio", "biomecanica"),
+        ("A cadencia melhora com metronomo no treino.", "FonteTreino", "treino"),
+        ("A cadencia influencia a escolha do tenis.", "FonteCalcado", "calcado"),
+    ])
+    todos = base.retrieve("cadencia", k=5)                       # sem rota = corpus todo
+    assert {h["source"] for h in todos} == {"FonteBio", "FonteTreino", "FonteCalcado"}
+    roteado = base.retrieve("cadencia", k=5, domains=["biomecanica", "treino"])
+    assert {h["source"] for h in roteado} == {"FonteBio", "FonteTreino"}   # calçado fora (sem bleed)
+
+
+def test_load_corpus_parseia_dominio(tmp_path):
+    path = tmp_path / "c.md"
+    path.write_text("Trecho sobre tenis.\nFONTE: F1\nDOMINIO: calcado\n", encoding="utf-8")
+    assert load_corpus(path) == [("Trecho sobre tenis.", "F1", "calcado")]

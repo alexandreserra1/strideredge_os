@@ -14,7 +14,7 @@ class _FakeLLM:
 
 
 class _FakeKB:
-    def retrieve(self, query, k=3):
+    def retrieve(self, query, k=3, domains=None):
         return [{"text": "aumentar cadencia reduz impacto", "source": "PMC12440572",
                  "origin": "curado"}]
 
@@ -56,7 +56,7 @@ def test_captura_confiavel_sem_desvio_elogia():
 
 class _KBFonteSemPMC:
     """Devolve uma fonte REAL sem PMC (só DOI) — o caso que o citations() de PMC perdia."""
-    def retrieve(self, query, k=3):
+    def retrieve(self, query, k=3, domains=None):
         return [{"text": "inclinar o tronco reduz carga no joelho", "origin": "curado",
                  "source": "Leaning the Trunk Forward Decreases Patellofemoral Joint "
                            "Loading During Uneven Running (PubMed 34537800)"}]
@@ -70,7 +70,7 @@ def test_citacao_de_fonte_sem_PMC_e_capturada_por_nome():
                           "Forward Decreases Patellofemoral Joint Loading During Uneven Running)")
     # cadência baixa força um desvio -> gera plano e recupera a fonte sem PMC
     out = FormCoach(llm=llm, knowledge=_KBFonteSemPMC()).plan(_RELIABLE_LOW_CADENCE)
-    assert out["citations"] == ["PMID:34537800"]              # capturada, com id estável
+    assert "PMID:34537800" in out["citations"]              # capturada (junto das fontes da biblioteca)
 
 
 def test_citacao_cai_pra_evidencia_recuperada_quando_llm_nao_cita_nome():
@@ -78,4 +78,4 @@ def test_citacao_cai_pra_evidencia_recuperada_quando_llm_nao_cita_nome():
     pra evidencia recuperada que embasou a resposta."""
     llm = _FakeLLM(reply="- Incline levemente o tronco pra frente durante a corrida")  # sem nome
     out = FormCoach(llm=llm, knowledge=_KBFonteSemPMC()).plan(_RELIABLE_LOW_CADENCE)
-    assert out["citations"] == ["PMID:34537800"]              # fallback = fonte recuperada
+    assert "PMID:34537800" in out["citations"]              # fallback = fonte recuperada (+ biblioteca)

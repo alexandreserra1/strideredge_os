@@ -20,17 +20,19 @@ import re
 # Casos-ouro de retrieval (pergunta do atleta -> fonte esperada). FONTE UNICA:
 # os testes importam daqui. O corpus é de ciência de corrida/biomecânica/lesão — o mesmo
 # que aterra o plano corretivo do FormCoach.
+# (pergunta, fonte esperada, domains). `domains`: ROTEAMENTO como a produção faz — query de desvio
+# biomecânico consulta os domínios certos (evita bleed do corpus multi-domínio). None = sem rota.
 GOLDEN_RETRIEVAL = [
-    ("minha passada esta lenta, risco de me machucar?", "PMC12440572"),   # cadencia
-    ("aumentei muito a carga essa semana, perigo?", "PMC7047972"),         # ACWR
-    ("como distribuir intensidade dos treinos?", "PMC11679080"),           # polarizado
-    ("estou quicando muito ao correr, gasto energia?", "PMC11127892"),     # economia/oscilacao
-    ("minha FC sobe sozinha no fim do treino longo", "PMC12271085"),       # deriva cardiaca
-    ("quanto dormir para recuperar melhor?", "PMC10354314"),               # sono/recuperacao
-    ("qual o jeito certo de construir base aerobica devagar?", "PMC11986187"),  # zona 2
-    ("musculacao ajuda a correr melhor?", "PMC11052887"),                  # forca x economia
-    ("quanto comer de acucar numa prova longa?", "PMC4008807"),            # fueling carboidrato
-    ("treinar no calor atrapalha? da pra me adaptar?", "PMC6890862"),      # calor/aclimatacao
+    ("minha passada esta lenta, risco de me machucar?", "PMC12440572", ["biomecanica", "treino"]),  # cadencia
+    ("aumentei muito a carga essa semana, perigo?", "PMC7047972", None),        # ACWR
+    ("como distribuir intensidade dos treinos?", "PMC11679080", None),          # polarizado
+    ("estou quicando muito ao correr, gasto energia?", "PMC11127892", None),    # economia/oscilacao
+    ("minha FC sobe sozinha no fim do treino longo", "PMC12271085", None),      # deriva cardiaca
+    ("quanto dormir para recuperar melhor?", "PMC10354314", None),              # sono/recuperacao
+    ("qual o jeito certo de construir base aerobica devagar?", "PMC11986187", None),  # zona 2
+    ("musculacao ajuda a correr melhor?", "PMC11052887", None),                 # forca x economia
+    ("quanto comer de acucar numa prova longa?", "PMC4008807", None),           # fueling carboidrato
+    ("treinar no calor atrapalha? da pra me adaptar?", "PMC6890862", None),     # calor/aclimatacao
 ]
 OFFTOPIC_QUERY = "qual a melhor receita de panqueca?"
 
@@ -44,8 +46,8 @@ class RagBenchmark:
     def retrieval_report(self, k: int = 2) -> dict:
         """Context Recall: acerto dos casos-ouro + rejeição de off-topic (pegou o chunk certo?)."""
         hits, misses = 0, []
-        for q, expected in GOLDEN_RETRIEVAL:
-            fontes = " ".join(h["source"] for h in self.kb.retrieve(q, k=k))
+        for q, expected, domains in GOLDEN_RETRIEVAL:
+            fontes = " ".join(h["source"] for h in self.kb.retrieve(q, k=k, domains=domains))
             if expected in fontes:
                 hits += 1
             else:
@@ -61,8 +63,8 @@ class RagBenchmark:
         """Context Precision: fração dos k chunks recuperados que são da fonte esperada.
         Complementa o hit-rate (que só mede SE achou, não QUANTO ruído veio junto)."""
         per_query = []
-        for q, expected in GOLDEN_RETRIEVAL:
-            hits = self.kb.retrieve(q, k=k)
+        for q, expected, domains in GOLDEN_RETRIEVAL:
+            hits = self.kb.retrieve(q, k=k, domains=domains)
             relevant = sum(1 for h in hits if expected in h["source"])
             per_query.append(relevant / k if hits else 0.0)
         return {"context_precision": round(sum(per_query) / len(per_query), 3),

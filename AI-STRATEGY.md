@@ -51,6 +51,16 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
    (Faithfulness, determinístico) + `LLMJudge` (Answer Relevancy, novo critério `relevancia` na
    rubrica) + `Benchmark.context_precision()` (novo) + `retrieval_report()['hit_rate']` (Context
    Recall). `Benchmark.ragas_report()` monta o boletim combinado.
+5. **[FEITO] RAG multi-domínio + roteamento** (EPIC A): o corpus cresceu p/ 5 domínios (biomecanica,
+   forca, calcado, treino, lesao) e cada chunk carrega `DOMINIO:` (`corpus.md` → `load_corpus` →
+   coluna `domain` em `knowledge_chunks`). **1 espaço bge-m3** (multi-domínio não pede modelos
+   separados — seria overengineering); o conserto do bleed é **rotear**: `retrieve(query, domains=[…])`
+   filtra `WHERE domain IN (...)`. `BaseRetriever` ganhou `domains` (hint opcional, ignorável → contrato
+   preservado). O coach roteia por tipo de desvio (`FACTOR_DOMAINS`: valgo→biomecanica+forca,
+   cadência→biomecanica+treino) e **liga a biblioteca de exercícios** (`exercises.for_factors`, antes
+   dead code): prescrição determinística citada + o LLM personaliza. Golden-set do eval passou a
+   rotear (espelha a produção). Verificado no vídeo real: coach cita exercício da biblioteca + fato do
+   domínio certo, sem bleed.
 
 ### Modelo de RISCO de lesão (pós-pivot — o eixo do produto)
 

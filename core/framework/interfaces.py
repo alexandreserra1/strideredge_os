@@ -52,8 +52,12 @@ class BaseRetriever(ABC):
     """
 
     @abstractmethod
-    def retrieve(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Devolve ate k trechos relevantes: [{text, source, origin}]."""
+    def retrieve(self, query: str, k: int = 3,
+                 domains: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Devolve ate k trechos relevantes: [{text, source, origin}].
+
+        `domains` (opcional): HINT de roteamento por dominio — quem sabe rotear (ex: base curada
+        com campo de dominio) filtra; quem nao sabe IGNORA. Contrato retrocompativel."""
         ...
 
 

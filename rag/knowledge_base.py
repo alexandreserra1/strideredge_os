@@ -10,7 +10,7 @@ Banco separado (storage/knowledge.db) para nao disputar lock com a telemetria.
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import duckdb
 import httpx
@@ -62,12 +62,12 @@ class KnowledgeBase(BaseRetriever):
         con.execute(
             f"""CREATE TABLE IF NOT EXISTS knowledge_chunks (
                     id INTEGER, text VARCHAR, source VARCHAR, search_text VARCHAR,
-                    embedding FLOAT[{EMBED_DIM}]
+                    embedding FLOAT[{EMBED_DIM}], domain VARCHAR DEFAULT 'geral'
                 )"""
         )
         con.close()
 
-    def index(self, chunks: List[Tuple[str, str]], context_gen: ContextGenerator = None) -> int:
+    def index(self, chunks: List[Tuple], context_gen: ContextGenerator = None) -> int:
         """(Re)indexa do zero: embeda cada chunk, grava texto+fonte+vetor e cria o
         indice FTS (BM25) do DuckDB sobre o texto — pra busca hibrida (denso+palavra).
 
@@ -80,13 +80,15 @@ class KnowledgeBase(BaseRetriever):
         novo ao indice invertido), entao e onde o contexto realmente ajuda."""
         con = duckdb.connect(self.db_path)
         con.execute("DELETE FROM knowledge_chunks")
-        for i, (text, source) in enumerate(chunks):
+        for i, chunk in enumerate(chunks):
+            text, source = chunk[0], chunk[1]
+            domain = chunk[2] if len(chunk) > 2 else "geral"   # retrocompat: 2-tupla vira 'geral'
             ctx = context_gen.generate(text, source) if context_gen else ""
             search_text = f"{ctx}\n\n{text}".strip() if ctx else text
             emb = self.embedder.embed_document(text)  # denso: SEMPRE do texto puro
             con.execute(
-                "INSERT INTO knowledge_chunks VALUES (?, ?, ?, ?, ?)",
-                [i, text, source, search_text, emb],
+                "INSERT INTO knowledge_chunks VALUES (?, ?, ?, ?, ?, ?)",
+                [i, text, source, search_text, emb, domain],
             )
         try:  # indice de texto (BM25). Se o extension nao instalar (sem rede), segue so denso.
             con.execute("INSTALL fts; LOAD fts;")
@@ -115,19 +117,27 @@ class KnowledgeBase(BaseRetriever):
         except Exception:
             return {}
 
-    def search(self, query: str, k: int = 4, min_similarity: float = 0.0) -> list:
+    def search(self, query: str, k: int = 4, min_similarity: float = 0.0,
+               domains: "Optional[List[str]]" = None) -> list:
         """Busca HIBRIDA: funde o ranking SEMANTICO (embeddings, array_cosine_similarity)
-        com o de PALAVRA-CHAVE (BM25/FTS) via Reciprocal Rank Fusion (RRF). O denso ainda
-        e o PISO de relevancia (min_similarity) — base do anti-alucinacao; o BM25 so
-        reordena (dando peso a termos exatos: 'ACWR', 'PMCxxxx', 'cadencia')."""
+        com o de PALAVRA-CHAVE (BM25/FTS). O denso e o PISO de relevancia (min_similarity) —
+        base do anti-alucinacao; o BM25 so reordena (termos exatos: 'ACWR', 'PMCxxxx').
+
+        `domains`: se dado, ROTEIA a busca so pra esses dominios (WHERE domain IN ...) — evita
+        bleed (query de cadencia puxar chunk de tenis). None = todo o corpus (retrocompativel)."""
         qvec = self.embedder.embed_query(query)  # o embedder aplica prefixo, se houver
         con = duckdb.connect(self.db_path, read_only=True)
+        where = ""
+        params: list = [qvec]
+        if domains:
+            where = f" WHERE domain IN ({', '.join('?' for _ in domains)})"
+            params += list(domains)
         dense = con.execute(
             f"""SELECT id, text, source,
                        array_cosine_similarity(embedding, ?::FLOAT[{EMBED_DIM}]) AS sim
-                FROM knowledge_chunks
+                FROM knowledge_chunks{where}
                 ORDER BY sim DESC""",
-            [qvec],
+            params,
         ).fetchall()
         bm_rank = self._bm25(con, query)
         con.close()
@@ -156,30 +166,36 @@ class KnowledgeBase(BaseRetriever):
                 break
         return out
 
-    def retrieve(self, query: str, k: int = 3) -> list:
-        """Interface BaseRetriever: usa o limiar proprio e marca origem 'curado'."""
-        hits = self.search(query, k=k, min_similarity=self.min_similarity)
+    def retrieve(self, query: str, k: int = 3, domains: "Optional[List[str]]" = None) -> list:
+        """Interface BaseRetriever: usa o limiar proprio e marca origem 'curado'. `domains`
+        (opcional) roteia por dominio — o contrato base segue valido quando nao passado."""
+        hits = self.search(query, k=k, min_similarity=self.min_similarity, domains=domains)
         return [{"text": h["text"], "source": h["source"], "origin": "curado"} for h in hits]
 
 
-def load_corpus(path: Path) -> List[Tuple[str, str]]:
-    """Le um .md de fontes: chunks separados por '---', cada um com linha 'FONTE:'."""
+def load_corpus(path: Path) -> List[Tuple[str, str, str]]:
+    """Le um .md de fontes: chunks separados por '---', cada um com linha 'FONTE:' e
+    (opcional) 'DOMINIO:' — o dominio roteia a busca (biomecanica|forca|calcado|treino|lesao).
+    Sem DOMINIO, cai em 'geral' (retrocompativel)."""
     raw = Path(path).read_text(encoding="utf-8")
     chunks = []
     for block in raw.split("\n---\n"):
         block = block.strip()
         if not block:
             continue
-        source = "desconhecida"
+        source, domain = "desconhecida", "geral"
         text_lines = []
         for line in block.splitlines():
-            if line.strip().upper().startswith("FONTE:"):
+            stripped = line.strip().upper()
+            if stripped.startswith("FONTE:"):
                 source = line.split(":", 1)[1].strip()
+            elif stripped.startswith("DOMINIO:"):
+                domain = line.split(":", 1)[1].strip().lower()
             else:
                 text_lines.append(line)
         text = " ".join(text_lines).strip()
         if text:
-            chunks.append((text, source))
+            chunks.append((text, source, domain))
     return chunks
 
 

@@ -30,13 +30,13 @@ class _FakeKB:
     def __init__(self, mapping):
         self.mapping = mapping
 
-    def retrieve(self, q, k=2):
+    def retrieve(self, q, k=2, domains=None):
         src = self.mapping.get(q)
         return [{"source": src}] if src else []
 
 
 def test_benchmark_retrieval_report():
-    first_q, first_src = GOLDEN_RETRIEVAL[0]
+    first_q, first_src, _ = GOLDEN_RETRIEVAL[0]
     bench = RagBenchmark(_FakeKB({first_q: first_src}))   # acerta só o 1º caso
     rep = bench.retrieval_report()
     assert rep["hits"] == 1 and rep["total"] == len(GOLDEN_RETRIEVAL)
@@ -46,7 +46,7 @@ def test_benchmark_retrieval_report():
 
 
 def test_benchmark_context_precision():
-    first_q, first_src = GOLDEN_RETRIEVAL[0]
+    first_q, first_src, _ = GOLDEN_RETRIEVAL[0]
     bench = RagBenchmark(_FakeKB({first_q: first_src}))
     rep = bench.context_precision(k=2)
     assert 0.0 <= rep["context_precision"] <= 1.0

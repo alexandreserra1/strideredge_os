@@ -15,6 +15,21 @@ from analytics.grounding import GroundingGuard
 from analytics.biomechanics import ideal_targets, diagnose
 from analytics.injury_risk import assess as assess_risk
 from analytics.injury_quality import sanitize_metrics
+from analytics.exercises import for_factors
+
+# Cada fator desviado -> domínios do RAG a consultar (roteamento; evita bleed de calçado/nutrição
+# numa query de cadência). Corretivo puxa biomecânica (o fato) + força/treino (a correção). Reusa
+# as chaves de biomechanics.ideal_targets.
+FACTOR_DOMAINS = {
+    "cadence_spm": ["biomecanica", "treino"],
+    "knee_contact_deg": ["biomecanica", "treino"],
+    "pelvic_drop_deg": ["biomecanica", "forca"],
+    "knee_valgus_deg": ["biomecanica", "forca"],
+    "asymmetry_pct": ["biomecanica", "forca"],
+    "vertical_oscillation_pct": ["biomecanica", "forca"],
+    "ground_contact_ms": ["biomecanica", "forca"],
+    "trunk_lean_deg": ["biomecanica"],
+}
 
 
 # O QUE corrigir (os desvios) ja vem estruturado do biomechanics.py — deterministico.
@@ -67,17 +82,23 @@ class FormCoach:
                 out.append(s)
         return out
 
-    def _prompt(self, metrics: dict, devs: list, hits: list) -> str:
+    def _prompt(self, metrics: dict, devs: list, hits: list, lib: list) -> str:
         linhas = ["Desvios medidos (medido vs faixa ideal):"]
         for d in devs[:4]:
             faixa = f"<= {d['hi']:g}" if d["side"] == "alto" else f">= {d['lo']:g}"
             linhas.append(f"- {d['label']}: medido {d['value']:g}{d['unit']} "
                           f"(ideal {faixa}{d['unit']}) [FONTE: {d['source']}]")
+        # Biblioteca DETERMINÍSTICA de exercícios (fonte de verdade citada): o LLM PERSONALIZA a
+        # entrega destes, não inventa exercício. Reusa analytics.exercises.for_factors.
+        if lib:
+            linhas.append("\nBiblioteca de exercicios recomendados (baseie-se NESTES, cada um com sua FONTE):")
+            for e in lib:
+                linhas.append(f"- {e['name']} [FONTE: {e['source']}]")
         if hits:
-            linhas.append("\nEvidencias (cite a FONTE ao recomendar):")
+            linhas.append("\nEvidencias de apoio (cite a FONTE ao explicar o porque):")
             for i, h in enumerate(hits, 1):
                 linhas.append(f"{i}. {h['text']} [FONTE: {h['source']}]")
-        else:
+        elif not lib:
             linhas.append("\n(Sem evidencia relevante na base — nao invente exercicios.)")
         return "\n".join(linhas)
 
@@ -114,9 +135,14 @@ class FormCoach:
                 "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
             }
 
-        query = " ".join(d["query"] for d in devs[:3])
-        hits = self.knowledge.retrieve(query, k=self.k) if self.knowledge is not None else []
-        prompt = self._prompt(metrics, devs, hits)
+        # Roteamento: consulta só os domínios relevantes aos desvios (evita bleed) + biblioteca
+        # determinística de exercícios pros fatores desviados.
+        top = devs[:3]
+        query = " ".join(d["query"] for d in top)
+        domains = sorted({dom for d in top for dom in FACTOR_DOMAINS.get(d["metric"], ["biomecanica"])})
+        hits = self.knowledge.retrieve(query, k=self.k, domains=domains) if self.knowledge else []
+        lib = for_factors([d["metric"] for d in devs])
+        prompt = self._prompt(metrics, devs, hits, lib)
 
         text = self.guard.enforce(self.llm, SYSTEM, prompt)
         issues = self.guard.issues(text, prompt + " " + " ".join(h["text"] for h in hits))
@@ -126,36 +152,37 @@ class FormCoach:
         return {
             "verdict": text,
             "actions": self._drills(text),
-            "citations": self._cited(text, hits),
+            "citations": self._cited(text, hits, lib),
             "targets": targets,
             "deviations": devs,
             "risk": risk,
         }
 
     @staticmethod
-    def _cited(text: str, hits: list) -> list:
+    def _cited(text: str, hits: list, lib: list = None) -> list:
         """"Baseado em:" — fontes que embasam o plano, como IDs estáveis (source_id: PMC/PMID/DOI).
-        Casa pelo NOME da fonte (título/autor), não pelo código PMC no texto do LLM (ele nem sempre
-        ecoa o código; e há fontes reais sem PMC). Se o LLM não citar ninguém nominalmente, cai pra
-        TODA evidência recuperada (foi ela que embasou a resposta) — nunca deixa ação sem fonte
-        visível, princípio de ciência citável (constituição §14)."""
-        def sid_of(h):
-            return GroundingGuard.source_id(h["source"])
+        Une (1) as fontes dos EXERCÍCIOS da biblioteca (base determinística da prescrição, sempre
+        citadas) + (2) a EVIDÊNCIA: as que o LLM citou nominalmente pelo título, senão toda a
+        recuperada. Nunca deixa ação sem fonte visível (ciência citável, constituição §14)."""
+        def sid_of(source: str):
+            return GroundingGuard.source_id(source)
 
-        low = text.lower()
+        out: list = []
+        for e in (lib or []):                          # (1) fontes da biblioteca de exercícios
+            sid = sid_of(e["source"])
+            if sid and sid not in out:
+                out.append(sid)
+
+        low = text.lower()                             # (2) evidência citada nominalmente...
         matched: list = []
         for h in hits:
             titulo = re.split(r"\s+[—–-]\s+|\s*\(", h["source"].strip())[0]  # parte distintiva
-            if len(titulo) >= 8 and titulo.lower() in low:                   # o LLM citou esta fonte?
-                sid = sid_of(h)
+            if len(titulo) >= 8 and titulo.lower() in low:
+                sid = sid_of(h["source"])
                 if sid and sid not in matched:
                     matched.append(sid)
-        if matched:
-            return matched
-        # fallback: nenhuma citada nominalmente -> a evidência recuperada (dedup, em ordem)
-        out: list = []
-        for h in hits:
-            sid = sid_of(h)
+        evidencia = matched or [sid_of(h["source"]) for h in hits]   # ...senão toda a recuperada
+        for sid in evidencia:
             if sid and sid not in out:
                 out.append(sid)
         return out

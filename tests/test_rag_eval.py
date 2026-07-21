@@ -32,9 +32,9 @@ def kb():
     return KnowledgeBase(embedder=OllamaEmbedder())
 
 
-@pytest.mark.parametrize("query,expected_source", CASES)
-def test_retrieval_relevance(kb, query, expected_source):
-    hits = kb.retrieve(query, k=2)
+@pytest.mark.parametrize("query,expected_source,domains", CASES)
+def test_retrieval_relevance(kb, query, expected_source, domains):
+    hits = kb.retrieve(query, k=2, domains=domains)   # roteado como a produção
     assert hits, f"nada recuperado para: {query}"
     fontes = " ".join(h["source"] for h in hits)
     assert expected_source in fontes, f"esperava {expected_source} em '{query}', veio: {fontes}"
