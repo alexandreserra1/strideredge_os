@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use stride_vision::{analyze_form, contact_angle, contact_flight_ms, foot_strike, draw_angles,
                     hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
-                    trunk_lean_deg, draw_pose, PoseEngine, KP_NAMES};
+                    trunk_lean_deg, draw_pose, PoseEngine};
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
 // o quadril "borderline" (0.42-0.45) num enquadramento ruim (só pernas) saltava e poluía a
@@ -55,7 +55,7 @@ fn run_image(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
             println!("pessoa detectada (conf {:.2}) em {:?}", pose.confidence, t.elapsed());
             for (k, &(x, y, c)) in pose.keypoints.iter().enumerate() {
                 if c > 0.35 {
-                    println!("  {:12} ({:5.0},{:5.0}) conf {:.2}", KP_NAMES[k], x, y, c);
+                    println!("  {:12} ({:5.0},{:5.0}) conf {:.2}", pose.layout.names[k], x, y, c);
                 }
             }
             draw_pose(&mut img, &pose);
@@ -72,7 +72,8 @@ fn run_image(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
 /// `view` = "lateral" (métricas sagitais) | "frontal" (queda pélvica, valgo de joelho).
 fn run_video(engine: &mut PoseEngine, input: &str, out: &str, view: &str) -> Result<()> {
     let (w, h, fps) = probe(input)?;
-    println!("vídeo {w}x{h} @ {fps:.1}fps (vista: {view})");
+    let lay = engine.layout();   // índices semânticos (quadril/joelho/tornozelo...) do layout ativo
+    println!("vídeo {w}x{h} @ {fps:.1}fps (vista: {view}) — layout {}", lay.name);
 
     let mut dec = Command::new("ffmpeg")
         .args(["-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
@@ -105,42 +106,42 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str, view: &str) -> Res
         let mut img: RgbImage = RgbImage::from_raw(w, h, buf.clone()).unwrap();
         if let Some(pose) = engine.infer(&img)? {
             let kp = &pose.keypoints;
-            ankle_l.push(kp[15].1);
-            ankle_r.push(kp[16].1);
+            ankle_l.push(kp[lay.ankle_l].1);
+            ankle_r.push(kp[lay.ankle_r].1);
             // BUG corrigido: hip_y e leg_len entravam SEM guarda de confiança (diferente de
             // trunk/pelvic abaixo). Keypoint de baixa confiança tem coordenada-lixo -> quadril
             // "saltava" (amplitude 681% da perna) e leg_len oscilava -> FALSO "não-lateral".
             // Agora só entra com o quadril confiável; leg_len usa a perna VISÍVEL (na lateral a
             // de trás é ocluída, baixa conf.).
-            if kp[11].2 > KP_CONF && kp[12].2 > KP_CONF {
-                hip_y.push((kp[11].1 + kp[12].1) / 2.0);      // centro do quadril
+            if kp[lay.hip_l].2 > KP_CONF && kp[lay.hip_r].2 > KP_CONF {
+                hip_y.push((kp[lay.hip_l].1 + kp[lay.hip_r].1) / 2.0);      // centro do quadril
             }
             let leg = |hip: (f32, f32, f32), ank: (f32, f32, f32)|
                 ((hip.0 - ank.0).powi(2) + (hip.1 - ank.1).powi(2)).sqrt();
-            if kp[11].2 > KP_CONF && kp[15].2 > KP_CONF {
-                leg_lens.push(leg(kp[11], kp[15]));           // perna esquerda
-            } else if kp[12].2 > KP_CONF && kp[16].2 > KP_CONF {
-                leg_lens.push(leg(kp[12], kp[16]));           // perna direita (esquerda ocluída)
+            if kp[lay.hip_l].2 > KP_CONF && kp[lay.ankle_l].2 > KP_CONF {
+                leg_lens.push(leg(kp[lay.hip_l], kp[lay.ankle_l]));           // perna esquerda
+            } else if kp[lay.hip_r].2 > KP_CONF && kp[lay.ankle_r].2 > KP_CONF {
+                leg_lens.push(leg(kp[lay.hip_r], kp[lay.ankle_r]));           // perna direita (esquerda ocluída)
             }
             // ângulos articulares por perna (joelho: quadril-joelho-tornozelo; quadril: ombro-quadril-joelho)
-            knee_l.push(joint_angle(kp[11], kp[13], kp[15]));
-            knee_r.push(joint_angle(kp[12], kp[14], kp[16]));
-            hip_l.push(joint_angle(kp[5], kp[11], kp[13]));
-            hip_r.push(joint_angle(kp[6], kp[12], kp[14]));
-            conf_l += kp[11].2.min(kp[13].2).min(kp[15].2);
-            conf_r += kp[12].2.min(kp[14].2).min(kp[16].2);
-            ax_l.push(kp[15].0); ax_r.push(kp[16].0);
-            kx_l.push(kp[13].0); kx_r.push(kp[14].0);
-            nose_dx.push(kp[0].0 - (kp[11].0 + kp[12].0) / 2.0);
+            knee_l.push(joint_angle(kp[lay.hip_l], kp[lay.knee_l], kp[lay.ankle_l]));
+            knee_r.push(joint_angle(kp[lay.hip_r], kp[lay.knee_r], kp[lay.ankle_r]));
+            hip_l.push(joint_angle(kp[lay.shoulder_l], kp[lay.hip_l], kp[lay.knee_l]));
+            hip_r.push(joint_angle(kp[lay.shoulder_r], kp[lay.hip_r], kp[lay.knee_r]));
+            conf_l += kp[lay.hip_l].2.min(kp[lay.knee_l].2).min(kp[lay.ankle_l].2);
+            conf_r += kp[lay.hip_r].2.min(kp[lay.knee_r].2).min(kp[lay.ankle_r].2);
+            ax_l.push(kp[lay.ankle_l].0); ax_r.push(kp[lay.ankle_r].0);
+            kx_l.push(kp[lay.knee_l].0); kx_r.push(kp[lay.knee_r].0);
+            nose_dx.push(kp[lay.nose].0 - (kp[lay.hip_l].0 + kp[lay.hip_r].0) / 2.0);
             // inclinação do tronco: ombro-médio vs quadril-médio (só com tronco confiável)
-            if kp[5].2 > KP_CONF && kp[6].2 > KP_CONF && kp[11].2 > KP_CONF && kp[12].2 > KP_CONF {
-                let sh = ((kp[5].0 + kp[6].0) / 2.0, (kp[5].1 + kp[6].1) / 2.0);
-                let hp = ((kp[11].0 + kp[12].0) / 2.0, (kp[11].1 + kp[12].1) / 2.0);
+            if kp[lay.shoulder_l].2 > KP_CONF && kp[lay.shoulder_r].2 > KP_CONF && kp[lay.hip_l].2 > KP_CONF && kp[lay.hip_r].2 > KP_CONF {
+                let sh = ((kp[lay.shoulder_l].0 + kp[lay.shoulder_r].0) / 2.0, (kp[lay.shoulder_l].1 + kp[lay.shoulder_r].1) / 2.0);
+                let hp = ((kp[lay.hip_l].0 + kp[lay.hip_r].0) / 2.0, (kp[lay.hip_l].1 + kp[lay.hip_r].1) / 2.0);
                 trunk.push(trunk_lean_deg(sh, hp));
             }
             // queda pélvica (plano frontal): inclinação da linha do quadril quando ela é confiável
-            if kp[11].2 > KP_CONF && kp[12].2 > KP_CONF {
-                pelvic_tilt.push(hip_tilt_deg(kp[11], kp[12]));
+            if kp[lay.hip_l].2 > KP_CONF && kp[lay.hip_r].2 > KP_CONF {
+                pelvic_tilt.push(hip_tilt_deg(kp[lay.hip_l], kp[lay.hip_r]));
             }
             draw_pose(&mut img, &pose);
             if view == "lateral" { draw_angles(&mut img, &pose); }   // goniômetros sagitais só na lateral

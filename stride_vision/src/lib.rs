@@ -21,7 +21,54 @@ pub const INPUT: u32 = 640;
 // cadência instável e amostra pequena de cada métrica. A 15s (~21 passadas/perna @170spm) há sinal
 // suficiente p/ ver o que está certo/errado com robustez. Predição de lesão exige amostra boa.
 pub const MIN_DURATION_S: f32 = 15.0;
-pub const KP_NAMES: [&str; 17] = [
+
+// ---------- Layout de keypoints (COCO-17 hoje; Halpe26 plugável, ver README) ----------
+//
+// TUDO que dependia de "são 17 keypoints" vive AQUI, num só lugar: quantos são, os nomes, o
+// esqueleto de desenho e — o que a biomecânica realmente consome — os índices SEMÂNTICOS
+// (quadril/joelho/tornozelo...). Trocar o motor de pose p/ Halpe26 = apontar o PoseEngine pra
+// outro `KeypointLayout`; o parsing do tensor, o desenho e as métricas seguem sem mudança porque
+// falam em NOMES, não em números mágicos. Os pontos de pé são Option: existem no Halpe26, não no
+// COCO-17 (é por isso que hoje a pisada é INFERIDA e não há dorsiflexão — ver README-KEYPOINTS.md).
+
+/// Descreve um conjunto de keypoints: contagem, nomes, esqueleto e os índices semânticos que a
+/// biomecânica usa. Layouts diferentes (COCO-17, Halpe26) são só instâncias distintas.
+#[derive(Debug)]
+pub struct KeypointLayout {
+    pub name: &'static str,
+    pub count: usize,
+    pub names: &'static [&'static str],
+    /// pares de índices ligados no desenho do esqueleto
+    pub skeleton: &'static [(usize, usize)],
+    /// keypoints que NÃO viram articulação desenhada (olhos/orelhas)
+    pub face_skip: &'static [usize],
+    // índices semânticos (E = esquerdo, D = direito)
+    pub nose: usize,
+    pub shoulder_l: usize,
+    pub shoulder_r: usize,
+    pub hip_l: usize,
+    pub hip_r: usize,
+    pub knee_l: usize,
+    pub knee_r: usize,
+    pub ankle_l: usize,
+    pub ankle_r: usize,
+    // pontos de PÉ — Some só quando o layout os traz (Halpe26). None = pisada inferida, sem dorsiflexão.
+    pub big_toe_l: Option<usize>,
+    pub big_toe_r: Option<usize>,
+    pub small_toe_l: Option<usize>,
+    pub small_toe_r: Option<usize>,
+    pub heel_l: Option<usize>,
+    pub heel_r: Option<usize>,
+}
+
+impl KeypointLayout {
+    /// o layout traz pontos de pé? (destrava pisada MEDIDA + ângulo de dorsiflexão)
+    pub fn has_foot(&self) -> bool {
+        self.heel_l.is_some() && self.big_toe_l.is_some()
+    }
+}
+
+const COCO17_NAMES: [&str; 17] = [
     "nariz", "olho_e", "olho_d", "orelha_e", "orelha_d", "ombro_e", "ombro_d",
     "cotovelo_e", "cotovelo_d", "punho_e", "punho_d", "quadril_e", "quadril_d",
     "joelho_e", "joelho_d", "tornozelo_e", "tornozelo_d",
@@ -29,34 +76,98 @@ pub const KP_NAMES: [&str; 17] = [
 /// Ligações do esqueleto para CORRIDA: tronco, quadril, pernas e braços. Sem face —
 /// olho/orelha não dizem nada sobre a mecânica de corrida (o Ochy também não usa).
 /// Mantemos só nariz->ombros pra enxergar a inclinação da cabeça/tronco.
-pub const SKELETON: [(usize, usize); 14] = [
+const COCO17_SKELETON: [(usize, usize); 14] = [
     (15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
     (5, 7), (7, 9), (6, 8), (8, 10), (0, 5), (0, 6),
 ];
-/// Keypoints de face que NÃO desenhamos como articulação (olhos e orelhas).
-const FACE_SKIP: [usize; 4] = [1, 2, 3, 4];
+const COCO17_FACE_SKIP: [usize; 4] = [1, 2, 3, 4];
+
+/// COCO-17 (YOLO11-pose): layout PADRÃO e único ativo hoje. Sem keypoints de pé.
+pub static COCO17: KeypointLayout = KeypointLayout {
+    name: "coco17",
+    count: 17,
+    names: &COCO17_NAMES,
+    skeleton: &COCO17_SKELETON,
+    face_skip: &COCO17_FACE_SKIP,
+    nose: 0,
+    shoulder_l: 5, shoulder_r: 6,
+    hip_l: 11, hip_r: 12,
+    knee_l: 13, knee_r: 14,
+    ankle_l: 15, ankle_r: 16,
+    big_toe_l: None, big_toe_r: None,
+    small_toe_l: None, small_toe_r: None,
+    heel_l: None, heel_r: None,
+};
+
+const HALPE26_NAMES: [&str; 26] = [
+    "nariz", "olho_e", "olho_d", "orelha_e", "orelha_d", "ombro_e", "ombro_d",
+    "cotovelo_e", "cotovelo_d", "punho_e", "punho_d", "quadril_e", "quadril_d",
+    "joelho_e", "joelho_d", "tornozelo_e", "tornozelo_d",
+    "cabeca", "pescoco", "quadril_c", "hallux_e", "hallux_d",
+    "dedinho_e", "dedinho_d", "calcanhar_e", "calcanhar_d",
+];
+/// Esqueleto COCO reaproveitado + os elos do pé (tornozelo→calcanhar→hallux). Blindado por asset:
+/// só passa a ser desenhado quando o modelo Halpe26 estiver plugado (ver README-KEYPOINTS.md).
+const HALPE26_SKELETON: [(usize, usize); 18] = [
+    (15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
+    (5, 7), (7, 9), (6, 8), (8, 10), (0, 5), (0, 6),
+    (15, 24), (24, 20), (16, 25), (25, 21),   // tornozelo→calcanhar→hallux (E/D)
+];
+const HALPE26_FACE_SKIP: [usize; 4] = [1, 2, 3, 4];
+
+/// Halpe26 (26 keypoints, inclui PÉ): layout-alvo, BLOQUEADO por asset (modelo ONNX não baixado).
+/// Presente aqui só pra provar que a costura é uma troca de layout — ver README-KEYPOINTS.md.
+pub static HALPE26: KeypointLayout = KeypointLayout {
+    name: "halpe26",
+    count: 26,
+    names: &HALPE26_NAMES,
+    skeleton: &HALPE26_SKELETON,
+    face_skip: &HALPE26_FACE_SKIP,
+    nose: 0,
+    shoulder_l: 5, shoulder_r: 6,
+    hip_l: 11, hip_r: 12,
+    knee_l: 13, knee_r: 14,
+    ankle_l: 15, ankle_r: 16,
+    big_toe_l: Some(20), big_toe_r: Some(21),
+    small_toe_l: Some(22), small_toe_r: Some(23),
+    heel_l: Some(24), heel_r: Some(25),
+};
 
 #[derive(Debug, Clone)]
 pub struct Pose {
-    /// (x, y, confiança) em coordenadas da imagem ORIGINAL
-    pub keypoints: [(f32, f32, f32); 17],
+    /// (x, y, confiança) em coordenadas da imagem ORIGINAL, um por keypoint do `layout`
+    pub keypoints: Vec<(f32, f32, f32)>,
     pub confidence: f32,
+    /// layout que descreve esses keypoints (índices semânticos, nomes, esqueleto)
+    pub layout: &'static KeypointLayout,
 }
 
 pub struct PoseEngine {
     session: Session,
+    layout: &'static KeypointLayout,
     // centro (640-space) da pessoa rastreada no frame anterior — consistência temporal p/ NÃO
     // trocar de pessoa em vídeo com várias (corredor + apresentadores parados). None = reacquire.
     last_center: Option<(f32, f32)>,
 }
 
 impl PoseEngine {
+    /// Motor com o layout PADRÃO (COCO-17). É o caminho usado em produção hoje.
     pub fn new(model_path: &str) -> Result<Self> {
+        Self::with_layout(model_path, &COCO17)
+    }
+
+    /// Motor com um layout explícito (ex.: `&HALPE26` quando o modelo estiver disponível).
+    pub fn with_layout(model_path: &str, layout: &'static KeypointLayout) -> Result<Self> {
         let session = o(o(o(o(Session::builder())?
             .with_optimization_level(GraphOptimizationLevel::Level3))?
             .with_intra_threads(4))?
             .commit_from_file(model_path))?;
-        Ok(Self { session, last_center: None })
+        Ok(Self { session, layout, last_center: None })
+    }
+
+    /// Layout ativo deste motor (índices semânticos p/ quem consome as poses).
+    pub fn layout(&self) -> &'static KeypointLayout {
+        self.layout
     }
 
     /// Detecta a pessoa mais confiante no frame. None = ninguém acima do limiar.
@@ -78,7 +189,10 @@ impl PoseEngine {
 
         let tensor = o(ort::value::TensorRef::from_array_view(input.view()))?;
         let outputs = o(self.session.run(ort::inputs![tensor]))?;
-        let out = o(outputs[0].try_extract_array::<f32>())?;   // [1, 56, N]
+        // saída YOLO-pose: [1, 4+1+3*K, N] — 4 box + 1 conf + 3 (x,y,conf) por keypoint.
+        // COCO-17 => 56 canais; Halpe26 => 5+78 = 83. Derivado do layout, não hard-coded.
+        let out = o(outputs[0].try_extract_array::<f32>())?;
+        let k_count = self.layout.count;
         let n = out.shape()[2];
         let at = |c: usize, i: usize| out[[0, c, i]];
 
@@ -109,13 +223,13 @@ impl PoseEngine {
         };
         self.last_center = Some((at(0, i), at(1, i)));
 
-        let mut kps = [(0f32, 0f32, 0f32); 17];
-        for k in 0..17 {
+        let mut kps = vec![(0f32, 0f32, 0f32); k_count];
+        for k in 0..k_count {
             let x = (at(5 + k * 3, i) - px) / scale;
             let y = (at(6 + k * 3, i) - py) / scale;
             kps[k] = (x.clamp(0.0, ow), y.clamp(0.0, oh), at(7 + k * 3, i));
         }
-        Ok(Some(Pose { keypoints: kps, confidence: conf }))
+        Ok(Some(Pose { keypoints: kps, confidence: conf, layout: self.layout }))
     }
 }
 
@@ -160,13 +274,13 @@ pub fn draw_pose(img: &mut RgbImage, pose: &Pose) {
     let joint_core = Rgb([255u8, 255, 255]); // núcleo branco — leitura "sensor ativo"
     let core_w = (img.width().max(img.height()) / 280).max(2) as i32;
 
-    for &(a, b) in SKELETON.iter() {
+    for &(a, b) in pose.layout.skeleton.iter() {
         let (ka, kb) = (pose.keypoints[a], pose.keypoints[b]);
         if ka.2 < 0.35 || kb.2 < 0.35 { continue; }
         glow_line(img, (ka.0, ka.1), (kb.0, kb.1), bone, core_w);
     }
     for (idx, &(x, y, c)) in pose.keypoints.iter().enumerate() {
-        if c < 0.35 || FACE_SKIP.contains(&idx) { continue; }
+        if c < 0.35 || pose.layout.face_skip.contains(&idx) { continue; }
         let (xi, yi) = (x as i32, y as i32);
         // halo suave por trás da articulação
         for r in (core_w + 2..core_w * 4).rev() {
@@ -237,14 +351,15 @@ fn draw_angle_gauge(img: &mut RgbImage, a: (f32, f32, f32), b: (f32, f32, f32),
 /// Joelho em ciano, quadril em âmbar — a legenda vive na UI (texto é de graça em HTML).
 pub fn draw_angles(img: &mut RgbImage, pose: &Pose) {
     let kp = &pose.keypoints;
+    let l = pose.layout;
     let knee_c = Rgb([120u8, 232, 255]);   // ciano
     let hip_c = Rgb([255u8, 178, 89]);     // âmbar
     let conf = |h: usize, k: usize, a: usize| kp[h].2.min(kp[k].2).min(kp[a].2);
     // perna mais confiável (numa filmagem de lado, a de frente pra câmera)
-    let (hip, knee, ank, sho) = if conf(12, 14, 16) >= conf(11, 13, 15) {
-        (12, 14, 16, 6)
+    let (hip, knee, ank, sho) = if conf(l.hip_r, l.knee_r, l.ankle_r) >= conf(l.hip_l, l.knee_l, l.ankle_l) {
+        (l.hip_r, l.knee_r, l.ankle_r, l.shoulder_r)
     } else {
-        (11, 13, 15, 5)
+        (l.hip_l, l.knee_l, l.ankle_l, l.shoulder_l)
     };
     let seg = |i: usize, j: usize| ((kp[i].0 - kp[j].0).powi(2) + (kp[i].1 - kp[j].1).powi(2)).sqrt();
     let r_knee = (0.32 * seg(knee, ank)).clamp(15.0, 70.0);
@@ -254,10 +369,10 @@ pub fn draw_angles(img: &mut RgbImage, pose: &Pose) {
 
     // linha de PRUMO (vertical de referência) no centro do quadril: mostra a inclinação
     // do tronco de bate-pronto, como o Ochy. Tracejada e translúcida pra não poluir.
-    if kp[5].2 > 0.4 && kp[6].2 > 0.4 && kp[11].2 > 0.4 && kp[12].2 > 0.4 {
-        let hx = (kp[11].0 + kp[12].0) / 2.0;
-        let hy = (kp[11].1 + kp[12].1) / 2.0;
-        let sy = (kp[5].1 + kp[6].1) / 2.0;
+    if kp[l.shoulder_l].2 > 0.4 && kp[l.shoulder_r].2 > 0.4 && kp[l.hip_l].2 > 0.4 && kp[l.hip_r].2 > 0.4 {
+        let hx = (kp[l.hip_l].0 + kp[l.hip_r].0) / 2.0;
+        let hy = (kp[l.hip_l].1 + kp[l.hip_r].1) / 2.0;
+        let sy = (kp[l.shoulder_l].1 + kp[l.shoulder_r].1) / 2.0;
         let len = (hy - sy).abs() * 1.1;
         let mut y = hy;
         while y > hy - len {
