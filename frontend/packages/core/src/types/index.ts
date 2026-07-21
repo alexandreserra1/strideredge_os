@@ -76,6 +76,55 @@ export interface FormPlan {
   risk?: InjuryRisk        // faixa de risco relativa (aterrada, citada)
 }
 
+// Plano corretivo multi-semana (analytics/training_plan.py) — faseado e citado
+export interface PlanSession {
+  exercise: string
+  phase: string          // 'ativacao' | 'mobilidade' | 'forca' | 'drill'
+  dose: string
+  source: string
+}
+
+export interface PlanWeek {
+  n: number
+  bloco: string          // 'base' | 'forca' | 'drill_de_marcha'
+  focus: string
+  sessions: PlanSession[]
+}
+
+export interface CorrectivePlan {
+  duration_weeks: number
+  priority: { metric: string; label: string }[]
+  intro?: string
+  weeks: PlanWeek[]
+  caveat: string
+  unreliable?: boolean   // captura ruim -> sem plano, só o aviso de refilmar
+  cover?: string         // capa humana opcional (LLM)
+}
+
+// a rota espalha o plano no topo (`{analysis_id, ...plan}`), não aninha sob `plan`
+export type PlanResponse = CorrectivePlan & { analysis_id: string }
+
+// Registro persistido de plano gerado (GET /plans — histórico/progressão)
+export interface PlanRecord {
+  id: string
+  user_id: string
+  analysis_id: string | null
+  weeks: number | null
+  plan: CorrectivePlan | null
+  created_at: string
+}
+
+// Recomendação de tênis HONESTA e citada (analytics/shoe.py)
+export interface ShoeRecommendation {
+  analysis_id: string
+  cushioning: string
+  drop_mm: string        // faixa, ex.: "4-6" ou "8-10 (migrando para menor)"
+  tips: string[]
+  caveat: string         // OBRIGATÓRIO: pisada é inferência; tênis não previne lesão sozinho
+  sources: string[]
+  cover?: string         // capa humana opcional (LLM)
+}
+
 export interface AthleteProfile {
   height_cm?: number | null
   weight_kg?: number | null

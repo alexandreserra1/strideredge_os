@@ -3,6 +3,8 @@ import { Clapperboard, Info, Loader2, Upload } from 'lucide-react'
 import { api } from '@strideredge/core'
 import type { FormAnalysis as Analysis, FormPlan } from '@strideredge/core'
 import InfoHint from './InfoHint'
+import CorrectivePlan from './CorrectivePlan'
+import ShoeBlock from './ShoeBlock'
 
 // Semáforo por métrica (faixas da literatura de corrida; explicação vai junto — didático)
 const METRIC_DEFS = [
@@ -317,6 +319,12 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
               </div>
             )}
           </div>
+
+          {/* Plano corretivo faseado de N semanas (determinístico + citado) */}
+          <CorrectivePlan analysisId={analysis.analysis_id} />
+
+          {/* Recomendação de tênis honesta e citada */}
+          <ShoeBlock analysisId={analysis.analysis_id} />
         </div>
       )}
 

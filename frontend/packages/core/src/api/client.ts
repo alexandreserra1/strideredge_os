@@ -7,6 +7,9 @@ import type {
   InjuryReport,
   InjuryTaxonomy,
   OstrcAnswers,
+  PlanResponse,
+  PlanRecord,
+  ShoeRecommendation,
 } from '../types'
 
 // Payload do log de lesão: taxonomia + OSTRC (tudo opcional no contrato; o form valida forte)
@@ -83,6 +86,14 @@ export const api = {
     },
     videoUrl: (id: string) => `${BASE_URL}/form/${id}/video`,
     coach: (id: string) => request<FormPlan>(`/form/${id}/coach`, { method: 'POST' }),
+    // Plano corretivo de N semanas (faseado, citado) a partir da análise
+    plan: (id: string, weeks: number) =>
+      request<PlanResponse>(`/form/${id}/plan?weeks=${weeks}`, { method: 'POST' }),
+    // Recomendação de tênis honesta (pisada + oscilação + perfil + histórico)
+    shoe: (id: string) => request<ShoeRecommendation>(`/form/${id}/shoe`, { method: 'POST' }),
+  },
+  plans: {
+    list: () => request<PlanRecord[]>('/plans'),
   },
   profile: {
     get: () => request<AthleteProfile>('/profile'),
