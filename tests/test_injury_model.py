@@ -50,6 +50,26 @@ def test_forma_ruim_pontua_acima_de_forma_limpa():
     assert ruim["score"] > limpa["score"]
 
 
+def test_cadencia_e_gct_negativamente_correlacionados():
+    """Acoplamento MECÂNICO: cadência baixa anda junto com tempo de contato maior (passada longa,
+    menos 'mola'). O sintético agora deriva GCT/joelho da cadência, então a correlação é negativa —
+    estrutura conjunta realista, não fatores independentes."""
+    data = generate(n=1000, seed=11)
+    cad = [e["features"]["cadence_spm"] for e in data]
+    gct = [e["features"]["ground_contact_ms"] for e in data]
+    n = len(data)
+    mc, mg = sum(cad) / n, sum(gct) / n
+    cov = sum((c - mc) * (g - mg) for c, g in zip(cad, gct))
+    vc = sum((c - mc) ** 2 for c in cad) ** 0.5
+    vg = sum((g - mg) ** 2 for g in gct) ** 0.5
+    corr = cov / (vc * vg)
+    assert corr < -0.1                                # negativa (mecânica), não ~0 (independente)
+    # lesionado (cadência menor) tem GCT médio maior que saudável — mesmo efeito, agrupado
+    gi = [g for g, e in zip(gct, data) if e["label"] == 1]
+    gh = [g for g, e in zip(gct, data) if e["label"] == 0]
+    assert sum(gi) / len(gi) > sum(gh) / len(gh)
+
+
 def test_predict_sem_treinar_falha():
     with pytest.raises(RuntimeError):
         RiskModel().predict({"cadence_spm": 150.0})

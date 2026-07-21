@@ -30,6 +30,29 @@ def _sample_factor(factor: str, spec: dict, injured: bool, rng: random.Random) -
     return round(rng.uniform(spec["lo"], spec["hi"]), 2)
 
 
+# ganho da relação MECÂNICA (não é número publicado): quanto cada fator ligado à cadência se
+# desloca por spm ABAIXO do piso ideal. Cadência baixa = passada longa → o pé aterra à frente do
+# quadril, o que ALONGA o tempo de contato (menos "mola") e deixa o joelho mais ESTENDIDO no apoio
+# (overstriding). É acoplamento cinemático conhecido (cadência↔GCT↔passada), com ruído por cima.
+_CADENCE_COUPLING = {
+    "ground_contact_ms": 3.0,   # ~3 ms de contato a mais por spm abaixo do ideal
+    "knee_contact_deg": 0.8,    # joelho ~0.8° mais estendido no apoio por spm abaixo do ideal
+}
+
+
+def _apply_cadence_coupling(features: dict, targets: dict, rng: random.Random) -> None:
+    """Desloca GCT e joelho na direção de RISCO proporcional a quão abaixo do piso ideal a cadência
+    ficou (relação mecânica, não distribuição publicada). Ruído mantém sobreposição; clamp mantém o
+    valor dentro da faixa plausível do fator. Muta `features` in place."""
+    deficit = max(0.0, targets["cadence_spm"]["lo"] - features["cadence_spm"])   # spm abaixo do ideal
+    if deficit <= 0:
+        return
+    for factor, gain in _CADENCE_COUPLING.items():
+        t = targets[factor]
+        shifted = features[factor] + gain * deficit + rng.gauss(0, gain * 2)
+        features[factor] = round(min(max(shifted, t["lo"]), t["hi"]), 2)
+
+
 def generate(n: int = 400, injured_ratio: float = 0.3, seed: Optional[int] = 42) -> list:
     """Gera `n` exemplos rotulados `{features, label, diagnosis}` (label 1 = lesionado). O tipo de
     lesão (`diagnosis`) do lesionado vem da frequência real; `injured_ratio` mantém a classe rara."""
@@ -40,6 +63,7 @@ def generate(n: int = 400, injured_ratio: float = 0.3, seed: Optional[int] = 42)
     for _ in range(n):
         injured = rng.random() < injured_ratio
         features = {f: _sample_factor(f, targets[f], injured, rng) for f in FEATURE_ORDER}
+        _apply_cadence_coupling(features, targets, rng)   # acopla GCT/joelho à cadência
         diagnosis = rng.choices(dx_ids, weights=dx_weights, k=1)[0] if injured else None
         out.append({"features": features, "label": 1 if injured else 0, "diagnosis": diagnosis})
     return out
