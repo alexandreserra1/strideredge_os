@@ -83,6 +83,27 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
     usuários) OU um dataset externo permissivo (ver "Dados externos" abaixo). Faltam ainda: calibração
     Platt/isotonic e o wire do modo `treinado` no `form_coach` (hoje o coach usa o `prior`).
 
+### [FEITO — #4-B] Prior informativo que ATUALIZA online (a ponte literatura→treinado)
+
+> A ponte honesta entre o prior estático e o RF. `analytics/injury_bayes.py::BayesianRiskModel`:
+> os pesos de risco viram CRENÇAS (média posterior + precisão por fator), começando em `RISK_WEIGHT`.
+> Cada outcome REAL desloca os pesos por regressão logística bayesiana online (Chapelle & Li 2011,
+> ADF/Laplace diagonal). Reusa `diagnose` (features) + `build_risk` (pesos injetáveis) — drop-in do
+> `assess`, + bloco `uncertainty` (n_casos_reais + desvio-padrão do score).
+
+- **Por que ISTO e não RF agora:** o RF precisa de dezenas de casos pra treinar honesto; o bayes
+  funciona com POUCOS. Com N=0 é o prior da literatura (**não regride**); cada lesão logada já ajusta.
+  Faz a coleta render desde o 1º atleta, sem o dia-zero circular de treinar em sintético.
+- **Wire:** `risk_assessor.current_assessor()` agora é uma progressão de 3 estágios pela quantidade
+  de dado REAL — `assess` (0 casos) → `BayesianRiskModel` (poucos) → `RiskModel`/RF (≥ `MIN_REAL_CASES`).
+- **Honestidade:** peso tem PISO 0 (fator de risco não vira protetor por ruído); `score_std` cai
+  conforme a evidência aperta a precisão. Prova: N=0 idêntico ao prior; após 50 lesões com cadência
+  baixa+oscilação alta, peso da cadência 3.0→3.5 e a incerteza encolhe.
+- **Alternativas #4 registradas** (a construir depois): **A** coletar dado próprio (`build_dataset`,
+  a fonte real casada com nossas features), **C** dataset externo permissivo (cold-start, ressalva de
+  licença/alinhamento), **D** survival / tempo-até-lesão (Cox/RSF — o formato biológico certo quando
+  o dado maturar). Ordem honesta: B (feito) faz a espera render → A traz o dado → D é o alvo.
+
 ### [PRÓXIMO — alavancagem #1] Perfil de risco POR LESÃO (decomposição, sem esperar dado)
 
 > Diagnóstico honesto (E2E jul/2026, 2 vídeos reais): a saída ficou **crua e pouco diferenciada**

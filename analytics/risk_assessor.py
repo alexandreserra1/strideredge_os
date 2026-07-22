@@ -11,14 +11,15 @@ from typing import Callable
 
 from analytics.injury_risk import assess
 from analytics.injury_model import RiskModel
+from analytics.injury_bayes import BayesianRiskModel
 from analytics.injury_dataset import build_training_set
 from analytics.injury_seed import SYNTHETIC_PREFIX
 
-# Abaixo disto, treinar é instável/overfit — o prior da literatura é mais honesto.
+# Abaixo disto, treinar um RF é instável/overfit — fica no regime prior/bayes (mais honesto).
 MIN_REAL_CASES = 40
 MIN_REAL_POSITIVES = 10
 
-_cache: dict = {"model": None, "n": None}
+_cache: dict = {"model": None, "n": None, "bayes": None, "bayes_n": None}
 
 
 def _real_cases() -> list:
@@ -28,12 +29,20 @@ def _real_cases() -> list:
 
 
 def current_assessor() -> Callable:
-    """Avaliador de risco a usar AGORA. `predict` do treinado se há dado real suficiente; senão
-    `assess` da literatura. Cacheia o modelo por volume de dados (não retreina a cada chamada)."""
+    """Avaliador de risco a usar AGORA, pela quantidade de dado REAL disponível (progressão honesta
+    literatura → bayes → treinado). Cacheia por volume de dados (não recomputa a cada chamada):
+      - 0 caso real           → `assess` (prior da literatura puro);
+      - poucos casos (< RF)   → `BayesianRiskModel` — refina o prior online, funciona com pouco dado;
+      - dado suficiente       → `RiskModel` (Random Forest treinado)."""
     cases = _real_cases()
     positives = sum(e["label"] for e in cases)
     if len(cases) < MIN_REAL_CASES or positives < MIN_REAL_POSITIVES:
-        return assess
+        if not cases:
+            return assess                       # sem outcome real → é o prior da literatura
+        if _cache["bayes"] is None or _cache["bayes_n"] != len(cases):
+            _cache["bayes"] = BayesianRiskModel().partial_fit(cases)
+            _cache["bayes_n"] = len(cases)
+        return _cache["bayes"].predict
     if _cache["model"] is None or _cache["n"] != len(cases):
         model = RiskModel()
         model.train(cases)

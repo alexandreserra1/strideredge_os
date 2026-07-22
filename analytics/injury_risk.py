@@ -49,23 +49,26 @@ SENSITIZE = 1.5
 _FRONTAL_FACTORS = {"pelvic_drop_deg", "knee_valgus_deg"}
 
 
-def _injury_contrib(factors: list, dev_by_metric: dict, sensitized: set) -> tuple:
+def _injury_contrib(factors: list, dev_by_metric: dict, sensitized: set,
+                    weights: Optional[dict] = None) -> tuple:
     """Contribuição de risco de UM diagnóstico = Σ (severity × peso_de_risco) só dos SEUS fatores
-    DESVIADOS. Reusa exatamente a `severity` de `diagnose` e os pesos `RISK_WEIGHT` — mesma
-    lógica/mesmos pesos do score agregado, sem inventar nada novo."""
+    DESVIADOS. Reusa exatamente a `severity` de `diagnose` e os pesos (`RISK_WEIGHT` por padrão;
+    o modelo bayesiano passa as MÉDIAS POSTERIORES) — mesma lógica, sem inventar nada novo."""
+    weights = weights if weights is not None else RISK_WEIGHT
     total, drivers = 0.0, []
     for f in factors:
         d = dev_by_metric.get(f)      # None = medido e dentro do ideal (não contribui)
         if not d:
             continue
-        weight = RISK_WEIGHT.get(f, 1.0)
+        weight = weights.get(f, 1.0)
         c = round(d["severity"] * weight * (SENSITIZE if f in sensitized else 1.0), 3)
         total += c
         drivers.append({"metric": f, "label": d["label"], "contribution": c})
     return round(total, 3), drivers
 
 
-def _by_injury(metrics: dict, dev_by_metric: dict, sensitized: set) -> list:
+def _by_injury(metrics: dict, dev_by_metric: dict, sensitized: set,
+               weights: Optional[dict] = None) -> list:
     """Decompõe o risco POR DIAGNÓSTICO usando o mapa injury_taxonomy.DIAGNOSES (lesão→factors→
     source). Ranqueia da maior contribuição pra menor, cada item citando a `source` da taxonomia.
 
@@ -86,7 +89,7 @@ def _by_injury(metrics: dict, dev_by_metric: dict, sensitized: set) -> list:
                          "reason": "precisa do vídeo de frente" if needs_front
                                    else "os fatores desta lesão não foram medidos nesta captura"})
         else:
-            score, drivers = _injury_contrib(factors, dev_by_metric, sensitized)
+            score, drivers = _injury_contrib(factors, dev_by_metric, sensitized, weights)
             item.update({"evaluable": True, "partial": bool(missing), "score": score,
                          "band": _band(score), "drivers": drivers})
         out.append(item)
@@ -106,14 +109,17 @@ def _band(score: float) -> str:
     return "alto"
 
 
-def assess(metrics: dict, profile: Optional[dict] = None,
-           history: Optional[dict] = None) -> dict:
-    """Avalia o risco RELATIVO de lesão a partir das métricas de forma. Devolve a faixa + os
-    fatores que a puxaram (do maior contribuinte pro menor) + o caveat honesto.
+_CAVEAT_LITERATURA = (
+    "Indicativo e RELATIVO — não é diagnóstico nem probabilidade de lesão. Reflete quantos fatores "
+    "estão fora do ideal e quão forte a ciência os liga a lesão. Quadro completo pede a análise de "
+    "lado E de frente.")
 
-    `score` = Σ (severidade_do_desvio × peso_de_risco) sobre os fatores fora do ideal. Só
-    considera o que o vídeo mediu (uma vista lateral não mede queda pélvica, e vice-versa —
-    o quadro completo pede as duas vistas)."""
+
+def build_risk(metrics: dict, profile: Optional[dict], history: Optional[dict],
+               weights: dict, model_name: str, caveat: str) -> dict:
+    """Monta a avaliação de risco (faixa + fatores citados + by_injury) com PESOS injetáveis.
+    Núcleo compartilhado: `assess` (prior) passa `RISK_WEIGHT`; o `BayesianRiskModel` passa as
+    médias posteriores. Mesma forma de saída (drop-in) — só os pesos e o rótulo do modelo mudam."""
     targets = ideal_targets(profile, history)
     devs = diagnose(metrics, targets)   # já traz severity, source, plain, label, side
 
@@ -123,7 +129,7 @@ def assess(metrics: dict, profile: Optional[dict] = None,
 
     factors, score = [], 0.0
     for d in devs:
-        weight = RISK_WEIGHT.get(d["metric"], 1.0)
+        weight = weights.get(d["metric"], 1.0)
         hit = d["metric"] in sensitized
         contribution = round(d["severity"] * weight * (SENSITIZE if hit else 1.0), 3)
         score += contribution
@@ -136,17 +142,26 @@ def assess(metrics: dict, profile: Optional[dict] = None,
     factors.sort(key=lambda f: f["contribution"], reverse=True)
 
     # Decomposição POR LESÃO (aditiva — não mexe nas chaves antigas). Reusa os MESMOS desvios já
-    # calculados (severity de diagnose) indexados por métrica.
+    # calculados (severity de diagnose) indexados por métrica, com os mesmos pesos.
     dev_by_metric = {d["metric"]: d for d in devs}
-    by_injury = _by_injury(metrics, dev_by_metric, sensitized)
+    by_injury = _by_injury(metrics, dev_by_metric, sensitized, weights)
 
     return {
         "risk_band": _band(score),      # baixo | moderado | elevado | alto (RELATIVO)
         "score": round(score, 2),       # score ponderado — NÃO é probabilidade
         "factors": factors,             # o que puxou o risco, do maior pro menor
         "by_injury": by_injury,         # risco decomposto POR DIAGNÓSTICO (ranqueado + honesto)
-        "model": "literatura",          # 'literatura' (prior) hoje; 'treinado' quando houver dados
-        "caveat": "Indicativo e RELATIVO — não é diagnóstico nem probabilidade de lesão. Reflete "
-                  "quantos fatores estão fora do ideal e quão forte a ciência os liga a lesão. "
-                  "Quadro completo pede a análise de lado E de frente.",
+        "model": model_name,
+        "caveat": caveat,
     }
+
+
+def assess(metrics: dict, profile: Optional[dict] = None,
+           history: Optional[dict] = None) -> dict:
+    """Avalia o risco RELATIVO de lesão a partir das métricas de forma. Devolve a faixa + os
+    fatores que a puxaram (do maior contribuinte pro menor) + o caveat honesto.
+
+    `score` = Σ (severidade_do_desvio × peso_de_risco) sobre os fatores fora do ideal. Só
+    considera o que o vídeo mediu (uma vista lateral não mede queda pélvica, e vice-versa —
+    o quadro completo pede as duas vistas)."""
+    return build_risk(metrics, profile, history, RISK_WEIGHT, "literatura", _CAVEAT_LITERATURA)
