@@ -83,6 +83,36 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
     usuários) OU um dataset externo permissivo (ver "Dados externos" abaixo). Faltam ainda: calibração
     Platt/isotonic e o wire do modo `treinado` no `form_coach` (hoje o coach usa o `prior`).
 
+### [PRÓXIMO — alavancagem #1] Perfil de risco POR LESÃO (decomposição, sem esperar dado)
+
+> Diagnóstico honesto (E2E jul/2026, 2 vídeos reais): a saída ficou **crua e pouco diferenciada**
+> entre atletas. Causa raiz NÃO é o RF (esse está data-blocked) — é que **não usamos o conhecimento
+> que já temos**. `assess()` soma severidades numa FAIXA ÚNICA e nunca diz QUAL lesão. O mapa
+> `injury_taxonomy.DIAGNOSES` (lesão→fatores→fonte, 6 lesões `mapped`) existe mas **nunca foi ligado
+> ao risco/coach**. Dois corredores com fatores diferentes saíam "parecidos" porque a nota agrega.
+
+- **O que fazer:** decompor o risco POR diagnóstico. Pra cada lesão em `DIAGNOSES`, somar
+  `severity × peso` só dos SEUS `factors` que estão desviados (reusa `diagnose` + `RISK_WEIGHT`, sem
+  lógica nova) → **perfil ranqueado** ("maior risco: canelite/fratura de estresse ← cadência baixa +
+  oscilação; joelho do corredor: **não avaliável — filme de frente**"). Cada linha citada pela
+  `source` da taxonomia. Interface aditiva ao `assess` (novo campo `by_injury`, não quebra o coach).
+- **Por que agora:** 100% aterrado, zero dado novo, e é o que MAIS diferencia atletas (o mix de
+  fatores de cada um cai em lesões distintas). Resolve direto o feedback "não falou dos fatores/lesões".
+- **Honestidade obrigatória:** lesão cujos fatores NÃO foram medidos na captura (ex.: PFP/ITBS pedem
+  `pelvic_drop`+`knee_valgus`, só vindos do plano FRONTAL) sai como **"não avaliável"**, nunca como
+  "risco baixo" — ausência de medida ≠ ausência de risco.
+
+### [PRÓXIMO — alavancagem #2] Captura dos DOIS planos (lateral + frontal)
+
+- O plano FRONTAL já existe no motor (`stride_vision`, commit da análise frontal: queda pélvica +
+  valgo de joelho), mas o fluxo roda só o lateral. Sagital sozinho **não mede** os discriminantes do
+  joelho/quadril → PFP, ITBS e metade da canelite ficam invisíveis (por isso os atletas convergem).
+- Fluxo: pedir 2 clipes curtos (lado + frente); fundir as métricas antes do `assess`. Destrava a
+  família de joelho no perfil #1 e é o maior salto de COBERTURA de lesão sem trocar de modelo.
+- **#3 Halpe26** (costura pronta, `stride_vision/README-KEYPOINTS.md`): pé medido → fascite/Aquiles
+  de proxy p/ primário. **#4 RF treinado por diagnóstico**: só quando `build_dataset` tiver N atletas
+  com desfecho — é o horizonte, não o atalho. Ordem de valor: **#1 → #2 → #3 → #4**.
+
 ### Taxonomia + coleta (OSTRC) + ponte pro ML — a fundação do outcome
 
 - **[FEITO] `analytics/injury_taxonomy.py`**: vocabulário controlado (região + diagnóstico) das 6
