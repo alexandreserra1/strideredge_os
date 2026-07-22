@@ -67,20 +67,38 @@ class FormService:
     # PATH com ffmpeg (Homebrew no macOS) pro subprocess do motor/normalização.
     _ENV = {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
 
+    # Ladder de normalização: QUALQUER vídeo (qualquer container/codec/rotação/bit-depth) vira um
+    # h264 8-bit upright que o motor lê. Cada degrau comprime mais e é mais compatível/rápido que o
+    # anterior — se um encode falha (formato exótico, arquivo grande, timeout), desce um degrau.
+    _NORMALIZE_LADDER = (
+        {"max_side": 1280, "crf": "23", "preset": "medium"},    # padrão: boa qualidade
+        {"max_side": 960, "crf": "28", "preset": "veryfast"},   # fallback: menor + mais rápido
+        {"max_side": 640, "crf": "30", "preset": "ultrafast"},  # último recurso: máx. compatibilidade
+    )
+
     def _normalize(self, src: Path) -> Path:
-        """Prepara o vídeo pro motor: ASSA a rotação (celular grava com flag rotate=±90 —
-        sem isso o buffer cru sai na orientação errada e o motor não detecta ninguém),
-        limita o lado maior a 1280px (velocidade) e garante dimensões pares. Se o ffmpeg
-        falhar, devolve o original (o motor tenta como está)."""
+        """Prepara QUALQUER vídeo pro motor. ASSA a rotação (o ffmpeg auto-rotaciona no decode; o
+        buffer cru do motor NÃO, então celular gravado em pé sai deitado e o motor não detecta
+        ninguém) e força h264 + yuv420p 8-bit (assim lê HEVC/VP9/10-bit/HDR também), limitando o
+        lado maior e garantindo dimensões pares. Desce a `_NORMALIZE_LADDER` (comprime mais a cada
+        degrau) se um encode falhar; só devolve o original se TODOS falharem."""
         dst = src.parent / "normalized.mp4"
+        for step in self._NORMALIZE_LADDER:
+            if self._ffmpeg_normalize(src, dst, **step):
+                return dst
+        return src
+
+    def _ffmpeg_normalize(self, src: Path, dst: Path, max_side: int, crf: str, preset: str) -> bool:
+        """Um degrau da ladder: transcodifica pra h264 yuv420p upright. True se gerou arquivo válido."""
+        vf = (f"scale='min({max_side},iw)':'min({max_side},ih)':force_original_aspect_ratio=decrease,"
+              "scale=trunc(iw/2)*2:trunc(ih/2)*2")
         cmd = [
             "ffmpeg", "-v", "error", "-y", "-i", str(src),
-            "-vf", "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,"
-                   "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-            "-metadata:s:v:0", "rotate=0", "-c:v", "libx264", "-an", str(dst),
+            "-vf", vf, "-metadata:s:v:0", "rotate=0", "-c:v", "libx264",
+            "-preset", preset, "-crf", crf, "-pix_fmt", "yuv420p", "-an", str(dst),
         ]
         r = subprocess.run(cmd, env={**self._ENV}, capture_output=True, text=True, timeout=300)
-        return dst if r.returncode == 0 and dst.exists() else src
+        return r.returncode == 0 and dst.exists() and dst.stat().st_size > 0
 
     def _process(self, analysis_id: str, original: Path, view: str = "lateral",
                  attempt: int = 1) -> None:
