@@ -28,6 +28,36 @@ _log = Logger("form")
 # passa; falha determinística (vídeo corrompido) esgota rápido e falha honesto.
 _MAX_ATTEMPTS = 3
 
+# Métricas do plano frontal — SÓ o motor com --view frontal as mede (queda pélvica + valgo).
+_FRONTAL_METRICS = ("pelvic_drop_deg", "knee_valgus_deg")
+
+
+def fuse_metrics(lateral: dict, frontal: Optional[dict]) -> dict:
+    """Funde as métricas dos dois planos numa análise só. Fusão explícita e HONESTA:
+      - o lateral é a BASE (cadência, oscilação, tronco, contato, pisada);
+      - do frontal só entram pelvic_drop_deg/knee_valgus_deg, e SÓ se a captura frontal for
+        `reliable` — se o frontal for ruim, esses fatores ficam None (não chuta) + nota pra refilmar.
+    `metric_sources` registra de onde veio cada família (observabilidade)."""
+    fused = dict(lateral)
+    sources = {"sagittal": "lateral"}
+    if frontal is None:
+        fused["metric_sources"] = sources
+        return fused
+    if frontal.get("reliable"):
+        for k in _FRONTAL_METRICS:
+            fused[k] = frontal.get(k)
+        sources["frontal_plane"] = "frontal"
+    else:
+        for k in _FRONTAL_METRICS:
+            fused[k] = None
+        sources["frontal_plane"] = "dropped_unreliable"
+        reason = frontal.get("reason") or frontal.get("quality_note") or "captura ruim"
+        fused["frontal_note"] = (
+            f"A captura frontal não ficou confiável ({reason}) — refilme de frente para medir "
+            "queda pélvica e valgo dinâmico de joelho.")
+    fused["metric_sources"] = sources
+    return fused
+
 
 class FormService:
     """Ciclo de vida de uma análise de forma (criar -> processar -> consultar).
@@ -43,10 +73,14 @@ class FormService:
     # ---------- escrita ----------
 
     def create(self, video_bytes: bytes, filename: str, activity_id: Optional[str] = None,
-               modality: str = "run", view: str = "lateral", user_id: Optional[str] = None) -> dict:
+               modality: str = "run", view: str = "lateral", user_id: Optional[str] = None,
+               frontal_bytes: Optional[bytes] = None, frontal_filename: str = "frontal.mp4") -> dict:
         """Salva o upload, registra a análise e ENFILEIRA o processamento (background).
         Responde na hora com 'processing' — o usuário pode fechar a página e voltar depois.
         `view` = 'lateral' (métricas sagitais) ou 'frontal' (queda pélvica, valgo de joelho).
+        `frontal_bytes` (opcional): SEGUNDO clipe, filmado de frente. Quando vem, a análise funde
+        os dois planos — o `view` primário (lateral) dá as métricas sagitais e o frontal adiciona
+        queda pélvica/valgo. Sem ele o comportamento é idêntico ao de hoje (retrocompatível).
         `user_id` (do token, opcional): liga a análise ao atleta pra correlação com lesão (o
         convidado fica NULL e não entra no dataset)."""
         analysis_id = str(uuid.uuid4())
@@ -57,11 +91,17 @@ class FormService:
         original.write_bytes(video_bytes)
 
         view = view if view in ("lateral", "frontal") else "lateral"
+        frontal_original = None
+        if frontal_bytes:
+            fext = (frontal_filename.rsplit(".", 1)[-1] or "mp4").lower()
+            frontal_original = adir / f"original_frontal.{fext}"
+            frontal_original.write_bytes(frontal_bytes)
+            view = "combined"   # dois planos fundidos numa análise só (observabilidade)
         get_connection().execute(
             "INSERT INTO form_analyses (analysis_id, activity_id, status, modality, view, user_id) "
             "VALUES (?, ?, 'processing', ?, ?, ?)",
             [analysis_id, activity_id, modality, view, user_id])
-        self.queue.enqueue(self._process, analysis_id, original, view)
+        self.queue.enqueue(self._process, analysis_id, original, view, frontal_original)
         return {"analysis_id": analysis_id, "status": "processing"}
 
     # PATH com ffmpeg (Homebrew no macOS) pro subprocess do motor/normalização.
@@ -82,7 +122,7 @@ class FormService:
         ninguém) e força h264 + yuv420p 8-bit (assim lê HEVC/VP9/10-bit/HDR também), limitando o
         lado maior e garantindo dimensões pares. Desce a `_NORMALIZE_LADDER` (comprime mais a cada
         degrau) se um encode falhar; só devolve o original se TODOS falharem."""
-        dst = src.parent / "normalized.mp4"
+        dst = src.parent / f"{src.stem}.normalized.mp4"   # único por clipe (lateral × frontal)
         for step in self._NORMALIZE_LADDER:
             if self._ffmpeg_normalize(src, dst, **step):
                 return dst
@@ -100,32 +140,48 @@ class FormService:
         r = subprocess.run(cmd, env={**self._ENV}, capture_output=True, text=True, timeout=300)
         return r.returncode == 0 and dst.exists() and dst.stat().st_size > 0
 
+    def _run_engine(self, original: Path, overlay: Path, view: str) -> dict:
+        """Normaliza UM clipe e roda o motor Rust nele. Devolve as métricas (dict). Pesado —
+        cada clipe (lateral/frontal) passa por aqui separado, com seu próprio --view."""
+        source = self._normalize(original)   # celular -> vídeo limpo (rotação assada)
+        result = subprocess.run(
+            [str(self.binary), str(source), str(overlay), "--view", view],
+            env={"STRIDE_MODEL": str(self.model), **self._ENV},
+            capture_output=True, text=True, timeout=600)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip()[-300:] or "motor falhou")
+        metrics = json.loads((overlay.parent / f"{overlay.stem}.metrics.json").read_text())
+        if source != original:
+            source.unlink(missing_ok=True)   # normalizado é descartável (só o motor precisava)
+        return metrics
+
     def _process(self, analysis_id: str, original: Path, view: str = "lateral",
-                 attempt: int = 1) -> None:
-        """Roda o motor Rust; grava métricas ou o erro. (thread própria + cursor próprio)"""
+                 frontal_original: Optional[Path] = None, attempt: int = 1) -> None:
+        """Roda o motor Rust (um clipe, ou lateral+frontal fundidos); grava métricas ou o erro.
+        (thread própria + cursor próprio)"""
         overlay = original.parent / "overlay.mp4"
         con = get_connection()
         try:
-            source = self._normalize(original)   # celular -> vídeo limpo (rotação assada)
-            result = subprocess.run(
-                [str(self.binary), str(source), str(overlay), "--view", view],
-                env={"STRIDE_MODEL": str(self.model), **self._ENV},
-                capture_output=True, text=True, timeout=600)
-            if result.returncode != 0:
-                raise RuntimeError(result.stderr.strip()[-300:] or "motor falhou")
-            metrics = (original.parent / "overlay.metrics.json").read_text()
+            base = self._run_engine(original, overlay, view)
+            frontal = None
+            if frontal_original is not None:
+                frontal = self._run_engine(
+                    frontal_original, original.parent / "overlay_frontal.mp4", "frontal")
+            metrics = fuse_metrics(base, frontal) if frontal_original is not None else base
+            stored_view = "combined" if frontal_original is not None else view
             con.execute(
-                "UPDATE form_analyses SET status='done', video_path=?, metrics=? WHERE analysis_id=?",
-                [str(overlay), metrics, analysis_id])
+                "UPDATE form_analyses SET status='done', video_path=?, metrics=?, view=? "
+                "WHERE analysis_id=?", [str(overlay), json.dumps(metrics), stored_view, analysis_id])
             original.unlink(missing_ok=True)   # original descartado: métricas + overlay bastam
-            (original.parent / "normalized.mp4").unlink(missing_ok=True)
+            if frontal_original is not None:
+                frontal_original.unlink(missing_ok=True)
             # Observabilidade do quality gate: loga os INSUMOS da decisão de confiabilidade, pra
             # calibrar o limiar com dado real (agregar por `reason`) em vez de no chute.
-            m = json.loads(metrics)
-            _log.info("form_done", analysis_id=analysis_id, reliable=m.get("reliable"),
-                      reason=m.get("reason"), detection_rate=m.get("detection_rate_pct"),
-                      raw_vert_osc_pct=m.get("diag_vert_osc_pct"), leg_len_px=m.get("diag_leg_len_px"),
-                      view=view)
+            _log.info("form_done", analysis_id=analysis_id, reliable=base.get("reliable"),
+                      reason=base.get("reason"), detection_rate=base.get("detection_rate_pct"),
+                      raw_vert_osc_pct=base.get("diag_vert_osc_pct"),
+                      leg_len_px=base.get("diag_leg_len_px"), view=stored_view,
+                      frontal_reliable=(frontal or {}).get("reliable") if frontal else None)
         except Exception as e:  # noqa: BLE001 — qualquer falha vira retry ou status 'failed'
             # Retry com re-enfileiramento: falha transitória (timeout sob carga, glitch do ffmpeg)
             # costuma passar na 2ª. Re-enfileira até _MAX_ATTEMPTS mantendo 'processing'; só marca
@@ -133,7 +189,8 @@ class FormService:
             if attempt < _MAX_ATTEMPTS and original.exists():
                 _log.info("form_retry", analysis_id=analysis_id, attempt=attempt,
                           error=str(e)[:200])
-                self.queue.enqueue(self._process, analysis_id, original, view, attempt + 1)
+                self.queue.enqueue(self._process, analysis_id, original, view,
+                                   frontal_original, attempt + 1)
                 return
             con.execute(
                 "UPDATE form_analyses SET status='failed', error=? WHERE analysis_id=?",

@@ -161,14 +161,19 @@ def auth_me(request: Request, auth: AuthService = Depends(get_auth_service)):
 
 @app.post("/api/v1/form", status_code=201)
 async def form_upload(request: Request, video: UploadFile = File(...), modality: str = Form("run"),
-                      view: str = Form("lateral"), svc: FormService = Depends(get_form_service),
+                      view: str = Form("lateral"), video_frontal: Optional[UploadFile] = File(None),
+                      svc: FormService = Depends(get_form_service),
                       auth: AuthService = Depends(get_auth_service)):
     """Recebe o vídeo, salva no filesystem e ENFILEIRA o processamento (motor Rust em
     background). Responde 'processing' na hora — o usuário pode fechar a página e voltar.
-    `view` = 'lateral' | 'frontal' (conjunto de métricas por vista). Liga ao usuário se logado
-    (pra correlação com lesão); convidado fica anônimo."""
+    `view` = 'lateral' | 'frontal' (conjunto de métricas por vista). `video_frontal` (opcional):
+    SEGUNDO clipe filmado de frente — quando vem, a análise funde os dois planos e passa a medir
+    queda pélvica + valgo de joelho; sem ele, comportamento idêntico ao de hoje. Liga ao usuário
+    se logado (pra correlação com lesão); convidado fica anônimo."""
     data = await video.read()
-    if len(data) > 300 * 1024 * 1024:
+    frontal_data = await video_frontal.read() if video_frontal is not None else None
+    total = len(data) + (len(frontal_data) if frontal_data else 0)
+    if total > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Vídeo grande demais (max 300MB)")
     user_id = None
     token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
@@ -177,7 +182,9 @@ async def form_upload(request: Request, video: UploadFile = File(...), modality:
     except AuthError:
         pass   # convidado -> análise anônima (degrada gracioso)
     return svc.create(data, video.filename or "video.mp4", None, modality or "run",
-                      view or "lateral", user_id)
+                      view or "lateral", user_id, frontal_bytes=frontal_data or None,
+                      frontal_filename=(video_frontal.filename if video_frontal else "frontal.mp4")
+                      or "frontal.mp4")
 
 
 @app.get("/api/v1/form")
