@@ -115,3 +115,32 @@ def test_pisada_acentuada_do_motor_normaliza():
     assert recommend("antepé", weight_kg=70.0)["drop_mm"] == "4-6"
     assert recommend("médio", weight_kg=70.0)["drop_mm"] == "4-6"
     assert recommend("calcanhar", weight_kg=70.0)["drop_mm"] == "8-10"
+
+
+def test_endpoint_shoe_sanitiza_metrica_impossivel():
+    """Regressão: oscilação vertical impossível (24,7% = artefato de medição) NÃO pode virar
+    conselho de tênis. O endpoint /shoe sanitiza igual ao coach/plano (trava o dado no consumidor)."""
+    import json
+    import uuid
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.deps import get_shoe_recommender
+    from analytics.shoe import ShoeRecommender
+    from core.database import get_connection
+
+    client = TestClient(app)
+    aid = str(uuid.uuid4())
+    metrics = {"foot_strike": "antepé", "vertical_oscillation_pct": 24.7, "reliable": True}
+    con = get_connection()
+    con.execute("INSERT INTO form_analyses (analysis_id, status, modality, metrics) "
+                "VALUES (?, 'done', 'run', ?)", [aid, json.dumps(metrics)])
+    app.dependency_overrides[get_shoe_recommender] = lambda: ShoeRecommender()  # sem LLM/RAG (hermético)
+    try:
+        r = client.post(f"/api/v1/form/{aid}/shoe")
+        assert r.status_code == 200
+        body = r.json()
+        assert not any("oscila" in t.lower() for t in body["tips"])   # artefato foi sanitizado
+        assert body["drop_mm"] == "4-6"                                # pisada antepé segue valendo
+    finally:
+        app.dependency_overrides.clear()
+        con.execute("DELETE FROM form_analyses WHERE analysis_id=?", [aid])

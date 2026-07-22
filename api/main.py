@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from core.logging import Logger
 from analytics.form_coach import FormCoach
 from analytics.injury_dataset import injury_history
+from analytics.injury_quality import sanitize_metrics
 from analytics.training_plan import plan_from_metrics
 from analytics.injury_taxonomy import taxonomy_payload
 from api.auth import AuthError, AuthService
@@ -240,7 +241,9 @@ def form_shoe(analysis_id: str, request: Request, cover: bool = False,
     row = form.get(analysis_id)
     if row is None or row.get("metrics") is None:
         raise HTTPException(status_code=404, detail="Análise não encontrada ou ainda sem métricas")
-    metrics = row["metrics"]
+    # Sanitiza como o coach/plano: métrica impossível (ex.: oscilação vertical 24,7% = artefato)
+    # NÃO pode virar conselho de tênis — o shoe é consumidor e trava o dado igual aos irmãos.
+    metrics, _ = sanitize_metrics(row["metrics"])
     weight_kg, history = None, None
     token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
     try:
