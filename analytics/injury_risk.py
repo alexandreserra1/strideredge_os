@@ -19,6 +19,7 @@ longe do ideal, normalizado; + source + plain + label). Aqui só pesamos por ris
 from typing import Optional
 
 from analytics.biomechanics import ideal_targets, diagnose
+from analytics.injury_taxonomy import DIAGNOSES
 
 
 # Peso de RISCO por fator = quão forte a literatura liga o desvio a LESÃO (não a performance).
@@ -41,6 +42,57 @@ RISK_WEIGHT = {
 # Multiplicador de risco p/ fator ligado a lesão PRÉVIA do atleta (histórico = preditor #1).
 # Moderado de propósito (não dobra): sinaliza sem dominar o score da forma atual.
 SENSITIZE = 1.5
+
+
+# Fatores que SÓ o vídeo de FRENTE mede (plano frontal). No vídeo lateral saem None — logo um
+# diagnóstico frontal (pfp/itbs) fica "não avaliável" numa captura de lado, NUNCA "risco baixo".
+_FRONTAL_FACTORS = {"pelvic_drop_deg", "knee_valgus_deg"}
+
+
+def _injury_contrib(factors: list, dev_by_metric: dict, sensitized: set) -> tuple:
+    """Contribuição de risco de UM diagnóstico = Σ (severity × peso_de_risco) só dos SEUS fatores
+    DESVIADOS. Reusa exatamente a `severity` de `diagnose` e os pesos `RISK_WEIGHT` — mesma
+    lógica/mesmos pesos do score agregado, sem inventar nada novo."""
+    total, drivers = 0.0, []
+    for f in factors:
+        d = dev_by_metric.get(f)      # None = medido e dentro do ideal (não contribui)
+        if not d:
+            continue
+        weight = RISK_WEIGHT.get(f, 1.0)
+        c = round(d["severity"] * weight * (SENSITIZE if f in sensitized else 1.0), 3)
+        total += c
+        drivers.append({"metric": f, "label": d["label"], "contribution": c})
+    return round(total, 3), drivers
+
+
+def _by_injury(metrics: dict, dev_by_metric: dict, sensitized: set) -> list:
+    """Decompõe o risco POR DIAGNÓSTICO usando o mapa injury_taxonomy.DIAGNOSES (lesão→factors→
+    source). Ranqueia da maior contribuição pra menor, cada item citando a `source` da taxonomia.
+
+    HONESTIDADE (app de lesão): ausência de MEDIDA ≠ ausência de risco. Regra de avaliabilidade:
+      - NENHUM factor da lesão medido na captura  → evaluable=false ("não avaliável"), NUNCA "baixo"
+        (senão o vídeo lateral 'zeraria' pfp/itbs, cujos sinais só o vídeo de FRENTE mede);
+      - só ALGUNS factors medidos                 → evaluable=true + partial=true (risco parcial);
+      - TODOS medidos                             → evaluable=true, avaliação completa.
+    Um factor medido e dentro do ideal conta como avaliado (band pode ser 'baixo' de verdade)."""
+    out = []
+    for dx, meta in DIAGNOSES.items():
+        factors = meta["factors"]
+        missing = [f for f in factors if metrics.get(f) is None]
+        item = {"dx": dx, "label": meta["label"], "source": meta["source"]}
+        if len(missing) == len(factors):          # nada medido → não avaliável (≠ baixo)
+            needs_front = any(f in _FRONTAL_FACTORS for f in missing)
+            item.update({"evaluable": False,
+                         "reason": "precisa do vídeo de frente" if needs_front
+                                   else "os fatores desta lesão não foram medidos nesta captura"})
+        else:
+            score, drivers = _injury_contrib(factors, dev_by_metric, sensitized)
+            item.update({"evaluable": True, "partial": bool(missing), "score": score,
+                         "band": _band(score), "drivers": drivers})
+        out.append(item)
+    # avaliáveis primeiro (score desc); não avaliáveis por último
+    out.sort(key=lambda i: (i.get("evaluable", False), i.get("score", 0.0)), reverse=True)
+    return out
 
 
 def _band(score: float) -> str:
@@ -83,10 +135,16 @@ def assess(metrics: dict, profile: Optional[dict] = None,
         })
     factors.sort(key=lambda f: f["contribution"], reverse=True)
 
+    # Decomposição POR LESÃO (aditiva — não mexe nas chaves antigas). Reusa os MESMOS desvios já
+    # calculados (severity de diagnose) indexados por métrica.
+    dev_by_metric = {d["metric"]: d for d in devs}
+    by_injury = _by_injury(metrics, dev_by_metric, sensitized)
+
     return {
         "risk_band": _band(score),      # baixo | moderado | elevado | alto (RELATIVO)
         "score": round(score, 2),       # score ponderado — NÃO é probabilidade
         "factors": factors,             # o que puxou o risco, do maior pro menor
+        "by_injury": by_injury,         # risco decomposto POR DIAGNÓSTICO (ranqueado + honesto)
         "model": "literatura",          # 'literatura' (prior) hoje; 'treinado' quando houver dados
         "caveat": "Indicativo e RELATIVO — não é diagnóstico nem probabilidade de lesão. Reflete "
                   "quantos fatores estão fora do ideal e quão forte a ciência os liga a lesão. "

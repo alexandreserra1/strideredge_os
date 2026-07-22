@@ -19,6 +19,7 @@ from sklearn.metrics import average_precision_score
 from sklearn.model_selection import StratifiedKFold, GroupKFold
 
 from analytics.biomechanics import ideal_targets, diagnose
+from analytics.injury_risk import _by_injury
 from analytics.injury_synth import FEATURE_ORDER
 from analytics.injury_quality import clean
 
@@ -100,8 +101,9 @@ class RiskModel:
         importances = dict(zip(FEATURE_ORDER, self._rf.feature_importances_))
 
         sensitized = set((history or {}).get("factors", []))   # mesma forma do prior (interface)
+        devs = diagnose(metrics, targets)
         factors = []
-        for d in diagnose(metrics, targets):
+        for d in devs:
             weight = round(float(importances.get(d["metric"], 0.0)), 3)
             factors.append({
                 "metric": d["metric"], "label": d["label"], "value": d["value"],
@@ -111,9 +113,13 @@ class RiskModel:
                 "contribution": round(d["severity"] * weight, 3),
             })
         factors.sort(key=lambda f: f["contribution"], reverse=True)
+        # Decomposição por-lesão: mesmo contrato do prior (aditivo). Reusa o helper aterrado na
+        # taxonomia (severity×RISK_WEIGHT) — a mesma regra de "não avaliável" vale aqui.
+        by_injury = _by_injury(metrics, {d["metric"]: d for d in devs}, sensitized)
 
         return {
             "risk_band": _band(prob), "score": round(prob, 3), "factors": factors,
+            "by_injury": by_injury,
             "model": "treinado",
             "caveat": "Modelo TREINADO (Random Forest). Hoje sobre dados sintéticos aterrados na "
                       "literatura — prova o fluxo, não a validade preditiva; recalibra com outcomes "

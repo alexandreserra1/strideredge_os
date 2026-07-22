@@ -82,7 +82,17 @@ class FormCoach:
                 out.append(s)
         return out
 
-    def _prompt(self, metrics: dict, devs: list, hits: list, lib: list) -> str:
+    @staticmethod
+    def _predisposed(by_injury: list) -> Optional[dict]:
+        """Lesão mais predisposta AVALIÁVEL com risco real (score > 0). Serve pro coach citá-la
+        pelo nome + fonte da taxonomia — sem inventar (as não avaliáveis nunca viram alerta)."""
+        for i in (by_injury or []):
+            if i.get("evaluable") and i.get("score", 0.0) > 0.0:
+                return i
+        return None
+
+    def _prompt(self, metrics: dict, devs: list, hits: list, lib: list,
+                predisposed: Optional[dict] = None) -> str:
         linhas = ["Desvios medidos (medido vs faixa ideal):"]
         for d in devs[:4]:
             faixa = f"<= {d['hi']:g}" if d["side"] == "alto" else f">= {d['lo']:g}"
@@ -100,6 +110,12 @@ class FormCoach:
                 linhas.append(f"{i}. {h['text']} [FONTE: {h['source']}]")
         elif not lib:
             linhas.append("\n(Sem evidencia relevante na base — nao invente exercicios.)")
+        # Lesao mais predisposta (do perfil por-lesao, ja aterrada na taxonomia). O coach PODE
+        # menciona-la citando a FONTE — sem inventar; se nao houver, nao fala de lesao.
+        if predisposed:
+            linhas.append(f"\nLesao a qual estes desvios mais predispoem: {predisposed['label']} "
+                          f"[FONTE: {predisposed['source']}]. Ao explicar o porque, voce PODE "
+                          f"mencionar essa lesao citando a fonte — nunca afirme que o atleta a tem.")
         return "\n".join(linhas)
 
     def plan(self, metrics: dict, profile: Optional[dict] = None,
@@ -142,7 +158,8 @@ class FormCoach:
         domains = sorted({dom for d in top for dom in FACTOR_DOMAINS.get(d["metric"], ["biomecanica"])})
         hits = self.knowledge.retrieve(query, k=self.k, domains=domains) if self.knowledge else []
         lib = for_factors([d["metric"] for d in devs])
-        prompt = self._prompt(metrics, devs, hits, lib)
+        predisposed = self._predisposed(risk.get("by_injury"))
+        prompt = self._prompt(metrics, devs, hits, lib, predisposed)
 
         text = self.guard.enforce(self.llm, SYSTEM, prompt)
         issues = self.guard.issues(text, prompt + " " + " ".join(h["text"] for h in hits))
@@ -156,6 +173,7 @@ class FormCoach:
             "targets": targets,
             "deviations": devs,
             "risk": risk,
+            "injury_profile": risk.get("by_injury", []),   # risco decomposto POR LESAO (aditivo)
         }
 
     @staticmethod

@@ -39,6 +39,54 @@ def test_sinais_frontais_pesam_forte():
     assert "pelvic_drop_deg" in metrics_flagged and "knee_valgus_deg" in metrics_flagged
 
 
+def _find(by_injury, dx):
+    return next(i for i in by_injury if i["dx"] == dx)
+
+
+def test_by_injury_ranqueia_e_cita_fonte():
+    """Perfil por-lesão: lesões avaliáveis ordenadas por contribuição desc, cada uma com fonte."""
+    r = assess(_DESVIADA)
+    avaliaveis = [i for i in r["by_injury"] if i["evaluable"]]
+    scores = [i["score"] for i in avaliaveis]
+    assert scores == sorted(scores, reverse=True)
+    assert all(i["source"] for i in r["by_injury"])
+    # cadência baixa + oscilação alta → stress_fx (cadence+oscilacao) no topo dos avaliáveis
+    assert avaliaveis[0]["dx"] in ("stress_fx", "mtss", "plantar")
+
+
+def test_lateral_deixa_lesao_frontal_nao_avaliavel_nunca_baixo():
+    """Honestidade: captura lateral não mede pelvic_drop/valgus → itbs 'não avaliável', não baixo."""
+    r = assess(_DESVIADA)   # sem fatores frontais
+    itbs = _find(r["by_injury"], "itbs")   # factors = pelvic_drop + knee_valgus (ambos frontais)
+    assert itbs["evaluable"] is False
+    assert "frente" in itbs["reason"]
+    assert "band" not in itbs and "score" not in itbs
+
+
+def test_todos_factors_none_sai_nao_avaliavel():
+    r = assess({})   # nada medido
+    assert all(i["evaluable"] is False for i in r["by_injury"])
+    assert all("band" not in i for i in r["by_injury"])
+
+
+def test_partial_quando_so_alguns_factors_medidos():
+    """pfp pede pelvic_drop+valgus (frontais) + knee_contact (lateral). No lateral, knee_contact
+    medido → parcial (não pode ser 'não avaliável', mas avisa que está incompleto)."""
+    r = assess({**_LIMPA, "knee_contact_deg": 178.0})   # knee_contact desviado, frontais None
+    pfp = _find(r["by_injury"], "pfp")
+    assert pfp["evaluable"] is True and pfp["partial"] is True
+
+
+def test_perfis_diferentes_para_metricas_diferentes():
+    """Dois atletas diferentes → topos de lesão diferentes."""
+    a = assess(_DESVIADA)                       # cadência baixa + oscilação
+    b = assess({**_LIMPA, **_FRONTAL_RUIM})     # frontal ruim (pelvic drop + valgus)
+    top_a = next(i["dx"] for i in a["by_injury"] if i["evaluable"] and i["score"] > 0)
+    top_b = next(i["dx"] for i in b["by_injury"] if i["evaluable"] and i["score"] > 0)
+    assert top_a != top_b
+    assert top_b in ("pfp", "itbs")             # frontal ruim → joelho
+
+
 def test_honestidade_faixa_relativa_nao_probabilidade():
     """Guarda de honestidade: é FAIXA relativa + caveat explícito, nunca 'X% de chance'."""
     r = assess(_DESVIADA)
