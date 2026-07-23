@@ -1,25 +1,27 @@
-# Layout de keypoints — COCO-17 (ativo) vs Halpe26 (bloqueado por asset)
+# Layout de keypoints — COCO-17 (default) vs Halpe26 (experimental)
 
 Todo o pipeline de biomecânica fala em **índices semânticos** (`hip_l`, `knee_r`, `ankle_l`, ...)
 via `KeypointLayout` em `src/lib.rs`, não em números mágicos. Trocar o motor de pose é trocar o
 layout — nada mais no parsing do tensor, no desenho do esqueleto ou nas métricas muda.
 
-- `COCO17` — **default e único ativo hoje**. 17 keypoints, YOLO11-pose. **Sem pontos de pé.**
-- `HALPE26` — layout-alvo já definido no código, porém **bloqueado**: falta o modelo ONNX.
+- `COCO17` — **default**. 17 keypoints, YOLO11-pose. **Sem pontos de pé.**
+- `HALPE26` — experimental opt-in. 26 keypoints, incluindo hálux, dedinho e calcanhar de ambos os
+  pés. Usa um pipeline próprio RTMDet/YOLOX + RTMPose/SimCC; não é compatível com o decoder YOLO.
 
-## O que falta para ativar o Halpe26
+## Como executar o Halpe26 experimental
 
-1. **Baixar o modelo ONNX Halpe26.** Um estimador de pose treinado no dataset Halpe (26 kp),
-   exportado para ONNX com a **mesma convenção de saída YOLO-pose** que o código já consome:
-   tensor `[1, 5 + 3*K, N]` = 4 box (cx,cy,w,h) + 1 conf + `(x,y,conf)` por keypoint.
-   - Para K=26 => **83 canais** (COCO-17 usava 56). O `infer()` já deriva isso de `layout.count`.
-   - Fonte típica: exportar YOL11x-pose/AlphaPose-Halpe26 para ONNX, ou um `yolo11-pose` treinado
-     em Halpe26. Colocar em `models/` e apontar via `STRIDE_MODEL=...`.
-   - **Validar a ordem dos keypoints** do modelo baixado contra `HALPE26_NAMES` (índices 17–25:
-     cabeca, pescoco, quadril_c, hallux_e/d, dedinho_e/d, calcanhar_e/d). Se o export usar outra
-     ordem, ajustar os índices semânticos em `HALPE26`.
-2. **Plugar o layout:** trocar `PoseEngine::new(model)` por `PoseEngine::with_layout(model, &HALPE26)`
-   (ou expor uma flag `--layout halpe26` no `main`). O default segue COCO-17.
+O runtime exige dois ONNX oficiais validados: detector de pessoa (saída NMS `[1,N,5]`) e pose
+RTMPose (saídas SimCC `[1,26,384]` e `[1,26,512]`). Eles são fornecidos fora do repositório por:
+
+```bash
+STRIDE_HALPE_DETECTOR=/caminho/yolox.onnx \
+STRIDE_HALPE_POSE=/caminho/rtmpose-halpe26.onnx \
+stride-vision video.mp4 overlay.mp4 --backend halpe26
+```
+
+O backend valida a ordem Halpe26 contra `HALPE26_NAMES`; o YOLO17 continua default. A licença de
+distribuição dos pesos e datasets ainda precisa ser aprovada antes de empacotar os modelos ou
+selecionar Halpe26 automaticamente.
 
 ## O que isso destrava
 

@@ -4,24 +4,81 @@
 
 use anyhow::{bail, Context, Result};
 use image::RgbImage;
+use serde_json::json;
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use stride_vision::{analyze_form, contact_angle, contact_flight_ms, foot_strike, draw_angles,
                     hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
-                    trunk_lean_deg, draw_pose, PoseEngine};
+                    trunk_lean_deg, draw_pose, PoseBackend, PoseEngine, RtmPose26Backend};
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
 // o quadril "borderline" (0.42-0.45) num enquadramento ruim (só pernas) saltava e poluía a
 // amplitude/leg_len. 0.5 é o padrão "visível" — separa quadril real (>0.6) do chute do modelo.
 const KP_CONF: f32 = 0.5;
 
+/// Dono de um filho ffmpeg enquanto o pipeline usa seus pipes. `Child` não espera nem mata o
+/// processo no `Drop`; portanto uma saída antecipada por erro de inferência poderia deixá-lo
+/// executando. Este guard encerra+recolhe o filho nesse caso e exige exit status 0 no sucesso.
+struct ManagedChild {
+    child: Option<Child>,
+    role: &'static str,
+}
+
+impl ManagedChild {
+    fn new(child: Child, role: &'static str) -> Self {
+        Self { child: Some(child), role }
+    }
+
+    fn take_stdout(&mut self) -> Result<ChildStdout> {
+        self.child.as_mut().and_then(|child| child.stdout.take())
+            .ok_or_else(|| anyhow::anyhow!("{0}: stdout indisponível", self.role))
+    }
+
+    fn take_stdin(&mut self) -> Result<ChildStdin> {
+        self.child.as_mut().and_then(|child| child.stdin.take())
+            .ok_or_else(|| anyhow::anyhow!("{0}: stdin indisponível", self.role))
+    }
+
+    fn wait_success(&mut self) -> Result<()> {
+        let mut child = self.child.take()
+            .ok_or_else(|| anyhow::anyhow!("{0}: processo já foi aguardado", self.role))?;
+        let status = child.wait().with_context(|| format!("esperando {}", self.role))?;
+        if status.success() {
+            Ok(())
+        } else {
+            bail!("{} terminou com status {status}", self.role)
+        }
+    }
+}
+
+impl Drop for ManagedChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill(); // pode já ter terminado; ainda o recolhemos abaixo
+            let _ = child.wait();
+        }
+    }
+}
+
 fn main() -> Result<()> {
-    // Separa a flag `--view <lateral|frontal>` dos posicionais (entrada [, saída]).
+    // Separa flags dos posicionais (entrada [, saída]). `--benchmark` não desenha nem reencoda:
+    // mede só decode + pose, o mesmo estágio usado para comparar backends de keypoints.
     let raw: Vec<String> = std::env::args().collect();
-    let (mut view, mut pos, mut i) = ("lateral".to_string(), Vec::<String>::new(), 1usize);
+    let (mut view, mut backend, mut benchmark, mut benchmark_output, mut pos, mut i) =
+        ("lateral".to_string(), "yolo17".to_string(), false, None::<String>, Vec::<String>::new(), 1usize);
     while i < raw.len() {
         if raw[i] == "--view" {
             view = raw.get(i + 1).cloned().unwrap_or_else(|| "lateral".into());
+            i += 2;
+        } else if raw[i] == "--backend" {
+            backend = raw.get(i + 1).cloned().unwrap_or_else(|| "yolo17".into());
+            i += 2;
+        } else if raw[i] == "--benchmark" {
+            benchmark = true;
+            i += 1;
+        } else if raw[i] == "--output" {
+            benchmark_output = raw.get(i + 1).cloned();
             i += 2;
         } else {
             pos.push(raw[i].clone());
@@ -29,25 +86,43 @@ fn main() -> Result<()> {
         }
     }
     if pos.is_empty() {
-        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal]");
+        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal] [--backend yolo17|halpe26]");
     }
     let view = if view == "frontal" { "frontal" } else { "lateral" };
     let input = &pos[0];
-    let model = std::env::var("STRIDE_MODEL")
-        .unwrap_or_else(|_| "models/yolo11n-pose.onnx".into());
-    let mut engine = PoseEngine::new(&model)?;
+    let mut engine: Box<dyn PoseBackend> = match backend.as_str() {
+        "yolo17" => {
+            let model = std::env::var("STRIDE_MODEL")
+                .unwrap_or_else(|_| "models/yolo11n-pose.onnx".into());
+            Box::new(PoseEngine::new(&model)?)
+        }
+        "halpe26" => {
+            let detector = std::env::var("STRIDE_HALPE_DETECTOR")
+                .context("halpe26 exige STRIDE_HALPE_DETECTOR (ONNX do detector de pessoa)")?;
+            let pose = std::env::var("STRIDE_HALPE_POSE")
+                .context("halpe26 exige STRIDE_HALPE_POSE (ONNX RTMPose Halpe26)")?;
+            Box::new(RtmPose26Backend::new(&detector, &pose)?)
+        }
+        other => bail!("backend inválido '{other}': use yolo17 ou halpe26"),
+    };
+
+    if benchmark {
+        let out = benchmark_output.ok_or_else(|| anyhow::anyhow!(
+            "uso: stride-vision <video.mp4> --benchmark --output <relatorio.json>"))?;
+        return run_benchmark(&mut *engine, input, &out);
+    }
 
     let ext = input.rsplit('.').next().unwrap_or("").to_lowercase();
     if matches!(ext.as_str(), "jpg" | "jpeg" | "png") {
         let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.jpg".into());
-        run_image(&mut engine, input, &out)
+        run_image(&mut *engine, input, &out)
     } else {
         let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.mp4".into());
-        run_video(&mut engine, input, &out, view)
+        run_video(&mut *engine, input, &out, view)
     }
 }
 
-fn run_image(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
+fn run_image(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result<()> {
     let mut img = image::open(input).context("abrindo imagem")?.to_rgb8();
     let t = std::time::Instant::now();
     match engine.infer(&img)? {
@@ -68,24 +143,85 @@ fn run_image(engine: &mut PoseEngine, input: &str, out: &str) -> Result<()> {
     Ok(())
 }
 
+/// Medição comparável entre backends: decode + inferência de pose, sem desenho, encode ou métricas.
+fn run_benchmark(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result<()> {
+    let (w, h, fps) = probe(input)?;
+    let layout = engine.layout();
+    let decoder = Command::new("ffmpeg")
+        .args(["-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .stdout(Stdio::piped()).spawn().context("ffmpeg (instale com: brew install ffmpeg)")?;
+    let mut dec = ManagedChild::new(decoder, "ffmpeg decoder");
+    let mut src = dec.take_stdout()?;
+    let mut buf = vec![0u8; (w * h * 3) as usize];
+    let (mut frames, mut detected, mut foot_visible) = (0u32, 0u32, 0u32);
+    let started = std::time::Instant::now();
+    loop {
+        if read_exact_or_eof(&mut src, &mut buf).is_err() { break }
+        let img = RgbImage::from_raw(w, h, buf.clone()).unwrap();
+        if let Some(pose) = engine.infer(&img)? {
+            detected += 1;
+            if layout.has_foot() {
+                let foot_indices = [layout.big_toe_l, layout.big_toe_r, layout.small_toe_l,
+                                    layout.small_toe_r, layout.heel_l, layout.heel_r];
+                if foot_indices.into_iter().flatten().all(|index| pose.keypoints[index].2 >= 0.35) {
+                    foot_visible += 1;
+                }
+            }
+        }
+        frames += 1;
+    }
+    dec.wait_success()?;
+    let report = benchmark_report(input, frames, detected, foot_visible, started.elapsed().as_secs_f64(), fps);
+    std::fs::write(out, serde_json::to_string_pretty(&report)?)?;
+    println!("benchmark: {frames} frames em {:.1}s ({:.1} fps) | detecção {:.1}%\nrelatório: {out}",
+             report["runs"][0]["wall_seconds"].as_f64().unwrap_or(0.0),
+             report["runs"][0]["frames"].as_f64().unwrap_or(0.0)
+                 / report["runs"][0]["wall_seconds"].as_f64().unwrap_or(1.0),
+             report["runs"][0]["detection_rate_pct"].as_f64().unwrap_or(0.0));
+    Ok(())
+}
+
+fn benchmark_report(input: &str, frames: u32, detected: u32, foot_visible: u32,
+                    wall_seconds: f64, source_fps: f32) -> serde_json::Value {
+    let detection_rate = if frames == 0 { 0.0 } else { detected as f64 / frames as f64 };
+    let video = Path::new(input).file_name().and_then(|name| name.to_str()).unwrap_or(input);
+    json!({
+        "runs": [{
+            "video": video,
+            "frames": frames,
+            "wall_seconds": wall_seconds,
+            "source_fps": source_fps,
+            "sample_stride": 1,
+            "measurement_stage": "decode+pose_inference",
+            "detection_rate_pct": detection_rate * 100.0,
+            "foot_points_visible_frames": foot_visible,
+            "foot_points_visible": foot_visible > 0,
+            "reliable": detection_rate >= 0.8,
+        }],
+        "human_overlay_review_required": true,
+    })
+}
+
 /// Vídeo via ffmpeg (pipes rawvideo): decodifica -> infere+desenha -> re-encoda.
 /// `view` = "lateral" (métricas sagitais) | "frontal" (queda pélvica, valgo de joelho).
-fn run_video(engine: &mut PoseEngine, input: &str, out: &str, view: &str) -> Result<()> {
+fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str) -> Result<()> {
     let (w, h, fps) = probe(input)?;
     let lay = engine.layout();   // índices semânticos (quadril/joelho/tornozelo...) do layout ativo
     println!("vídeo {w}x{h} @ {fps:.1}fps (vista: {view}) — layout {}", lay.name);
 
-    let mut dec = Command::new("ffmpeg")
+    let decoder = Command::new("ffmpeg")
         .args(["-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
         .stdout(Stdio::piped()).spawn().context("ffmpeg (instale com: brew install ffmpeg)")?;
-    let mut enc = Command::new("ffmpeg")
+    let encoder = Command::new("ffmpeg")
         .args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
                "-s", &format!("{w}x{h}"), "-r", &format!("{fps}"), "-i", "-",
                "-c:v", "libx264", "-pix_fmt", "yuv420p", out])
         .stdin(Stdio::piped()).spawn()?;
 
-    let mut src = dec.stdout.take().unwrap();
-    let mut dst = enc.stdin.take().unwrap();
+    let mut dec = ManagedChild::new(decoder, "ffmpeg decoder");
+    let mut enc = ManagedChild::new(encoder, "ffmpeg encoder");
+    let mut src = dec.take_stdout()?;
+    let mut dst = enc.take_stdin()?;
     let mut buf = vec![0u8; (w * h * 3) as usize];
     let (mut frames, mut ankle_l, mut ankle_r) = (0u32, Vec::new(), Vec::new());
     let (mut hip_y, mut leg_lens) = (Vec::new(), Vec::new());
@@ -150,7 +286,8 @@ fn run_video(engine: &mut PoseEngine, input: &str, out: &str, view: &str) -> Res
         frames += 1;
     }
     drop(dst);
-    enc.wait()?;
+    dec.wait_success()?;
+    enc.wait_success()?;
     let el = t.elapsed().as_secs_f32();
     println!("{frames} frames em {el:.1}s ({:.1} fps de processamento)", frames as f32 / el);
 
@@ -220,10 +357,52 @@ fn read_exact_or_eof(r: &mut impl Read, buf: &mut [u8]) -> std::io::Result<()> {
 fn probe(input: &str) -> Result<(u32, u32, f32)> {
     let out = Command::new("ffprobe")
         .args(["-v", "error", "-select_streams", "v:0", "-show_entries",
-               "stream=width,height,r_frame_rate", "-of", "csv=p=0", input])
+               "stream=width,height,r_frame_rate:stream_side_data=rotation", "-of", "csv=p=0", input])
         .output().context("ffprobe")?;
     let s = String::from_utf8_lossy(&out.stdout);
     let parts: Vec<&str> = s.trim().split(',').collect();
+    if parts.len() < 3 {
+        bail!("ffprobe não retornou dimensões e FPS do vídeo");
+    }
     let rate: Vec<f32> = parts[2].split('/').map(|x| x.parse().unwrap_or(1.0)).collect();
-    Ok((parts[0].parse()?, parts[1].parse()?, rate[0] / rate.get(1).copied().unwrap_or(1.0)))
+    let rotation = parts.get(3).and_then(|value| value.parse::<i32>().ok()).unwrap_or(0);
+    let (width, height) = oriented_dimensions(parts[0].parse()?, parts[1].parse()?, rotation);
+    Ok((width, height, rate[0] / rate.get(1).copied().unwrap_or(1.0)))
+}
+
+/// O ffmpeg auto-rota vídeos de celular; o buffer raw precisa usar a geometria já orientada.
+fn oriented_dimensions(width: u32, height: u32, rotation: i32) -> (u32, u32) {
+    if rotation.rem_euclid(180) == 90 { (height, width) } else { (width, height) }
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::{oriented_dimensions, ManagedChild};
+    use std::process::Command;
+
+    #[test]
+    fn dimensoes_trocam_nas_rotacoes_de_celular() {
+        assert_eq!(oriented_dimensions(1024, 576, -90), (576, 1024));
+        assert_eq!(oriented_dimensions(1024, 576, 90), (576, 1024));
+        assert_eq!(oriented_dimensions(1024, 576, 0), (1024, 576));
+        assert_eq!(oriented_dimensions(1024, 576, 180), (1024, 576));
+    }
+
+    #[test]
+    fn benchmark_tem_estagio_e_amostragem_explicitos() {
+        let report = super::benchmark_report("/tmp/corrida.mp4", 100, 90, 80, 4.0, 25.0);
+        let run = &report["runs"][0];
+        assert_eq!(run["video"], "corrida.mp4");
+        assert_eq!(run["sample_stride"], 1);
+        assert_eq!(run["measurement_stage"], "decode+pose_inference");
+        assert_eq!(run["reliable"], true);
+        assert_eq!(run["foot_points_visible_frames"], 80);
+    }
+
+    #[test]
+    fn processo_filhos_com_erro_nao_sao_sucesso() {
+        let child = Command::new("sh").args(["-c", "exit 7"]).spawn().unwrap();
+        let mut managed = ManagedChild::new(child, "ffmpeg de teste");
+        assert!(managed.wait_success().is_err());
+    }
 }
