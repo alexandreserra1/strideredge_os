@@ -1,10 +1,11 @@
-"""Arnês de calibração de ângulos (tools/pose_calibration) — honesto por construção.
+"""Comparador pareado de ângulos (tools/pose_calibration) — backend-independente e honesto.
 
-Herméticos: séries sintéticas com apoio e ângulo conhecidos. Provam que o arnês (a) extrai o ângulo
-no APOIO como o Rust, (b) SÓ propõe correção com clipes suficientes + offset estável + ground-truth,
-(c) marca 'não calibrável' quando o offset troca de sinal entre clipes."""
+Herméticos: dumps por-frame sintéticos com ângulo conhecido. Provam (a) ângulo recomputado dos
+landmarks (fórmula única), (b) Bland-Altman pareado no MESMO frame, (c) erro vs ground-truth escolhe
+o backend certo, (d) os gates de honestidade (sem evento = diagnóstico; sem verdade = só concordância)."""
 
 import importlib.util
+import math
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
@@ -13,58 +14,57 @@ cal = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cal)
 
 
-def _clip(knee_contact: float, hip_contact: float, cycles: int = 12) -> dict:
-    """Série sintética: apoios (máx de ankle) a cada 5 frames; no apoio o joelho/quadril ficam nos
-    valores dados, fora do apoio em outro valor. Perna esquerda visível (conf alta)."""
-    ankle, knee, hip = [], [], []
-    for _ in range(cycles):
-        for k in range(5):
-            contact = k == 2                       # índice 2 do ciclo = pé mais fundo (apoio)
-            ankle.append(100.0 if contact else 10.0)
-            knee.append(knee_contact if contact else 90.0)
-            hip.append(hip_contact if contact else 100.0)
-    n = len(ankle)
-    return {"knee_l": knee, "knee_r": knee, "hip_l": hip, "hip_r": hip,
-            "trunk": [5.0] * n, "ankle_l": ankle, "ankle_r": ankle,
-            "conf_l": 0.9, "conf_r": 0.1, "layout": "test"}
+def _frame(i: int, knee_deg: float) -> dict:
+    """Registro por-frame com joelho ESQUERDO no ângulo interno dado (hip-knee-ankle)."""
+    t = math.radians(knee_deg)
+    return {"i": i, "t_ms": i * 33, "present": True, "conf": 0.9,
+            "kp": {"hip_l": [0.0, -1.0, 0.9], "knee_l": [0.0, 0.0, 0.9],
+                   "ankle_l": [math.sin(t), -math.cos(t), 0.9]}}
 
 
-def test_extrai_angulo_no_apoio_como_o_rust():
-    vals = cal.contact_angles(_clip(150.0, 165.0), "knee")
-    assert len(vals) >= 8 and all(v == 150.0 for v in vals)   # só os frames de apoio
+def _dump(knee_deg: float, n: int = 20) -> dict:
+    return {"layout": "test", "fps": 30.0, "frames_total": n,
+            "frames": [_frame(i, knee_deg) for i in range(n)]}
 
 
-def test_poucos_clipes_nao_propoe_correcao():
-    dumps = {f"c{i}": {"yolo17": _clip(150.0, 165.0), "blazepose33": _clip(160.0, 168.0)}
-             for i in range(2)}
-    rep = cal.offset_report(dumps, "yolo17", "blazepose33")
-    assert rep["joints"]["knee"]["delta_mean_deg"] == 10.0
-    assert rep["joints"]["knee"]["same_sign"] is True
-    assert rep["joints"]["knee"]["recommendation"] == "insufficient_clips"
-    assert "insufficient_clips" in rep["verdict"]
+def test_angulo_recomputado_dos_landmarks():
+    assert abs(cal.joint_angle([0, -1], [0, 0], [0, 1]) - 180.0) < 0.01     # perna reta
+    assert abs(cal.joint_angle([0, -1], [0, 0], [1, 0]) - 90.0) < 0.01      # ângulo reto
+    assert abs(cal.angle_at(_frame(0, 150.0), "knee", "l") - 150.0) < 0.01
+    assert cal.angle_at({"present": False}, "knee", "l") is None            # sem pose -> None
 
 
-def test_offset_instavel_marca_nao_calibravel():
-    # joelho consistente (+10), quadril TROCA de sinal entre clipes -> não calibrável por offset
-    dumps = {}
-    for i in range(10):
-        hip_cand = 175.0 if i % 2 == 0 else 155.0   # candidato ora acima, ora abaixo do baseline 165
-        dumps[f"c{i}"] = {"yolo17": _clip(150.0, 165.0),
-                          "blazepose33": _clip(160.0, hip_cand)}
-    rep = cal.offset_report(dumps, "yolo17", "blazepose33")
-    assert rep["joints"]["hip"]["same_sign"] is False
-    assert rep["joints"]["hip"]["recommendation"] == "not_calibratable_rederive_thresholds"
-    assert "nao_calibravel" in rep["verdict"]
+def test_pareado_no_mesmo_frame_bland_altman():
+    # baseline 150°, candidato 160° nos MESMOS frames -> viés +10, MAE 10, LoA apertado
+    ag = cal.paired_agreement(_dump(150.0), _dump(160.0), "knee", "l")
+    assert ag["n"] == 20 and ag["bias_deg"] == 10.0 and ag["mae_deg"] == 10.0
+    assert ag["sd_deg"] == 0.0 and ag["event_anchored"] is False
 
 
-def test_estavel_com_ground_truth_propoe_offset_e_escolhe_o_mais_certo():
-    # 8 clipes, offset estável +10 no joelho; ground-truth = 152 (baseline erra 2, candidato erra 8)
-    dumps = {f"c{i}": {"yolo17": _clip(150.0, 165.0), "blazepose33": _clip(160.0, 166.0)}
-             for i in range(8)}
-    gt = {f"c{i}": {"knee": 152.0, "hip": 165.5} for i in range(8)}
-    rep = cal.offset_report(dumps, "yolo17", "blazepose33", gt)
+def test_erro_vs_ground_truth():
+    err = cal.error_vs_truth(_dump(160.0), {5: 152.0, 6: 152.0}, "knee", "l")
+    assert err["n"] == 2 and err["mae_deg"] == 8.0 and err["bias_deg"] == 8.0
+
+
+def test_sem_evento_e_so_diagnostico():
+    dumps = {"s0": {"yolo17": _dump(150.0), "blazepose33": _dump(160.0)}}
+    rep = cal.report(dumps, "yolo17", "blazepose33")
+    assert rep["event_anchored"] is False
+    assert rep["verdict"].startswith("agreement_diagnostico")
+    assert rep["joints"]["knee"]["bias_deg"] == 10.0
+
+
+def test_valido_com_evento_ground_truth_escolhe_o_mais_certo():
+    # 8 corredores, evento anotado (frame 5), verdade 152 -> baseline erra 2, candidato erra 8
+    dumps, events, truth = {}, {}, {}
+    for k in range(8):
+        s = f"s{k}"
+        dumps[s] = {"yolo17": _dump(150.0), "blazepose33": _dump(160.0)}
+        events[s] = [5]
+        truth[s] = {"knee": {5: 152.0}}
+    rep = cal.report(dumps, "yolo17", "blazepose33", events=events, truth=truth)
     knee = rep["joints"]["knee"]
-    assert knee["stable"] is True and knee["recommendation"] == "apply_offset"
-    assert knee["proposed_offset_deg"] == -10.0                       # somar -10 ao candidato o alinha
-    assert knee["candidate_closer_to_truth"] is False                 # baseline (err 2) < candidato (err 8)
-    assert rep["verdict"].startswith("calibravel")
+    assert rep["event_anchored"] and rep["has_ground_truth"] and rep["n_subjects"] == 8
+    assert knee["baseline_mae_vs_truth"] == 2.0 and knee["candidate_mae_vs_truth"] == 8.0
+    assert knee["candidate_closer_to_truth"] is False
+    assert rep["verdict"].startswith("valido")
