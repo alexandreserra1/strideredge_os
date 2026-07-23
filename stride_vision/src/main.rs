@@ -67,6 +67,9 @@ fn main() -> Result<()> {
     let raw: Vec<String> = std::env::args().collect();
     let (mut view, mut backend, mut benchmark, mut benchmark_output, mut pos, mut i) =
         ("lateral".to_string(), "yolo17".to_string(), false, None::<String>, Vec::<String>::new(), 1usize);
+    // --no-overlay: passada SÓ-MÉTRICAS (pula desenho + reencode). É o caminho rápido do "métricas
+    // primeiro": o backend roda esta passada, mostra o resultado, e enfileira o overlay depois.
+    let mut no_overlay = false;
     while i < raw.len() {
         if raw[i] == "--view" {
             view = raw.get(i + 1).cloned().unwrap_or_else(|| "lateral".into());
@@ -76,6 +79,9 @@ fn main() -> Result<()> {
             i += 2;
         } else if raw[i] == "--benchmark" {
             benchmark = true;
+            i += 1;
+        } else if raw[i] == "--no-overlay" {
+            no_overlay = true;
             i += 1;
         } else if raw[i] == "--output" {
             benchmark_output = raw.get(i + 1).cloned();
@@ -118,7 +124,7 @@ fn main() -> Result<()> {
         run_image(&mut *engine, input, &out)
     } else {
         let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.mp4".into());
-        run_video(&mut *engine, input, &out, view)
+        run_video(&mut *engine, input, &out, view, !no_overlay)
     }
 }
 
@@ -202,26 +208,34 @@ fn benchmark_report(input: &str, frames: u32, detected: u32, foot_visible: u32,
     })
 }
 
-/// Vídeo via ffmpeg (pipes rawvideo): decodifica -> infere+desenha -> re-encoda.
+/// Vídeo via ffmpeg (pipes rawvideo): decodifica -> infere (+ desenha, quando `overlay`) -> re-encoda.
 /// `view` = "lateral" (métricas sagitais) | "frontal" (queda pélvica, valgo de joelho).
-fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str) -> Result<()> {
+/// `overlay=false` (--no-overlay): passada SÓ-MÉTRICAS — pula o encoder e o desenho por frame
+/// (glow/goniômetros são pixel-pesados), devolvendo só o JSON. É o caminho rápido do "métricas
+/// primeiro"; o overlay vira uma 2ª passada, enfileirada à parte pelo backend.
+fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str, overlay: bool) -> Result<()> {
     let (w, h, fps) = probe(input)?;
     let lay = engine.layout();   // índices semânticos (quadril/joelho/tornozelo...) do layout ativo
-    println!("vídeo {w}x{h} @ {fps:.1}fps (vista: {view}) — layout {}", lay.name);
+    println!("vídeo {w}x{h} @ {fps:.1}fps (vista: {view}, overlay: {overlay}) — layout {}", lay.name);
 
     let decoder = Command::new("ffmpeg")
         .args(["-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
         .stdout(Stdio::piped()).spawn().context("ffmpeg (instale com: brew install ffmpeg)")?;
-    let encoder = Command::new("ffmpeg")
-        .args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
-               "-s", &format!("{w}x{h}"), "-r", &format!("{fps}"), "-i", "-",
-               "-c:v", "libx264", "-pix_fmt", "yuv420p", out])
-        .stdin(Stdio::piped()).spawn()?;
-
     let mut dec = ManagedChild::new(decoder, "ffmpeg decoder");
-    let mut enc = ManagedChild::new(encoder, "ffmpeg encoder");
     let mut src = dec.take_stdout()?;
-    let mut dst = enc.take_stdin()?;
+    // Encoder só existe na passada de overlay. Sem ele não reencodamos nada — só coletamos séries.
+    let (mut enc, mut dst) = if overlay {
+        let encoder = Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                   "-s", &format!("{w}x{h}"), "-r", &format!("{fps}"), "-i", "-",
+                   "-c:v", "libx264", "-pix_fmt", "yuv420p", out])
+            .stdin(Stdio::piped()).spawn()?;
+        let mut e = ManagedChild::new(encoder, "ffmpeg encoder");
+        let d = e.take_stdin()?;
+        (Some(e), Some(d))
+    } else {
+        (None, None)
+    };
     let mut buf = vec![0u8; (w * h * 3) as usize];
     let (mut frames, mut ankle_l, mut ankle_r) = (0u32, Vec::new(), Vec::new());
     let (mut hip_y, mut leg_lens) = (Vec::new(), Vec::new());
@@ -279,15 +293,17 @@ fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str) -
             if kp[lay.hip_l].2 > KP_CONF && kp[lay.hip_r].2 > KP_CONF {
                 pelvic_tilt.push(hip_tilt_deg(kp[lay.hip_l], kp[lay.hip_r]));
             }
-            draw_pose(&mut img, &pose);
-            if view == "lateral" { draw_angles(&mut img, &pose); }   // goniômetros sagitais só na lateral
+            if overlay {
+                draw_pose(&mut img, &pose);
+                if view == "lateral" { draw_angles(&mut img, &pose); }   // goniômetros sagitais só na lateral
+            }
         }
-        dst.write_all(img.as_raw())?;
+        if let Some(d) = dst.as_mut() { d.write_all(img.as_raw())?; }   // só reencoda na passada de overlay
         frames += 1;
     }
-    drop(dst);
+    drop(dst);   // fecha o stdin do encoder (se houver) -> ele finaliza o mp4
     dec.wait_success()?;
-    enc.wait_success()?;
+    if let Some(e) = enc.as_mut() { e.wait_success()?; }
     let el = t.elapsed().as_secs_f32();
     println!("{frames} frames em {el:.1}s ({:.1} fps de processamento)", frames as f32 / el);
 
@@ -338,7 +354,8 @@ fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str) -
             None => println!("cadência: série curta demais (filme >5s)"),
         }
     }
-    println!("vídeo: {out}\nmétricas: {mpath}");
+    if overlay { println!("vídeo: {out}"); }
+    println!("métricas: {mpath}");
     Ok(())
 }
 
