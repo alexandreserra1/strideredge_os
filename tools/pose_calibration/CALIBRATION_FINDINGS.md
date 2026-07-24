@@ -66,6 +66,33 @@ pipeline; (b) o BlazePose no seu melhor modo bate o YOLO no joelho. O world-3D s
 promissor, **não** cravado — não vira offset clínico fixo nem troca de default sozinho. Produção
 segue `image_2d`; 3D é diagnóstico. `report.json` desta rodada em `/tmp/riglet_final/`.
 
+## Rigor estatístico — IC bootstrap (24 jul. 2026, `bootstrap_ci.py`)
+
+Em vez de fingir que n=12 basta, quantificamos. IC 95% bootstrap (10k reamostragens, seed 42) do MAE
+de joelho por corredor, e a diferença PAREADA por corredor:
+
+| Backend | MAE médio | IC 95% | DP entre corredores |
+| --- | ---: | --- | ---: |
+| YOLO 2D | 26,2° | [22,2, 30,4] | 7,2° |
+| BlazePose 2D | 28,6° | [22,9, 34,2] | **10,1°** |
+| BlazePose world-3D | 23,7° | [20,3, 27,3] | **6,1°** |
+
+| Diferença pareada | Δ | IC 95% | Significativo? |
+| --- | ---: | --- | --- |
+| BlazePose 3D vs **2D** | −4,8° | [+1,7, +8,1] | ✅ **SIM** (P=100%) |
+| BlazePose 3D vs **YOLO 2D** | −2,5° | [−0,7, +5,4] | ❌ **não** (IC cruza 0, P=94%) |
+
+**Veredito honesto:**
+1. **Usar o world-3D em vez do 2D do BlazePose é ganho REAL e significativo** (−4,8°, IC não cruza 0).
+2. **BlazePose-3D superar o YOLO-2D NÃO se sustenta com n=12** — o IC da diferença cruza zero (P=94%
+   é sugestivo, não conclusivo). É underpowered.
+3. **A instabilidade tem causa:** o 2D do BlazePose é o mais disperso (DP 10,1°, faixa 14–43°) — por
+   isso o ranking virava entre subconjuntos. O world-3D é o mais estável (DP 6,1°).
+
+**Consequência pro portão:** o item "avaliação pareada estável" fica ❌ até MAIS corredores/2ª base.
+Estimativa grosseira: pra o IC da diferença 3D-vs-YOLO (largura ~6°, Δ~2,5°) sair de zero, precisa
+~2–4× o n atual. YOLO segue default; o 3D-sobre-2D já está justificado como escolha interna.
+
 ## Próximo passo (sem multi-câmera — com o que já temos)
 
 1. **Riglet já é a validação** que temos: dado CC0 baixado, vídeo+mocap, 12 corredores. Não precisa
