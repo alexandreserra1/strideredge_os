@@ -171,6 +171,10 @@ fn main() -> Result<()> {
     // --no-overlay: passada SÓ-MÉTRICAS (pula desenho + reencode). É o caminho rápido do "métricas
     // primeiro": o backend roda esta passada, mostra o resultado, e enfileira o overlay depois.
     let mut no_overlay = false;
+    // --sample-stride N: infere 1 a cada N frames (amostragem temporal). É o A4: metade do trabalho
+    // do modelo a 15fps se a cadência/contato/ângulos aguentarem. Só vale p/ métricas/benchmark —
+    // overlay e dump de calibração EXIGEM todos os frames (senão vídeo/alinhamento quebram).
+    let mut sample_stride = 1usize;
     while i < raw.len() {
         if raw[i] == "--view" {
             view = raw.get(i + 1).cloned().unwrap_or_else(|| "lateral".into());
@@ -184,6 +188,13 @@ fn main() -> Result<()> {
         } else if raw[i] == "--no-overlay" {
             no_overlay = true;
             i += 1;
+        } else if raw[i] == "--sample-stride" {
+            sample_stride = raw
+                .get(i + 1)
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&n| n >= 1)
+                .context("--sample-stride exige um inteiro >= 1")?;
+            i += 2;
         } else if raw[i] == "--output" {
             benchmark_output = raw.get(i + 1).cloned();
             i += 2;
@@ -228,16 +239,15 @@ fn main() -> Result<()> {
         let out = benchmark_output.ok_or_else(|| {
             anyhow::anyhow!("uso: stride-vision <video.mp4> --benchmark --output <relatorio.json>")
         })?;
-        return run_benchmark(&mut *engine, input, &out);
+        return run_benchmark(&mut *engine, input, &out, sample_stride);
     }
 
     let ext = input.rsplit('.').next().unwrap_or("").to_lowercase();
     if matches!(ext.as_str(), "jpg" | "jpeg" | "png") {
-        let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.jpg".into());
-        run_image(&mut *engine, input, &out)
+        run_image(&mut *engine, input, &pos.get(1).cloned().unwrap_or_else(|| "pose_out.jpg".into()))
     } else {
         let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.mp4".into());
-        run_video(&mut *engine, input, &out, view, !no_overlay)
+        run_video(&mut *engine, input, &out, view, !no_overlay, sample_stride)
     }
 }
 
@@ -270,7 +280,12 @@ fn run_image(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result<()>
 }
 
 /// Medição comparável entre backends: decode + inferência de pose, sem desenho, encode ou métricas.
-fn run_benchmark(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result<()> {
+fn run_benchmark(
+    engine: &mut dyn PoseBackend,
+    input: &str,
+    out: &str,
+    sample_stride: usize,
+) -> Result<()> {
     let (w, h, fps) = probe(input)?;
     let layout = engine.layout();
     let decoder = Command::new("ffmpeg")
@@ -283,14 +298,23 @@ fn run_benchmark(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result
     let mut dec = ManagedChild::new(decoder, "ffmpeg decoder");
     let mut src = dec.take_stdout()?;
     let mut buf = vec![0u8; (w * h * 3) as usize];
-    let (mut frames, mut detected, mut foot_visible) = (0u32, 0u32, 0u32);
+    // `decoded` = frames lidos do ffmpeg; `sampled` = os que passaram no crivo do stride (inferidos).
+    // A taxa de detecção usa `sampled` como denominador (é o trabalho que o modelo realmente fez).
+    let (mut decoded, mut sampled, mut detected, mut foot_visible) = (0u32, 0u32, 0u32, 0u32);
     let started = std::time::Instant::now();
     loop {
         if read_exact_or_eof(&mut src, &mut buf).is_err() {
             break;
         }
+        if decoded as usize % sample_stride != 0 {
+            decoded += 1;
+            continue;
+        }
         let img = RgbImage::from_raw(w, h, buf.clone()).unwrap();
-        if let Some(pose) = engine.infer(&img, frame_timestamp_ms(frames, fps))? {
+        let ts = frame_timestamp_ms(decoded, fps);
+        sampled += 1;
+        decoded += 1;
+        if let Some(pose) = engine.infer(&img, ts)? {
             detected += 1;
             if layout.has_foot() {
                 let foot_indices = [
@@ -310,20 +334,20 @@ fn run_benchmark(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result
                 }
             }
         }
-        frames += 1;
     }
     dec.wait_success()?;
     let report = benchmark_report(
         input,
-        frames,
+        sampled,
         detected,
         foot_visible,
         started.elapsed().as_secs_f64(),
         fps,
+        sample_stride,
     );
     std::fs::write(out, serde_json::to_string_pretty(&report)?)?;
     println!(
-        "benchmark: {frames} frames em {:.1}s ({:.1} fps) | detecção {:.1}%\nrelatório: {out}",
+        "benchmark: {sampled} frames em {:.1}s ({:.1} fps) | detecção {:.1}%\nrelatório: {out}",
         report["runs"][0]["wall_seconds"].as_f64().unwrap_or(0.0),
         report["runs"][0]["frames"].as_f64().unwrap_or(0.0)
             / report["runs"][0]["wall_seconds"].as_f64().unwrap_or(1.0),
@@ -341,6 +365,7 @@ fn benchmark_report(
     foot_visible: u32,
     wall_seconds: f64,
     source_fps: f32,
+    sample_stride: usize,
 ) -> serde_json::Value {
     let detection_rate = if frames == 0 {
         0.0
@@ -357,7 +382,8 @@ fn benchmark_report(
             "frames": frames,
             "wall_seconds": wall_seconds,
             "source_fps": source_fps,
-            "sample_stride": 1,
+            "effective_fps": source_fps / sample_stride as f32,
+            "sample_stride": sample_stride,
             "measurement_stage": "decode+pose_inference",
             "detection_rate_pct": detection_rate * 100.0,
             "foot_points_visible_frames": foot_visible,
@@ -379,8 +405,20 @@ fn run_video(
     out: &str,
     view: &str,
     overlay: bool,
+    sample_stride: usize,
 ) -> Result<()> {
     let (w, h, fps) = probe(input)?;
+    // Overlay reencoda no fps original -> precisa de TODO frame. Dump de calibração alinha o índice
+    // do frame ao ground-truth -> subamostrar embaralharia o alinhamento. Nos dois casos, stride=1.
+    if sample_stride > 1 && overlay {
+        bail!("--sample-stride > 1 é incompatível com overlay (use --no-overlay)");
+    }
+    if sample_stride > 1 && std::env::var("STRIDE_DUMP_SERIES").is_ok() {
+        bail!("--sample-stride > 1 é incompatível com STRIDE_DUMP_SERIES (alinhamento de calibração)");
+    }
+    // fps EFETIVO: ao inferir 1 a cada N frames, a série de métricas fica em fps/N. A cadência (FFT)
+    // e o contato/voo dependem desse fps — passá-lo errado inventaria cadência. Ver analyze_form.
+    let effective_fps = fps / sample_stride as f32;
     let lay = engine.layout(); // índices semânticos (quadril/joelho/tornozelo...) do layout ativo
     println!(
         "vídeo {w}x{h} @ {fps:.1}fps (vista: {view}, overlay: {overlay}) — layout {}",
@@ -428,6 +466,9 @@ fn run_video(
         (None, None)
     };
     let mut buf = vec![0u8; (w * h * 3) as usize];
+    // `frames` = frames AMOSTRADOS (série de métricas); `decoded` = lidos do ffmpeg (tempo real do
+    // timestamp). Com stride=1 são iguais; com stride>1 inferimos só 1 a cada N decodificados.
+    let mut decoded = 0u32;
     let (mut frames, mut ankle_l, mut ankle_r) = (0u32, Vec::new(), Vec::new());
     // Sinal vertical de solo: BlazePose usa calcanhar+ponta quando ambos são confiáveis; demais
     // backends (ou frames ocluídos) mantêm o tornozelo como fallback comparável.
@@ -457,8 +498,12 @@ fn run_video(
                 break;
             }
         }
+        if decoded as usize % sample_stride != 0 {
+            decoded += 1; // frame decodificado mas fora da amostra: não infere (é o ganho do A4)
+            continue;
+        }
         let mut img: RgbImage = RgbImage::from_raw(w, h, buf.clone()).unwrap();
-        let ts = frame_timestamp_ms(frames, fps);
+        let ts = frame_timestamp_ms(decoded, fps);
         let pose_opt = engine.infer(&img, ts)?;
         if let Some(pose) = &pose_opt {
             let kp = &pose.keypoints;
@@ -542,6 +587,7 @@ fn run_video(
             d.write_all(img.as_raw())?;
         } // só reencoda na passada de overlay
         frames += 1;
+        decoded += 1;
     }
     drop(dst); // fecha o stdin do encoder (se houver) -> ele finaliza o mp4
     dec.wait_success()?;
@@ -573,7 +619,7 @@ fn run_video(
         &ankle_r,
         &hip_y,
         leg_len,
-        fps,
+        effective_fps,
         frames as usize,
         view,
         both_legs_ok,
@@ -735,13 +781,23 @@ mod cli_tests {
 
     #[test]
     fn benchmark_tem_estagio_e_amostragem_explicitos() {
-        let report = super::benchmark_report("/tmp/corrida.mp4", 100, 90, 80, 4.0, 25.0);
+        let report = super::benchmark_report("/tmp/corrida.mp4", 100, 90, 80, 4.0, 25.0, 1);
         let run = &report["runs"][0];
         assert_eq!(run["video"], "corrida.mp4");
         assert_eq!(run["sample_stride"], 1);
+        assert_eq!(run["effective_fps"], 25.0);
         assert_eq!(run["measurement_stage"], "decode+pose_inference");
         assert_eq!(run["reliable"], true);
         assert_eq!(run["foot_points_visible_frames"], 80);
+    }
+
+    #[test]
+    fn benchmark_registra_o_stride_e_o_fps_efetivo() {
+        // A 30fps com stride=2, o modelo processa metade dos frames -> 15 fps efetivos.
+        let report = super::benchmark_report("/tmp/c.mp4", 50, 45, 40, 2.0, 30.0, 2);
+        let run = &report["runs"][0];
+        assert_eq!(run["sample_stride"], 2);
+        assert_eq!(run["effective_fps"], 15.0);
     }
 
     #[test]

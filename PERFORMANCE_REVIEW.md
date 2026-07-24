@@ -108,3 +108,33 @@ shadow quando configurado. O JSON não contém vídeo, paths, tokens, identidade
 biomecânicas, e não é exposto nos endpoints do produto. A próxima decisão de capacidade deve usar
 uma amostra de análises reais para comparar os percentis desses estágios; só então faz sentido decidir
 entre reduzir overlay, amostrar frames ou escalar workers.
+
+### A4 — amostragem temporal (15fps vs 30fps): MEDIDA e REJEITADA como padrão
+
+Adicionamos `--sample-stride N` (infere 1 a cada N frames; o fps EFETIVO = fps/N alimenta a
+cadência/contato pra não inventar número). Medimos stride 1 (30fps) vs stride 2 (15fps) no runtime
+BlazePose empacotado, nos dois vídeos reais.
+
+**Ganho de velocidade — real e grande:** na Laisa, a passada só-métricas caiu de **16,2 s → 8,4 s**
+(~2×; a inferência domina, então metade dos frames ≈ metade do tempo). Detecção seguiu 100%.
+
+**Mas o gate biomecânico REPROVA 15fps.** As métricas de FREQUÊNCIA/amplitude sobrevivem, as de
+TEMPO colapsam:
+
+| Métrica (Laisa) | 30fps | 15fps | Veredito |
+| --- | ---: | ---: | --- |
+| cadência | 165,9 | 165,7 | ✅ (FFT robusta) |
+| osc. vertical | 11,2% | 10,3% | ✅ (~ok) |
+| **tempo de contato** | **142,5 ms** | **86,8 ms** | ❌ colapsa (66 ms/frame é grosso demais) |
+| **tempo de voo** | **109,1 ms** | **64,4 ms** | ❌ colapsa |
+
+**Pior — regressão de SEGURANÇA:** no `video_corrida_23` (voo implausível), a 30fps o gate de timing
+REJEITA GCT/voo (`rejected_timing_vs_cadence`); a 15fps o dado ruim **passa** (164,9/121,1 ms) porque
+a amostragem grossa cai por acaso dentro da tolerância da cadência. Num app de lesão, isso é
+inaceitável: a otimização faria o conselho opinar em cima de dado que a 30fps ele corretamente recusa.
+
+**Decisão:** `--sample-stride` fica no motor pra medição/uso futuro seletivo (ex.: subamostrar só
+cadência/oscilação mantendo contato/voo em taxa cheia), mas o **padrão segue stride=1**. Contato e
+voo exigem a resolução temporal de 30fps; metade disso corrompe a métrica E derrota o gate de
+segurança. O ganho real de performance tem que vir de outro lugar (tracking do MediaPipe entre
+detecções, ou workers), não de jogar fora frames.
