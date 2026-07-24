@@ -34,6 +34,16 @@ def test_angulo_recomputado_dos_landmarks():
     assert cal.angle_at({"present": False}, "knee", "l") is None            # sem pose -> None
 
 
+def test_angulo_3d_dos_world_landmarks():
+    # perna reta em 3D (hip acima, ankle abaixo, colinear no eixo y) -> 180°
+    assert abs(cal.joint_angle_3d([0, -1, 0], [0, 0, 0], [0, 1, 0]) - 180.0) < 0.01
+    # 90° com componente em z (fora do plano da imagem) — o 2D erraria, o 3D pega
+    assert abs(cal.joint_angle_3d([0, -1, 0], [0, 0, 0], [0, 0, 1]) - 90.0) < 0.01
+    rec = {"present": True, "kpw": {"hip_l": [0, -1, 0], "knee_l": [0, 0, 0], "ankle_l": [0, 0, 1]}}
+    assert abs(cal.angle_at_3d(rec, "knee", "l") - 90.0) < 0.01
+    assert cal.angle_at_3d({"present": True, "kp": {}}, "knee", "l") is None   # sem kpw -> None
+
+
 def test_pareado_no_mesmo_frame_bland_altman():
     # baseline 150°, candidato 160° nos MESMOS frames -> viés +10, MAE 10, LoA apertado
     ag = cal.paired_agreement(_dump(150.0), _dump(160.0), "knee", "l")

@@ -38,17 +38,46 @@ def joint_angle(a, b, c) -> Optional[float]:
     return math.degrees(math.acos(cos))
 
 
+def _joint_pts(joint: str, leg: str) -> tuple:
+    return ((f"hip_{leg}", f"knee_{leg}", f"ankle_{leg}") if joint == "knee"
+            else (f"shoulder_{leg}", f"hip_{leg}", f"knee_{leg}"))
+
+
 def angle_at(rec: dict, joint: str, leg: str) -> Optional[float]:
-    """Ângulo do `joint` (knee|hip) da perna `leg` (l|r) NUM frame — dos landmarks, sem depender do
-    backend. None se o frame não tem pose ou falta algum ponto."""
+    """Ângulo do `joint` (knee|hip) da perna `leg` (l|r) NUM frame — dos landmarks 2D, sem depender
+    do backend. None se o frame não tem pose ou falta algum ponto."""
     kp = rec.get("kp") if rec and rec.get("present") else None
     if not kp:
         return None
-    pts = ((f"hip_{leg}", f"knee_{leg}", f"ankle_{leg}") if joint == "knee"
-           else (f"shoulder_{leg}", f"hip_{leg}", f"knee_{leg}"))
+    pts = _joint_pts(joint, leg)
     if any(p not in kp for p in pts):
         return None
     return joint_angle(kp[pts[0]], kp[pts[1]], kp[pts[2]])
+
+
+def joint_angle_3d(a, b, c) -> Optional[float]:
+    """Ângulo interno 3D no vértice b (x,y,z). O mocap mede em 3D; o BlazePose entrega world
+    landmarks 3D → este ângulo é imune à projeção 2D que erra fora do plano."""
+    v1 = [a[i] - b[i] for i in range(3)]
+    v2 = [c[i] - b[i] for i in range(3)]
+    m1 = math.sqrt(sum(x * x for x in v1))
+    m2 = math.sqrt(sum(x * x for x in v2))
+    if m1 == 0 or m2 == 0:
+        return None
+    cos = max(-1.0, min(1.0, sum(v1[i] * v2[i] for i in range(3)) / (m1 * m2)))
+    return math.degrees(math.acos(cos))
+
+
+def angle_at_3d(rec: dict, joint: str, leg: str) -> Optional[float]:
+    """Ângulo 3D do `joint` a partir dos world landmarks (`kpw`). None se o backend não trouxe 3D
+    (só o BlazePose traz) ou faltar ponto."""
+    kpw = rec.get("kpw") if rec and rec.get("present") else None
+    if not kpw:
+        return None
+    pts = _joint_pts(joint, leg)
+    if any(p not in kpw for p in pts):
+        return None
+    return joint_angle_3d(kpw[pts[0]], kpw[pts[1]], kpw[pts[2]])
 
 
 def by_index(dump: dict) -> dict:
