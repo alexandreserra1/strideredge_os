@@ -45,16 +45,42 @@ impl KeypointLayout {
 }
 
 const COCO17_NAMES: [&str; 17] = [
-    "nariz", "olho_e", "olho_d", "orelha_e", "orelha_d", "ombro_e", "ombro_d",
-    "cotovelo_e", "cotovelo_d", "punho_e", "punho_d", "quadril_e", "quadril_d",
-    "joelho_e", "joelho_d", "tornozelo_e", "tornozelo_d",
+    "nariz",
+    "olho_e",
+    "olho_d",
+    "orelha_e",
+    "orelha_d",
+    "ombro_e",
+    "ombro_d",
+    "cotovelo_e",
+    "cotovelo_d",
+    "punho_e",
+    "punho_d",
+    "quadril_e",
+    "quadril_d",
+    "joelho_e",
+    "joelho_d",
+    "tornozelo_e",
+    "tornozelo_d",
 ];
 /// Ligações do esqueleto para CORRIDA: tronco, quadril, pernas e braços. Sem face —
 /// olho/orelha não dizem nada sobre a mecânica de corrida (o Ochy também não usa).
 /// Mantemos só nariz->ombros pra enxergar a inclinação da cabeça/tronco.
 const COCO17_SKELETON: [(usize, usize); 14] = [
-    (15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
-    (5, 7), (7, 9), (6, 8), (8, 10), (0, 5), (0, 6),
+    (15, 13),
+    (13, 11),
+    (16, 14),
+    (14, 12),
+    (11, 12),
+    (5, 11),
+    (6, 12),
+    (5, 6),
+    (5, 7),
+    (7, 9),
+    (6, 8),
+    (8, 10),
+    (0, 5),
+    (0, 6),
 ];
 const COCO17_FACE_SKIP: [usize; 4] = [1, 2, 3, 4];
 
@@ -66,28 +92,71 @@ pub static COCO17: KeypointLayout = KeypointLayout {
     skeleton: &COCO17_SKELETON,
     face_skip: &COCO17_FACE_SKIP,
     nose: 0,
-    shoulder_l: 5, shoulder_r: 6,
-    hip_l: 11, hip_r: 12,
-    knee_l: 13, knee_r: 14,
-    ankle_l: 15, ankle_r: 16,
-    big_toe_l: None, big_toe_r: None,
-    small_toe_l: None, small_toe_r: None,
-    heel_l: None, heel_r: None,
+    shoulder_l: 5,
+    shoulder_r: 6,
+    hip_l: 11,
+    hip_r: 12,
+    knee_l: 13,
+    knee_r: 14,
+    ankle_l: 15,
+    ankle_r: 16,
+    big_toe_l: None,
+    big_toe_r: None,
+    small_toe_l: None,
+    small_toe_r: None,
+    heel_l: None,
+    heel_r: None,
 };
 
 const HALPE26_NAMES: [&str; 26] = [
-    "nariz", "olho_e", "olho_d", "orelha_e", "orelha_d", "ombro_e", "ombro_d",
-    "cotovelo_e", "cotovelo_d", "punho_e", "punho_d", "quadril_e", "quadril_d",
-    "joelho_e", "joelho_d", "tornozelo_e", "tornozelo_d",
-    "cabeca", "pescoco", "quadril_c", "hallux_e", "hallux_d",
-    "dedinho_e", "dedinho_d", "calcanhar_e", "calcanhar_d",
+    "nariz",
+    "olho_e",
+    "olho_d",
+    "orelha_e",
+    "orelha_d",
+    "ombro_e",
+    "ombro_d",
+    "cotovelo_e",
+    "cotovelo_d",
+    "punho_e",
+    "punho_d",
+    "quadril_e",
+    "quadril_d",
+    "joelho_e",
+    "joelho_d",
+    "tornozelo_e",
+    "tornozelo_d",
+    "cabeca",
+    "pescoco",
+    "quadril_c",
+    "hallux_e",
+    "hallux_d",
+    "dedinho_e",
+    "dedinho_d",
+    "calcanhar_e",
+    "calcanhar_d",
 ];
 /// Esqueleto COCO reaproveitado + os elos do pé (tornozelo→calcanhar→hallux). Blindado por asset:
 /// só passa a ser desenhado quando o modelo Halpe26 estiver plugado (ver README-KEYPOINTS.md).
 const HALPE26_SKELETON: [(usize, usize); 18] = [
-    (15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
-    (5, 7), (7, 9), (6, 8), (8, 10), (0, 5), (0, 6),
-    (15, 24), (24, 20), (16, 25), (25, 21),   // tornozelo→calcanhar→hallux (E/D)
+    (15, 13),
+    (13, 11),
+    (16, 14),
+    (14, 12),
+    (11, 12),
+    (5, 11),
+    (6, 12),
+    (5, 6),
+    (5, 7),
+    (7, 9),
+    (6, 8),
+    (8, 10),
+    (0, 5),
+    (0, 6),
+    (15, 24),
+    (24, 20),
+    (16, 25),
+    (25, 21), // tornozelo→calcanhar→hallux (E/D)
 ];
 const HALPE26_FACE_SKIP: [usize; 4] = [1, 2, 3, 4];
 
@@ -100,13 +169,116 @@ pub static HALPE26: KeypointLayout = KeypointLayout {
     skeleton: &HALPE26_SKELETON,
     face_skip: &HALPE26_FACE_SKIP,
     nose: 0,
-    shoulder_l: 5, shoulder_r: 6,
-    hip_l: 11, hip_r: 12,
-    knee_l: 13, knee_r: 14,
-    ankle_l: 15, ankle_r: 16,
-    big_toe_l: Some(20), big_toe_r: Some(21),
-    small_toe_l: Some(22), small_toe_r: Some(23),
-    heel_l: Some(24), heel_r: Some(25),
+    shoulder_l: 5,
+    shoulder_r: 6,
+    hip_l: 11,
+    hip_r: 12,
+    knee_l: 13,
+    knee_r: 14,
+    ankle_l: 15,
+    ankle_r: 16,
+    big_toe_l: Some(20),
+    big_toe_r: Some(21),
+    small_toe_l: Some(22),
+    small_toe_r: Some(23),
+    heel_l: Some(24),
+    heel_r: Some(25),
+};
+
+/// BlazePose GHUM (MediaPipe Pose Landmarker): 33 landmarks. Os índices seguem o contrato
+/// público do MediaPipe. `foot_index` é a ponta distal rastreada pelo modelo, não um hálux
+/// anatômico; ele ocupa temporariamente o campo legado `big_toe_*` para o restante do pipeline
+/// conseguir testar cobertura de pé sem inventar um ponto que o modelo não entrega.
+const BLAZEPOSE33_NAMES: [&str; 33] = [
+    "nariz",
+    "olho_e_interno",
+    "olho_e",
+    "olho_e_externo",
+    "olho_d_interno",
+    "olho_d",
+    "olho_d_externo",
+    "orelha_e",
+    "orelha_d",
+    "boca_e",
+    "boca_d",
+    "ombro_e",
+    "ombro_d",
+    "cotovelo_e",
+    "cotovelo_d",
+    "punho_e",
+    "punho_d",
+    "mindinho_e",
+    "mindinho_d",
+    "indicador_e",
+    "indicador_d",
+    "polegar_e",
+    "polegar_d",
+    "quadril_e",
+    "quadril_d",
+    "joelho_e",
+    "joelho_d",
+    "tornozelo_e",
+    "tornozelo_d",
+    "calcanhar_e",
+    "calcanhar_d",
+    "indicador_pe_e",
+    "indicador_pe_d",
+];
+const BLAZEPOSE33_SKELETON: [(usize, usize); 28] = [
+    (0, 11),
+    (0, 12),
+    (11, 12),
+    (11, 13),
+    (13, 15),
+    (15, 17),
+    (15, 19),
+    (15, 21),
+    (17, 19),
+    (12, 14),
+    (14, 16),
+    (16, 18),
+    (16, 20),
+    (16, 22),
+    (18, 20),
+    (11, 23),
+    (12, 24),
+    (23, 24),
+    (23, 25),
+    (25, 27),
+    (27, 29),
+    (29, 31),
+    (27, 31),
+    (24, 26),
+    (26, 28),
+    (28, 30),
+    (30, 32),
+    (28, 32),
+];
+const BLAZEPOSE33_FACE_SKIP: [usize; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+/// Layout do candidato comercialmente permissivo. Só o adaptador LiteRT pode emiti-lo; até lá
+/// ele não é selecionável na CLI. Pontos ausentes são `None`, nunca coordenadas sintetizadas.
+pub static BLAZEPOSE33: KeypointLayout = KeypointLayout {
+    name: "blazepose33",
+    count: 33,
+    names: &BLAZEPOSE33_NAMES,
+    skeleton: &BLAZEPOSE33_SKELETON,
+    face_skip: &BLAZEPOSE33_FACE_SKIP,
+    nose: 0,
+    shoulder_l: 11,
+    shoulder_r: 12,
+    hip_l: 23,
+    hip_r: 24,
+    knee_l: 25,
+    knee_r: 26,
+    ankle_l: 27,
+    ankle_r: 28,
+    big_toe_l: Some(31),
+    big_toe_r: Some(32),
+    small_toe_l: None,
+    small_toe_r: None,
+    heel_l: Some(29),
+    heel_r: Some(30),
 };
 
 #[cfg(test)]
@@ -123,5 +295,29 @@ mod tests {
         assert_eq!(HALPE26.names[HALPE26.small_toe_r.unwrap()], "dedinho_d");
         assert_eq!(HALPE26.names[HALPE26.heel_l.unwrap()], "calcanhar_e");
         assert_eq!(HALPE26.names[HALPE26.heel_r.unwrap()], "calcanhar_d");
+    }
+
+    #[test]
+    fn blazepose33_mapeia_pe_sem_inventar_hallux_ou_dedinho() {
+        assert_eq!(BLAZEPOSE33.count, 33);
+        assert!(BLAZEPOSE33.has_foot());
+        assert_eq!(
+            BLAZEPOSE33.names[BLAZEPOSE33.heel_l.unwrap()],
+            "calcanhar_e"
+        );
+        assert_eq!(
+            BLAZEPOSE33.names[BLAZEPOSE33.heel_r.unwrap()],
+            "calcanhar_d"
+        );
+        assert_eq!(
+            BLAZEPOSE33.names[BLAZEPOSE33.big_toe_l.unwrap()],
+            "indicador_pe_e"
+        );
+        assert_eq!(
+            BLAZEPOSE33.names[BLAZEPOSE33.big_toe_r.unwrap()],
+            "indicador_pe_d"
+        );
+        assert_eq!(BLAZEPOSE33.small_toe_l, None);
+        assert_eq!(BLAZEPOSE33.small_toe_r, None);
     }
 }

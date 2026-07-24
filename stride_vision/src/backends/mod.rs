@@ -5,9 +5,9 @@
 //! implícitos. Ambos falam o mesmo contrato `PoseBackend`, então quem consome não sabe qual roda.
 
 mod blazepose;
-mod yolo;
 mod rtm;
+mod yolo;
 
 pub use blazepose::BlazePoseBackend;
-pub use yolo::PoseEngine;
 pub use rtm::RtmPose26Backend;
+pub use yolo::PoseEngine;

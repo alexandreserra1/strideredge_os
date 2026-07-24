@@ -11,8 +11,8 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use stride_vision::{
     analyze_form, contact_angle, contact_flight_ms, draw_angles, draw_pose, foot_ground_y,
     foot_strike, hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
-    timing_consistent_with_cadence, trunk_lean_deg,
-    BlazePoseBackend, Pose, PoseBackend, PoseEngine, RtmPose26Backend,
+    timing_consistent_with_cadence, trunk_lean_deg, BlazePoseBackend, Pose, PoseBackend,
+    PoseEngine, RtmPose26Backend,
 };
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
@@ -28,6 +28,23 @@ fn frame_timestamp_ms(frame: u32, fps: f32) -> u64 {
     } else {
         frame as u64
     }
+}
+
+/// Persiste o dump opt-in de calibração. O caminho vem da configuração local do operador; criar
+/// apenas seu diretório-pai torna o CLI utilizável em `/tmp/.../dumps/` sem afetar o vídeo ou os
+/// caminhos de produção. Um path sem pai (ex.: `dump.json`) continua válido.
+fn write_frame_dump(dump_path: &str, doc: &serde_json::Value) -> Result<()> {
+    let path = Path::new(dump_path);
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("criando diretório do dump {}", parent.display()))?;
+    }
+    std::fs::write(path, serde_json::to_string(doc)?)
+        .with_context(|| format!("gravando dump de calibração {}", path.display()))?;
+    Ok(())
 }
 
 /// Um registro por FRAME DECODIFICADO pro dump de calibração: índice, timestamp, se houve pose,
@@ -543,7 +560,7 @@ fn run_video(
         let doc = serde_json::json!({
             "layout": lay.name, "fps": fps, "frames_total": frames, "frames": frame_records,
         });
-        std::fs::write(dump_path, serde_json::to_string(&doc)?)?;
+        write_frame_dump(dump_path, &doc)?;
     }
 
     // métricas consolidadas -> JSON ao lado do vídeo (o backend lê daqui)
@@ -603,9 +620,11 @@ fn run_video(
         // estoura (evento de solo perdido inflou o voo — ex.: video_corrida_23, 498ms vs passo
         // 361ms), a temporização é não-confiável -> nulifica GCT/voo (não vira conselho) e marca o
         // motivo. Cadência/ângulos seguem válidos; a captura não é rejeitada, só o timing suspeito.
-        if let (Some(cad), Some(g), Some(f)) =
-            (metrics.cadence_spm, metrics.ground_contact_ms, metrics.flight_ms)
-        {
+        if let (Some(cad), Some(g), Some(f)) = (
+            metrics.cadence_spm,
+            metrics.ground_contact_ms,
+            metrics.flight_ms,
+        ) {
             if !timing_consistent_with_cadence(cad, g, f) {
                 metrics.ground_contact_ms = None;
                 metrics.flight_ms = None;
@@ -703,7 +722,7 @@ fn oriented_dimensions(width: u32, height: u32, rotation: i32) -> (u32, u32) {
 
 #[cfg(test)]
 mod cli_tests {
-    use super::{frame_timestamp_ms, oriented_dimensions, ManagedChild};
+    use super::{frame_timestamp_ms, oriented_dimensions, write_frame_dump, ManagedChild};
     use std::process::Command;
 
     #[test]
@@ -738,5 +757,16 @@ mod cli_tests {
         assert_eq!(frame_timestamp_ms(1, 30.0), 33);
         assert_eq!(frame_timestamp_ms(30, 30.0), 1_000);
         assert_eq!(frame_timestamp_ms(4, 0.0), 4);
+    }
+
+    #[test]
+    fn dump_cria_diretorios_ausentes() {
+        let root =
+            std::env::temp_dir().join(format!("strideredge-dump-test-{}", std::process::id()));
+        let target = root.join("nested").join("series.json");
+        let doc = serde_json::json!({"frames": []});
+        write_frame_dump(target.to_str().unwrap(), &doc).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "{\"frames\":[]}");
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

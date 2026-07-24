@@ -30,7 +30,11 @@ impl PoseEngine {
     /// Motor com um layout explícito (ex.: `&HALPE26` quando o modelo estiver disponível).
     pub fn with_layout(model_path: &str, layout: &'static KeypointLayout) -> Result<Self> {
         let session = load_session(model_path)?;
-        Ok(Self { session, layout, last_center: None })
+        Ok(Self {
+            session,
+            layout,
+            last_center: None,
+        })
     }
 
     /// Layout ativo deste motor (índices semânticos p/ quem consome as poses).
@@ -47,7 +51,8 @@ impl PoseEngine {
         let resized = image::imageops::resize(img, nw, nh, image::imageops::FilterType::Triangle);
         let (px, py) = (((INPUT - nw) / 2) as f32, ((INPUT - nh) / 2) as f32);
 
-        let mut input = Array4::<f32>::from_elem((1, 3, INPUT as usize, INPUT as usize), 114.0 / 255.0);
+        let mut input =
+            Array4::<f32>::from_elem((1, 3, INPUT as usize, INPUT as usize), 114.0 / 255.0);
         for (x, y, p) in resized.enumerate_pixels() {
             let (xx, yy) = (x as usize + px as usize, y as usize + py as usize);
             for c in 0..3 {
@@ -67,25 +72,32 @@ impl PoseEngine {
         // candidatos acima do limiar — podem ser PESSOAS DIFERENTES no quadro (corredor +
         // apresentadores). Escolhe por CONSISTÊNCIA TEMPORAL: a mais próxima do frame anterior
         // (não troca de pessoa); na 1ª vez (ou reacquire), a de maior confiança.
-        let mut cands: Vec<(f32, usize, f32, f32)> = Vec::new();   // (conf, i, cx, cy) em 640-space
+        let mut cands: Vec<(f32, usize, f32, f32)> = Vec::new(); // (conf, i, cx, cy) em 640-space
         for i in 0..n {
             if at(4, i) > 0.35 {
                 cands.push((at(4, i), i, at(0, i), at(1, i)));
             }
         }
-        if cands.is_empty() { return Ok(None); }
+        if cands.is_empty() {
+            return Ok(None);
+        }
         let (conf, i) = match self.last_center {
             Some((lx, ly)) => {
-                let b = cands.iter()
+                let b = cands
+                    .iter()
                     .min_by(|a, b| {
                         let da = (a.2 - lx).powi(2) + (a.3 - ly).powi(2);
                         let db = (b.2 - lx).powi(2) + (b.3 - ly).powi(2);
                         da.partial_cmp(&db).unwrap()
-                    }).unwrap();
+                    })
+                    .unwrap();
                 (b.0, b.1)
             }
             None => {
-                let b = cands.iter().max_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+                let b = cands
+                    .iter()
+                    .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+                    .unwrap();
                 (b.0, b.1)
             }
         };
@@ -97,7 +109,12 @@ impl PoseEngine {
             let y = (at(6 + k * 3, i) - py) / scale;
             kps[k] = (x.clamp(0.0, ow), y.clamp(0.0, oh), at(7 + k * 3, i));
         }
-        Ok(Some(Pose { keypoints: kps, confidence: conf, layout: self.layout, world: None }))
+        Ok(Some(Pose {
+            keypoints: kps,
+            confidence: conf,
+            layout: self.layout,
+            world: None,
+        }))
     }
 }
 

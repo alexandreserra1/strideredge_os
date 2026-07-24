@@ -17,7 +17,7 @@ use crate::pose::{Pose, PoseBackend};
 const LANDMARK_COUNT: usize = 33;
 const FIELDS_PER_LANDMARK: usize = 4;
 const RAW_VALUES: usize = LANDMARK_COUNT * FIELDS_PER_LANDMARK;
-const WORLD_VALUES: usize = LANDMARK_COUNT * 3;   // (x,y,z) em metros por keypoint
+const WORLD_VALUES: usize = LANDMARK_COUNT * 3; // (x,y,z) em metros por keypoint
 const ERROR_BUFFER: usize = 512;
 
 #[repr(C)]
@@ -73,8 +73,12 @@ impl BlazePoseBackend {
         Ok(Self { bridge })
     }
 
-    fn pose_from_raw(raw: &[f32; RAW_VALUES], world: &[f32; WORLD_VALUES],
-                     width: u32, height: u32) -> Result<Pose> {
+    fn pose_from_raw(
+        raw: &[f32; RAW_VALUES],
+        world: &[f32; WORLD_VALUES],
+        width: u32,
+        height: u32,
+    ) -> Result<Pose> {
         let mut keypoints = Vec::with_capacity(LANDMARK_COUNT);
         let mut confidence_sum = 0.0;
         for index in 0..LANDMARK_COUNT {
@@ -107,7 +111,9 @@ impl BlazePoseBackend {
                 (f(world[w]), f(world[w + 1]), f(world[w + 2]))
             })
             .collect();
-        let has_world = world_pts.iter().any(|&(x, y, z)| x != 0.0 || y != 0.0 || z != 0.0);
+        let has_world = world_pts
+            .iter()
+            .any(|&(x, y, z)| x != 0.0 || y != 0.0 || z != 0.0);
         Ok(Pose {
             keypoints,
             confidence: confidence_sum / LANDMARK_COUNT as f32,
@@ -181,17 +187,17 @@ mod tests {
         assert_eq!(pose.layout.name, "blazepose33");
         assert_eq!(pose.keypoints[0], (80.0, 60.0, 0.6));
         assert_eq!(pose.keypoints[1], (160.0, 40.0, 0.7));
-        assert!(pose.world.is_none());   // world todo-zero => None (runtime não trouxe 3D)
+        assert!(pose.world.is_none()); // world todo-zero => None (runtime não trouxe 3D)
     }
 
     #[test]
     fn world_landmarks_3d_entram_quando_presentes() {
         let mut raw = [0.5; RAW_VALUES];
         let mut world = [0.0f32; WORLD_VALUES];
-        world[..3].copy_from_slice(&[0.10, -0.20, 0.30]);   // metros
+        world[..3].copy_from_slice(&[0.10, -0.20, 0.30]); // metros
         let pose = BlazePoseBackend::pose_from_raw(&raw, &world, 100, 100).unwrap();
         assert_eq!(pose.world.as_ref().unwrap()[0], (0.10, -0.20, 0.30));
-        raw[2] = f32::NAN;   // NaN na confiança ainda derruba
+        raw[2] = f32::NAN; // NaN na confiança ainda derruba
         assert!(BlazePoseBackend::pose_from_raw(&raw, &world, 100, 100).is_err());
     }
 
