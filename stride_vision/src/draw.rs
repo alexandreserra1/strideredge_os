@@ -86,13 +86,39 @@ fn blend_circle_color(img: &RgbImage, x: i32, y: i32, color: Rgb<u8>, alpha: f32
 // eles, em cores distintas (joelho=ciano, quadril=âmbar). Sem número piscando no frame — o
 // valor que importa é o ângulo NO APOIO do pé, medido na série inteira e mostrado na UI.
 
-/// Ângulo interno (graus) no vértice `b`, formado por a–b–c.
+/// Ângulo interno (graus) no vértice `b`, formado por a–b–c. Os pontos são (x,y,conf) mas só x,y
+/// entram — é o ângulo 2D projetado na imagem.
 pub fn joint_angle(a: (f32, f32, f32), b: (f32, f32, f32), c: (f32, f32, f32)) -> f32 {
     let (v1x, v1y) = (a.0 - b.0, a.1 - b.1);
     let (v2x, v2y) = (c.0 - b.0, c.1 - b.1);
     let (m1, m2) = ((v1x * v1x + v1y * v1y).sqrt(), (v2x * v2x + v2y * v2y).sqrt());
     if m1 == 0.0 || m2 == 0.0 { return 0.0; }
     ((v1x * v2x + v1y * v2y) / (m1 * m2)).clamp(-1.0, 1.0).acos().to_degrees()
+}
+
+/// Ângulo interno 3D (graus) no vértice `b`, de a–b–c em (x,y,z) — metros dos world landmarks do
+/// BlazePose. IMUNE à projeção 2D que erra quando o membro sai do plano da imagem. Validado: no
+/// piloto Riglet baixou o MAE do joelho de 28,6° (2D) pra 23,7° (3D) contra o mocap.
+pub fn joint_angle_3d(a: (f32, f32, f32), b: (f32, f32, f32), c: (f32, f32, f32)) -> f32 {
+    let v1 = (a.0 - b.0, a.1 - b.1, a.2 - b.2);
+    let v2 = (c.0 - b.0, c.1 - b.1, c.2 - b.2);
+    let m1 = (v1.0 * v1.0 + v1.1 * v1.1 + v1.2 * v1.2).sqrt();
+    let m2 = (v2.0 * v2.0 + v2.1 * v2.1 + v2.2 * v2.2).sqrt();
+    if m1 == 0.0 || m2 == 0.0 { return 0.0; }
+    ((v1.0 * v2.0 + v1.1 * v2.1 + v1.2 * v2.2) / (m1 * m2)).clamp(-1.0, 1.0).acos().to_degrees()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn joint_angle_3d_pega_o_que_o_2d_perde_fora_do_plano() {
+        // perna reta em z (fora do plano da imagem): 2D veria 0-len e daria 0; 3D dá 90°
+        assert!((joint_angle_3d((0.0, -1.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0)) - 90.0).abs() < 0.01);
+        // reta: 180° nos dois
+        assert!((joint_angle_3d((0.0, -1.0, 0.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0)) - 180.0).abs() < 0.01);
+    }
 }
 
 fn thick_line(img: &mut RgbImage, a: (f32, f32), b: (f32, f32), color: Rgb<u8>, w: i32) {

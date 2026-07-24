@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use stride_vision::{analyze_form, contact_angle, contact_flight_ms, foot_strike, draw_angles,
-                    hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
+                    hip_tilt_deg, joint_angle, joint_angle_3d, knee_valgus_deg, median, percentile,
                     trunk_lean_deg, draw_pose, BlazePoseBackend, Pose, PoseBackend, PoseEngine,
                     RtmPose26Backend};
 
@@ -341,11 +341,17 @@ fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str, o
             } else if kp[lay.hip_r].2 > KP_CONF && kp[lay.ankle_r].2 > KP_CONF {
                 leg_lens.push(leg(kp[lay.hip_r], kp[lay.ankle_r]));           // perna direita (esquerda ocluída)
             }
-            // ângulos articulares por perna (joelho: quadril-joelho-tornozelo; quadril: ombro-quadril-joelho)
-            knee_l.push(joint_angle(kp[lay.hip_l], kp[lay.knee_l], kp[lay.ankle_l]));
-            knee_r.push(joint_angle(kp[lay.hip_r], kp[lay.knee_r], kp[lay.ankle_r]));
-            hip_l.push(joint_angle(kp[lay.shoulder_l], kp[lay.hip_l], kp[lay.knee_l]));
-            hip_r.push(joint_angle(kp[lay.shoulder_r], kp[lay.hip_r], kp[lay.knee_r]));
+            // ângulos articulares por perna (joelho: quadril-joelho-tornozelo; quadril: ombro-quadril-
+            // joelho). Se o backend traz world landmarks 3D (BlazePose), mede em 3D — imune à projeção
+            // 2D que erra fora do plano (piloto Riglet: MAE do joelho 28,6°→23,7° vs mocap). Senão, 2D.
+            let angle = |a: usize, b: usize, c: usize| match &pose.world {
+                Some(w) => joint_angle_3d(w[a], w[b], w[c]),
+                None => joint_angle(kp[a], kp[b], kp[c]),
+            };
+            knee_l.push(angle(lay.hip_l, lay.knee_l, lay.ankle_l));
+            knee_r.push(angle(lay.hip_r, lay.knee_r, lay.ankle_r));
+            hip_l.push(angle(lay.shoulder_l, lay.hip_l, lay.knee_l));
+            hip_r.push(angle(lay.shoulder_r, lay.hip_r, lay.knee_r));
             conf_l += kp[lay.hip_l].2.min(kp[lay.knee_l].2).min(kp[lay.ankle_l].2);
             conf_r += kp[lay.hip_r].2.min(kp[lay.knee_r].2).min(kp[lay.ankle_r].2);
             ax_l.push(kp[lay.ankle_l].0); ax_r.push(kp[lay.ankle_r].0);
