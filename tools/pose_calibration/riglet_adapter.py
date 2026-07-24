@@ -110,6 +110,19 @@ def condition_events_truth(csv_paths: list, side: str, event: str = "strike",
     return sorted(set(frames)), truth
 
 
+def visible_leg(dump: dict) -> str:
+    """Perna VISÍVEL (a da frente na lateral) = maior confiança somada de joelho+tornozelo. A de
+    trás é ocluída e não-confiável — comparar ela contra o mocac é ruído (é o que inflava o MAE)."""
+    tot = {"l": 0.0, "r": 0.0}
+    for rec in dump.get("frames", []):
+        kp = rec.get("kp") if rec.get("present") else None
+        if not kp:
+            continue
+        for leg in ("l", "r"):
+            tot[leg] += sum(kp[n][2] for n in (f"knee_{leg}", f"ankle_{leg}") if n in kp)
+    return "r" if tot["r"] >= tot["l"] else "l"
+
+
 def run_pose(binary: str, avi: str, backend: str, out_json: str, env: dict) -> None:
     """Roda o motor Rust no AVI com STRIDE_DUMP_SERIES → dump por-frame do backend. Falha alto."""
     overlay = str(Path(out_json).with_suffix(".overlay.mp4"))

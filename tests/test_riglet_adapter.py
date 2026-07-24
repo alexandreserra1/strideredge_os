@@ -63,6 +63,15 @@ def test_apoio_medio_usa_strike_e_off(tmp_path):
     assert frames == [55] and truth["knee"] == {55: 140.0}
 
 
+def test_visible_leg_escolhe_a_perna_de_maior_confianca():
+    dump = {"frames": [
+        {"present": True, "kp": {"knee_l": [0, 0, 0.9], "ankle_l": [0, 0, 0.9],
+                                 "knee_r": [0, 0, 0.2], "ankle_r": [0, 0, 0.1]}},
+        {"present": False},
+    ]}
+    assert ra.visible_leg(dump) == "l"                            # esquerda bem mais confiável
+
+
 def test_check_sync_casa_apoios_da_pose_com_strikes(tmp_path):
     # dump sintético: tornozelo em mínimo (y alto) exatamente nos frames de strike -> lag ~0
     frames = [50, 75]
