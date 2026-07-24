@@ -27,9 +27,9 @@ def clear_synthetic(con) -> None:
 
 
 def seed(con, n: int = 400, seed_val: int = 42, window_weeks: int = 8,
-         prefix: str = SYNTHETIC_PREFIX) -> dict:
-    """Semeia `n` usuários. Devolve contagem {injured, healthy}. `prefix` marca as linhas
-    (default sintético; testes podem simular usuário real com outro prefixo)."""
+         prefix: str = SYNTHETIC_PREFIX, training_approved: bool = True) -> dict:
+    """Semeia `n` usuários. Dados sintéticos são controlados e já nascem aprovados para testar
+    o pipeline; ainda assim `risk_assessor` os exclui da decisão de produção pelo prefixo."""
     if prefix == SYNTHETIC_PREFIX:
         clear_synthetic(con)
     onset = date(2026, 6, 1)
@@ -39,7 +39,7 @@ def seed(con, n: int = 400, seed_val: int = 42, window_weeks: int = 8,
         uid = prefix + str(uuid.uuid4())
         _insert_analysis(con, uid, ex["features"], before if ex["label"] else onset)
         if ex["label"]:
-            _insert_injury(con, uid, ex["diagnosis"], onset)
+            _insert_injury(con, uid, ex["diagnosis"], onset, training_approved)
             injured += 1
     return {"injured": injured, "healthy": n - injured}
 
@@ -51,9 +51,10 @@ def _insert_analysis(con, uid: str, features: dict, when: date) -> None:
         [str(uuid.uuid4()), json.dumps(features), uid, when])
 
 
-def _insert_injury(con, uid: str, diagnosis: str, onset: date) -> None:
+def _insert_injury(con, uid: str, diagnosis: str, onset: date, training_approved: bool = False) -> None:
     region = DIAGNOSES[diagnosis]["region"]
     con.execute(
-        "INSERT INTO injury_reports (id, user_id, region, diagnosis, onset_date, q_pain) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        [str(uuid.uuid4()), uid, region, diagnosis, onset, 2])
+        "INSERT INTO injury_reports "
+        "(id, user_id, region, diagnosis, onset_date, q_pain, training_approved) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [str(uuid.uuid4()), uid, region, diagnosis, onset, 2, training_approved])

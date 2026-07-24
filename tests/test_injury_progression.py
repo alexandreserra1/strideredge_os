@@ -57,6 +57,7 @@ def test_padrao_pre_lesao_bate_com_a_lesao_reportada():
         onset = date(2026, 5, 1) + timedelta(weeks=8)
         InjuryService().log(uid, {"region": "joelho_frente", "diagnosis": "pfp", "side": "direito",
                                   "onset_date": str(onset), "q_pain": 3})
+        con.execute("UPDATE injury_reports SET training_approved = TRUE WHERE user_id = ?", [uid])
         val = validate_literature_model()
         case = next(c for c in val["cases"] if c["diagnosis"] == "pfp")
         # os fatores de PFP (queda pélvica + valgo) foram flagueados ANTES do onset

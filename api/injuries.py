@@ -60,16 +60,24 @@ class InjuryService:
             f"SELECT {_COLS} FROM injury_reports WHERE id = ?", [injury_id]).fetchone()
         return self._row(row) if row else None
 
+    def get_for_user(self, injury_id: str, user_id: str) -> Optional[dict]:
+        """Leitura de recurso do atleta: um UUID conhecido nunca basta para atravessar contas."""
+        row = get_connection().execute(
+            f"SELECT {_COLS} FROM injury_reports WHERE id = ? AND user_id = ?",
+            [injury_id, user_id]).fetchone()
+        return self._row(row) if row else None
+
     def list(self, user_id: str) -> list:
         rows = get_connection().execute(
             f"SELECT {_COLS} FROM injury_reports WHERE user_id = ? ORDER BY onset_date DESC NULLS LAST",
             [user_id]).fetchall()
         return [self._row(r) for r in rows]
 
-    def classify(self, injury_id: str, classifier) -> Optional[dict]:
+    def classify(self, injury_id: str, user_id: str, classifier) -> Optional[dict]:
         """Coach-time: mapeia o texto livre → diagnóstico da taxonomia via LLM e PERSISTE só se
-        veio um id válido (confiança alta). Não sobrescreve um diagnóstico já existente."""
-        report = self.get(injury_id)
+        veio um id válido (confiança alta). Não sobrescreve um diagnóstico já existente.
+        A lesão precisa pertencer ao atleta autenticado em toda leitura e escrita."""
+        report = self.get_for_user(injury_id, user_id)
         if not report:
             return None
         if report.get("diagnosis"):
@@ -77,9 +85,9 @@ class InjuryService:
         result = classifier.classify(report.get("symptom_text"), report.get("region"))
         if result["diagnosis"]:
             get_connection().execute(
-                "UPDATE injury_reports SET diagnosis = ? WHERE id = ?",
-                [result["diagnosis"], injury_id])
-        return self.get(injury_id)
+                "UPDATE injury_reports SET diagnosis = ? WHERE id = ? AND user_id = ?",
+                [result["diagnosis"], injury_id, user_id])
+        return self.get_for_user(injury_id, user_id)
 
     @classmethod
     def _row(cls, r) -> dict:

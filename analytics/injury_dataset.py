@@ -65,7 +65,7 @@ def build_dataset(window_weeks: int = 8) -> list:
     injuries = con.execute(
         "SELECT user_id, diagnosis, region, onset_date FROM injury_reports "
         "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL "
-        "AND diagnosis IS NOT NULL").fetchall()
+        "AND diagnosis IS NOT NULL AND training_approved = TRUE").fetchall()
     out = []
     for user_id, dx, region, onset in injuries:
         # rótulo tem que estar no vocabulário vigente (dx de versão antiga da taxonomia não treina)
@@ -87,19 +87,23 @@ def build_training_set(window_weeks: int = 8) -> list:
     # positivos: lesionados com análise na janela anterior
     injuries = con.execute(
         "SELECT user_id, onset_date FROM injury_reports "
-        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL AND diagnosis IS NOT NULL").fetchall()
+        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL AND diagnosis IS NOT NULL "
+        "AND training_approved = TRUE").fetchall()
     injured_users = set()
     for user_id, onset in injuries:
         injured_users.add(str(user_id))
         feats = _mean_features(_analyses_before(con, user_id, onset, window_weeks))
         if feats:
             out.append({"user_id": str(user_id), "features": feats, "label": 1})
-    # negativos: atletas com análise 'done' e SEM nenhuma lesão registrada
+    # Negativos precisam de atleta sem NENHUMA lesão relatada: um outcome ainda pendente é
+    # desconhecido, não pode virar artificialmente saudável só porque não foi aprovado.
+    reported_users = {str(r[0]) for r in con.execute(
+        "SELECT DISTINCT user_id FROM injury_reports WHERE user_id IS NOT NULL").fetchall()}
     rows = con.execute(
         "SELECT DISTINCT user_id FROM form_analyses WHERE user_id IS NOT NULL AND status = 'done'"
     ).fetchall()
     for (user_id,) in rows:
-        if str(user_id) in injured_users:
+        if str(user_id) in injured_users or str(user_id) in reported_users:
             continue
         metrics = [json.loads(r[0]) for r in con.execute(
             "SELECT metrics FROM form_analyses WHERE user_id = ? AND status = 'done' "
@@ -117,7 +121,7 @@ def validate_literature_model(window_weeks: int = 8) -> dict:
     targets = ideal_targets()
     injuries = con.execute(
         "SELECT user_id, diagnosis, onset_date FROM injury_reports "
-        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL").fetchall()
+        "WHERE onset_date IS NOT NULL AND user_id IS NOT NULL AND training_approved = TRUE").fetchall()
     cases = []
     for user_id, dx, onset in injuries:
         if not (dx and is_mapped(dx)):
