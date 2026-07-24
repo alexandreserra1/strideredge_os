@@ -39,3 +39,20 @@
 OptiTrack 120 Hz, CC BY 4.0) — é o **nosso caso de uso real** (câmera de celular, lateral, mais
 fechada) e melhor resolução → o MAE deve cair pra uma faixa onde dá pra **discriminar** os backends.
 O adaptador já existe; só precisa de um ingestor pro formato do Zenodo (marker labels + sync).
+
+## Atualização — world landmarks 3D do BlazePose (n=12)
+
+A ponte C++ descartava o `pose_world_landmarks` (3D métrico) do BlazePose; ligá-lo e medir o ângulo
+em 3D (`angle_at_3d`, imune à projeção 2D) **mudou o veredito**:
+
+| Backend | MAE médio do joelho |
+|---|---|
+| YOLO 2D | 26,2° |
+| BlazePose 2D | 28,6° (perdia pro YOLO) |
+| **BlazePose 3D (world)** | **23,7°** (ganha) — melhor que YOLO em **9/12**, melhor que o próprio 2D em 9/12 |
+
+**Conclusões:** (1) o BlazePose se sobressai por uma capacidade REAL (3D que o YOLO não tem), não por
+tuning; (2) inverte o empate anterior a favor do BlazePose; (3) MAS 23,7° ainda é grande — o gargalo
+restante é a RESOLUÇÃO do vídeo overground (644×366). O erro absoluto deve cair no Zenodo (vídeo de
+celular, fechado) = nosso caso de uso. **Próximo passo pra produção:** ligar o ângulo 3D no pipeline
+de métricas (`analyze_form`) pro BlazePose — hoje é só o experimento de calibração.
