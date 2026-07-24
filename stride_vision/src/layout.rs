@@ -281,9 +281,28 @@ pub static BLAZEPOSE33: KeypointLayout = KeypointLayout {
     heel_r: Some(30),
 };
 
+/// Layout estático por nome — usado pra reconstruir a `Pose` a partir de um sidecar de keypoints
+/// (overlay sem modelo), sem adivinhar contagem/esqueleto. Fonte única: os statics acima.
+pub fn layout_by_name(name: &str) -> Option<&'static KeypointLayout> {
+    match name {
+        "coco17" => Some(&COCO17),
+        "halpe26" => Some(&HALPE26),
+        "blazepose33" => Some(&BLAZEPOSE33),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layout_by_name_resolve_os_tres_e_recusa_desconhecido() {
+        assert_eq!(layout_by_name("blazepose33").unwrap().count, 33);
+        assert_eq!(layout_by_name("coco17").unwrap().count, 17);
+        assert_eq!(layout_by_name("halpe26").unwrap().count, 26);
+        assert!(layout_by_name("inexistente").is_none());
+    }
 
     #[test]
     fn halpe26_trava_os_seis_pontos_semanticos_do_pe() {

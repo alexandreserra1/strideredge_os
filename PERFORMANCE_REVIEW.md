@@ -138,3 +138,23 @@ cadência/oscilação mantendo contato/voo em taxa cheia), mas o **padrão segue
 voo exigem a resolução temporal de 30fps; metade disso corrompe a métrica E derrota o gate de
 segurança. O ganho real de performance tem que vir de outro lugar (tracking do MediaPipe entre
 detecções, ou workers), não de jogar fora frames.
+
+### Overlay reusa poses (elimina a 2ª inferência) — IMPLEMENTADO
+
+O overlay era uma passada de pose INTEIRA só pra desenhar o esqueleto — re-inferia tudo que a
+passada de métricas já tinha calculado. Agora a passada de métricas emite um sidecar de keypoints
+completos (`--emit-poses`) e o overlay desenha reusando-o (`--overlay-from`), **sem carregar o
+modelo**.
+
+Medido na Laisa (1005 frames, runtime BlazePose empacotado):
+
+| Overlay | Tempo | Modelo carregado? |
+| --- | ---: | --- |
+| Re-inferência (antigo) | 17,8 s | sim |
+| **Reuso de poses (novo)** | **2,5 s** | **não** |
+
+**~7× mais rápido** e o mp4 sai **byte-a-byte idêntico** (MD5 igual) — zero perda visual, é o mesmo
+esqueleto. Como o overlay é job de fundo, o ganho é de CAPACIDADE (CPU/throughput do servidor):
+~15 s de inferência redundante por análise deixam de existir. Fallback seguro: se o sidecar não
+existir (execução antiga/parcial), o overlay cai na re-inferência. O sidecar é efêmero (apagado após
+o overlay). Este era o "custo restante" que a telemetria por estágio tinha apontado.

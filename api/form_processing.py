@@ -111,16 +111,25 @@ class FormProcessingMixin:
 
     def _run_engine_impl(self, original: Path, overlay: Path, view: str,
                          snapshot: PoseBackendSnapshot, draw_overlay: bool,
-                         timings: Optional[dict] = None) -> dict:
-        """Implementação de produção com decomposição opcional de normalização e inferência."""
+                         timings: Optional[dict] = None, poses_path: Optional[Path] = None,
+                         overlay_from: Optional[Path] = None) -> dict:
+        """Implementação de produção com decomposição opcional de normalização e inferência.
+
+        `poses_path`: a passada de métricas grava os keypoints completos (sidecar) pra reuso.
+        `overlay_from`: desenha o overlay REUSANDO esse sidecar, SEM re-inferir (7x mais rápido,
+        sem carregar o modelo) — o vídeo sai byte-idêntico ao da re-inferência."""
         normalize_started = time.perf_counter()
         source = self._normalize(original)
         if timings is not None:
             timings["normalize_ms"] = round((time.perf_counter() - normalize_started) * 1000, 1)
         cmd = [str(self.binary), str(source), str(overlay), "--view", view,
                "--backend", snapshot.effective]
-        if not draw_overlay:
+        if overlay_from is not None:
+            cmd += ["--overlay-from", str(overlay_from)]  # desenha das poses; não infere nem lê métricas
+        elif not draw_overlay:
             cmd.append("--no-overlay")
+        if poses_path is not None:
+            cmd += ["--emit-poses", str(poses_path)]
         engine_started = time.perf_counter()
         result = subprocess.run(
             cmd, env={**snapshot.subprocess_env, **self._ENV},
@@ -129,13 +138,17 @@ class FormProcessingMixin:
             timings["engine_ms"] = round((time.perf_counter() - engine_started) * 1000, 1)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip()[-300:] or "motor falhou")
-        metrics = json.loads((overlay.parent / f"{overlay.stem}.metrics.json").read_text())
+        # O overlay-from não escreve métricas (só reencoda o vídeo com o esqueleto reusado).
+        metrics = {} if overlay_from is not None else json.loads(
+            (overlay.parent / f"{overlay.stem}.metrics.json").read_text())
         if source != original:
             source.unlink(missing_ok=True)
         return metrics
 
     def _run_engine_profiled(self, original: Path, overlay: Path, view: str,
-                             snapshot: PoseBackendSnapshot, draw_overlay: bool = True) -> tuple:
+                             snapshot: PoseBackendSnapshot, draw_overlay: bool = True,
+                             poses_path: Optional[Path] = None,
+                             overlay_from: Optional[Path] = None) -> tuple:
         """Roda o contrato existente e devolve durações sem exigir que os fakes mudem de assinatura."""
         started = time.perf_counter()
         timings = {}
@@ -143,7 +156,8 @@ class FormProcessingMixin:
         # Só a implementação de produção entra no caminho que separa ffmpeg e o subprocesso Rust.
         implementation = getattr(self._run_engine, "__func__", None)
         if implementation is FormProcessingMixin._run_engine:
-            metrics = self._run_engine_impl(original, overlay, view, snapshot, draw_overlay, timings)
+            metrics = self._run_engine_impl(original, overlay, view, snapshot, draw_overlay, timings,
+                                            poses_path=poses_path, overlay_from=overlay_from)
         else:
             metrics = self._run_engine(original, overlay, view, snapshot, draw_overlay)
         timings["total_ms"] = round((time.perf_counter() - started) * 1000, 1)
@@ -277,8 +291,10 @@ class FormProcessingMixin:
         try:
             snapshot = snapshot or self._backend_snapshot()
             stage_started = time.perf_counter()
+            # Emite o sidecar de poses: o job de overlay reusa esses keypoints em vez de re-inferir.
+            poses_path = original.parent / "poses.json"
             base, metrics_timing = self._run_engine_profiled(
-                original, overlay, view, snapshot, draw_overlay=False)
+                original, overlay, view, snapshot, draw_overlay=False, poses_path=poses_path)
             report.completed("metrics", stage_started, **metrics_timing)
             frontal = None
             if frontal_original is not None:
@@ -323,6 +339,7 @@ class FormProcessingMixin:
                 self._persist_processing_report(con, analysis_id, report)
             if not queued:
                 original.unlink(missing_ok=True)
+                poses_path.unlink(missing_ok=True)  # sem overlay enfileirado, o sidecar não será usado
             _log.info("form_done", analysis_id=analysis_id, reliable=base.get("reliable"),
                       reason=base.get("reason"), detection_rate=base.get("detection_rate_pct"),
                       raw_vert_osc_pct=base.get("diag_vert_osc_pct"),
@@ -351,9 +368,14 @@ class FormProcessingMixin:
         started = time.perf_counter()
         overlay_status = "failed"
         overlay_timing = None
+        # Reusa as poses da passada de métricas (7x mais rápido, sem re-inferir). Se o sidecar
+        # não existir (execução antiga/parcial), cai no caminho seguro de re-inferência.
+        poses_path = original.parent / "poses.json"
+        overlay_from = poses_path if poses_path.exists() else None
         try:
             _, overlay_timing = self._run_engine_profiled(
-                original, overlay, overlay_view, snapshot, draw_overlay=True)
+                original, overlay, overlay_view, snapshot,
+                draw_overlay=True, overlay_from=overlay_from)
             get_connection().execute(
                 "UPDATE form_analyses SET video_path=? WHERE analysis_id=?",
                 [str(overlay), analysis_id])
@@ -365,3 +387,4 @@ class FormProcessingMixin:
             self._complete_overlay_report(analysis_id, started, overlay_status, overlay_timing)
             original.unlink(missing_ok=True)
             (original.parent / f"{original.stem}.normalized.mp4").unlink(missing_ok=True)
+            poses_path.unlink(missing_ok=True)  # sidecar é efêmero: já cumpriu o papel no overlay

@@ -10,9 +10,9 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use stride_vision::{
     analyze_form, contact_angle, contact_flight_ms, draw_angles, draw_pose, foot_ground_y,
-    foot_strike, hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
-    timing_consistent_with_cadence, trunk_lean_deg, BlazePoseBackend, Pose, PoseBackend,
-    PoseEngine, RtmPose26Backend,
+    foot_strike, hip_tilt_deg, joint_angle, knee_valgus_deg, layout_by_name, median, percentile,
+    timing_consistent_with_cadence, trunk_lean_deg, BlazePoseBackend, KeypointLayout, Pose,
+    PoseBackend, PoseEngine, RtmPose26Backend,
 };
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
@@ -50,6 +50,20 @@ fn write_frame_dump(dump_path: &str, doc: &serde_json::Value) -> Result<()> {
 /// Um registro por FRAME DECODIFICADO pro dump de calibração: índice, timestamp, se houve pose,
 /// confiança e os landmarks por NOME SEMÂNTICO (x, y, conf). Pontos de pé só quando o layout os
 /// traz. Backend-independente: o arnês recomputa qualquer ângulo no MESMO frame pros dois motores.
+/// Registro COMPLETO de pose p/ o sidecar do overlay-from: todos os keypoints (x,y,conf) na ordem
+/// do layout, pra reconstruir a `Pose` e desenhar o esqueleto inteiro sem re-inferir. `present:false`
+/// mantém o alinhamento 1:1 com os frames do vídeo (frame sem pessoa desenha nada).
+fn pose_full_record(pose: &Option<Pose>) -> serde_json::Value {
+    match pose {
+        None => json!({ "present": false }),
+        Some(p) => json!({
+            "present": true,
+            "conf": p.confidence,
+            "kp": p.keypoints.iter().map(|&(x, y, c)| json!([x, y, c])).collect::<Vec<_>>(),
+        }),
+    }
+}
+
 fn frame_record(pose: &Option<Pose>, i: u32, t_ms: u64) -> serde_json::Value {
     let Some(p) = pose else {
         return serde_json::json!({ "i": i, "t_ms": t_ms, "present": false });
@@ -175,6 +189,10 @@ fn main() -> Result<()> {
     // do modelo a 15fps se a cadência/contato/ângulos aguentarem. Só vale p/ métricas/benchmark —
     // overlay e dump de calibração EXIGEM todos os frames (senão vídeo/alinhamento quebram).
     let mut sample_stride = 1usize;
+    // --emit-poses <sidecar.json>: a passada de métricas grava os keypoints COMPLETOS por frame.
+    // --overlay-from <sidecar.json>: desenha o overlay REUSANDO esses keypoints, SEM carregar o
+    // modelo — elimina a 2ª inferência (o overlay era uma passada de pose inteira só pra desenhar).
+    let (mut emit_poses, mut overlay_from) = (None::<String>, None::<String>);
     while i < raw.len() {
         if raw[i] == "--view" {
             view = raw.get(i + 1).cloned().unwrap_or_else(|| "lateral".into());
@@ -195,6 +213,12 @@ fn main() -> Result<()> {
                 .filter(|&n| n >= 1)
                 .context("--sample-stride exige um inteiro >= 1")?;
             i += 2;
+        } else if raw[i] == "--emit-poses" {
+            emit_poses = raw.get(i + 1).cloned();
+            i += 2;
+        } else if raw[i] == "--overlay-from" {
+            overlay_from = raw.get(i + 1).cloned();
+            i += 2;
         } else if raw[i] == "--output" {
             benchmark_output = raw.get(i + 1).cloned();
             i += 2;
@@ -212,6 +236,12 @@ fn main() -> Result<()> {
         "lateral"
     };
     let input = &pos[0];
+    // Overlay REUSANDO poses já inferidas: não constrói engine nem carrega modelo (é o ganho de
+    // capacidade — a 2ª passada não re-infere). Roda antes de instanciar qualquer backend.
+    if let Some(sidecar) = overlay_from {
+        let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.mp4".into());
+        return run_overlay_from_poses(input, &out, view, &sidecar);
+    }
     let mut engine: Box<dyn PoseBackend> = match backend.as_str() {
         "yolo17" => {
             let model =
@@ -247,7 +277,7 @@ fn main() -> Result<()> {
         run_image(&mut *engine, input, &pos.get(1).cloned().unwrap_or_else(|| "pose_out.jpg".into()))
     } else {
         let out = pos.get(1).cloned().unwrap_or_else(|| "pose_out.mp4".into());
-        run_video(&mut *engine, input, &out, view, !no_overlay, sample_stride)
+        run_video(&mut *engine, input, &out, view, !no_overlay, sample_stride, emit_poses)
     }
 }
 
@@ -394,6 +424,93 @@ fn benchmark_report(
     })
 }
 
+/// Reconstrói uma `Pose` a partir de um registro do sidecar (keypoints completos por nome de layout).
+fn pose_from_record(rec: &serde_json::Value, layout: &'static KeypointLayout) -> Result<Pose> {
+    let kp = rec["kp"].as_array().context("registro de pose sem 'kp'")?;
+    if kp.len() != layout.count {
+        bail!(
+            "sidecar tem {} keypoints, layout '{}' espera {}",
+            kp.len(),
+            layout.name,
+            layout.count
+        );
+    }
+    let f = |v: &serde_json::Value| v.as_f64().unwrap_or(0.0) as f32;
+    let keypoints = kp
+        .iter()
+        .map(|p| {
+            let a = p.as_array().context("keypoint mal formado no sidecar")?;
+            Ok((f(&a[0]), f(&a[1]), f(&a[2])))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Pose {
+        keypoints,
+        confidence: rec["conf"].as_f64().unwrap_or(0.0) as f32,
+        layout,
+        world: None,
+    })
+}
+
+/// Overlay REUSANDO poses já inferidas (sidecar `--emit-poses`): decodifica o vídeo, desenha o
+/// esqueleto/goniômetros a partir das poses gravadas e re-encoda — SEM carregar modelo de pose.
+/// É o ganho de capacidade: a 2ª passada não re-infere (antes era uma inferência inteira só p/ desenhar).
+fn run_overlay_from_poses(input: &str, out: &str, view: &str, sidecar: &str) -> Result<()> {
+    let raw = std::fs::read_to_string(sidecar)
+        .with_context(|| format!("lendo sidecar de poses {sidecar}"))?;
+    let doc: serde_json::Value = serde_json::from_str(&raw).context("sidecar de poses inválido")?;
+    let lay = doc["layout"]
+        .as_str()
+        .and_then(layout_by_name)
+        .context("sidecar sem layout conhecido")?;
+    let frames = doc["frames"].as_array().context("sidecar sem 'frames'")?;
+    let (w, h, fps) = probe(input)?;
+    // Fail-high: se o vídeo do overlay não é o que gerou as poses, os keypoints estão desalinhados.
+    if doc["width"].as_u64() != Some(w as u64) || doc["height"].as_u64() != Some(h as u64) {
+        bail!("sidecar não casa com o vídeo ({w}x{h}) — poses de outra captura");
+    }
+    let decoder = Command::new("ffmpeg")
+        .args(["-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .context("ffmpeg (instale com: brew install ffmpeg)")?;
+    let mut dec = ManagedChild::new(decoder, "ffmpeg decoder");
+    let mut src = dec.take_stdout()?;
+    let encoder = Command::new("ffmpeg")
+        .args([
+            "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s",
+            &format!("{w}x{h}"), "-r", &format!("{fps}"), "-i", "-", "-c:v", "libx264",
+            "-pix_fmt", "yuv420p", out,
+        ])
+        .stdin(Stdio::piped())
+        .spawn()?;
+    let mut enc = ManagedChild::new(encoder, "ffmpeg encoder");
+    let mut dst = enc.take_stdin()?;
+    let mut buf = vec![0u8; (w * h * 3) as usize];
+    let mut idx = 0usize;
+    loop {
+        if read_exact_or_eof(&mut src, &mut buf).is_err() {
+            break;
+        }
+        let mut img: RgbImage = RgbImage::from_raw(w, h, buf.clone()).unwrap();
+        if let Some(rec) = frames.get(idx) {
+            if rec["present"].as_bool() == Some(true) {
+                let pose = pose_from_record(rec, lay)?;
+                draw_pose(&mut img, &pose);
+                if view == "lateral" {
+                    draw_angles(&mut img, &pose);
+                }
+            }
+        }
+        dst.write_all(img.as_raw())?;
+        idx += 1;
+    }
+    drop(dst);
+    dec.wait_success()?;
+    enc.wait_success()?;
+    println!("overlay de {idx} frames a partir de poses reusadas (sem re-inferir): {out}");
+    Ok(())
+}
+
 /// Vídeo via ffmpeg (pipes rawvideo): decodifica -> infere (+ desenha, quando `overlay`) -> re-encoda.
 /// `view` = "lateral" (métricas sagitais) | "frontal" (queda pélvica, valgo de joelho).
 /// `overlay=false` (--no-overlay): passada SÓ-MÉTRICAS — pula o encoder e o desenho por frame
@@ -406,6 +523,7 @@ fn run_video(
     view: &str,
     overlay: bool,
     sample_stride: usize,
+    emit_poses: Option<String>,
 ) -> Result<()> {
     let (w, h, fps) = probe(input)?;
     // Overlay reencoda no fps original -> precisa de TODO frame. Dump de calibração alinha o índice
@@ -415,6 +533,11 @@ fn run_video(
     }
     if sample_stride > 1 && std::env::var("STRIDE_DUMP_SERIES").is_ok() {
         bail!("--sample-stride > 1 é incompatível com STRIDE_DUMP_SERIES (alinhamento de calibração)");
+    }
+    // O sidecar de poses alimenta o overlay-from (1 registro por frame). Com stride>1 haveria
+    // buracos -> o overlay pularia frames. Exige taxa cheia.
+    if sample_stride > 1 && emit_poses.is_some() {
+        bail!("--sample-stride > 1 é incompatível com --emit-poses (overlay precisa de todo frame)");
     }
     // fps EFETIVO: ao inferir 1 a cada N frames, a série de métricas fica em fps/N. A cadência (FFT)
     // e o contato/voo dependem desse fps — passá-lo errado inventaria cadência. Ver analyze_form.
@@ -489,6 +612,8 @@ fn run_video(
     // DOIS backends no MESMO frame/evento anotado pelo ground-truth (não nos picos que cada um acha).
     let want_dump = std::env::var("STRIDE_DUMP_SERIES").ok();
     let mut frame_records: Vec<serde_json::Value> = Vec::new();
+    // sidecar de poses completas p/ o overlay-from (só quando pedido; não pesa o caminho normal)
+    let mut pose_records: Vec<serde_json::Value> = Vec::new();
 
     loop {
         if let Err(e) = read_exact_or_eof(&mut src, &mut buf) {
@@ -583,6 +708,9 @@ fn run_video(
         if want_dump.is_some() {
             frame_records.push(frame_record(&pose_opt, frames, ts));
         }
+        if emit_poses.is_some() {
+            pose_records.push(pose_full_record(&pose_opt));
+        }
         if let Some(d) = dst.as_mut() {
             d.write_all(img.as_raw())?;
         } // só reencoda na passada de overlay
@@ -607,6 +735,16 @@ fn run_video(
             "layout": lay.name, "fps": fps, "frames_total": frames, "frames": frame_records,
         });
         write_frame_dump(dump_path, &doc)?;
+    }
+
+    // Sidecar de poses: o overlay-from o lê pra desenhar sem re-inferir. Guarda layout + dimensões
+    // pra recusar (fail-high) se o vídeo do overlay não casar com o que gerou as poses.
+    if let Some(poses_path) = &emit_poses {
+        let doc = serde_json::json!({
+            "layout": lay.name, "fps": fps, "width": w, "height": h, "frames": pose_records,
+        });
+        std::fs::write(poses_path, serde_json::to_string(&doc)?)
+            .with_context(|| format!("gravando sidecar de poses em {poses_path}"))?;
     }
 
     // métricas consolidadas -> JSON ao lado do vídeo (o backend lê daqui)
