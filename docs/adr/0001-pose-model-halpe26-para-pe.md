@@ -1,6 +1,6 @@
 # ADR 0001 — Fascite plantar e Aquiles exigem upgrade do modelo de pose (COCO-17 → Halpe26)
 
-- **Status:** aceito (jul/2026)
+- **Status:** aceito; implementação experimental concluída (jul/2026)
 - **Contexto do achado:** entrevista de design da tela "Minhas lesões" (log OSTRC → dataset de risco).
 
 ## Contexto
@@ -32,10 +32,12 @@ de keypoints.
    As 6 ficam `mapped=True`, sem alucinar: todo fator apontado tem suporte real na fonte. Isso
    destrava o log e o dataset supervisionado das 6 desde já.
 
-2. **Comprometer o upgrade do modelo de pose (COCO-17 → Halpe26/RTMPose) como fatia vertical
-   própria.** Halpe26 adiciona hálux, dedo menor e calcanhar por pé → habilita pronação e
-   dorsiflexão REAIS. Já antecipado em `AI-STRATEGY.md:99`. Quando cair, os `factors` de
-   `plantar`/`achilles` migram de proxy → primário (mesma interface, só troca o conteúdo do mapa).
+2. **Construir o upgrade como backend experimental, sem substituir o padrão.** A fatia Rust
+   `RTMDet + RTMPose SimCC` decodifica os 26 keypoints Halpe26, inclusive hálux, dedo menor e
+   calcanhar. YOLO17 segue padrão; o Halpe é opt-in, configurado por paths explícitos de assets e
+   ainda não altera a taxonomia. Só após procedência/licença dos modelos, gestão versionada de
+   assets e validação das métricas os `factors` de `plantar`/`achilles` poderão migrar de proxy para
+   primário (mesma interface, só troca o conteúdo do mapa).
 
 ## Alternativas consideradas
 
@@ -50,12 +52,11 @@ de keypoints.
 
 ## Consequências
 
-- **Positivas:** as 6 lesões cobertas por mapa citável hoje; caminho de fortalecimento claro e sem
-  refatoração (só troca de conteúdo do mapa quando Halpe26 chegar); a razão da limitação fica
-  registrada (é keypoint-set, não corpus).
-- **Custo/risco:** o upgrade Halpe26 repercute no motor Rust inteiro — ONNX novo, decodificação de
-  26 keypoints (os arrays fixos `[…; 17]`, esqueleto e desenho mudam), métricas novas, revalidação.
-  Difícil de reverter → por isso este ADR.
+- **Positivas:** as 6 lesões seguem cobertas por mapa citável hoje; o motor pode avaliar keypoints
+  de pé sem duplicar o pipeline; a razão da limitação fica registrada (é keypoint-set, não corpus).
+- **Custo/risco residual:** assets ONNX não entram no repositório e precisam de licença,
+  procedência e hash; as métricas novas exigem validação temporal, clínica e operacional antes de
+  aparecerem para o atleta. O backend é reversível pois o padrão não mudou.
 - **Sinalização honesta:** enquanto for proxy, a força do mapa de `plantar`/`achilles` é menor que a
   dos joelhos (PFP/ITBS → queda pélvica). Comentário em `injury_taxonomy.py` marca isso e aponta
   para este ADR.
