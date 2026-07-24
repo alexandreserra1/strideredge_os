@@ -6,6 +6,13 @@
 
 use rustfft::{num_complex::Complex, FftPlanner};
 
+/// Geometria dos ângulos articulares expostos pelo produto.
+///
+/// A captura é uma única câmera lateral/frontal e a validação pareada atual do BlazePose foi
+/// feita neste espaço. World landmarks do modelo seguem disponíveis somente no dump diagnóstico;
+/// escolhê-los implicitamente mudaria os limiares clínicos conforme o backend.
+pub const PRODUCTION_JOINT_ANGLE_SPACE: &str = "image_2d";
+
 /// Duração mínima do vídeo p/ análise confiável: menos que isso = poucos ciclos de passada, FFT de
 /// cadência instável e amostra pequena de cada métrica. A 15s (~21 passadas/perna @170spm) há sinal
 /// suficiente p/ ver o que está certo/errado com robustez. Predição de lesão exige amostra boa.
@@ -14,21 +21,34 @@ pub const MIN_DURATION_S: f32 = 15.0;
 /// Cadência (passos/min) a partir da série vertical de UM tornozelo.
 /// FFT: frequência dominante da oscilação de um pé * 2 (dois pés) * 60.
 pub fn cadence_spm(ankle_y: &[f32], fps: f32) -> Option<f32> {
-    if ankle_y.len() < 16 { return None; }
+    if ankle_y.len() < 16 {
+        return None;
+    }
     let mean = ankle_y.iter().sum::<f32>() / ankle_y.len() as f32;
-    let mut buf: Vec<Complex<f32>> =
-        ankle_y.iter().map(|v| Complex::new(v - mean, 0.0)).collect();
-    FftPlanner::new().plan_fft_forward(buf.len()).process(&mut buf);
+    let mut buf: Vec<Complex<f32>> = ankle_y
+        .iter()
+        .map(|v| Complex::new(v - mean, 0.0))
+        .collect();
+    FftPlanner::new()
+        .plan_fft_forward(buf.len())
+        .process(&mut buf);
     let n = buf.len();
     // procura o pico entre 0.5 e 2.5 Hz (30–150 passos/min por pé — faixa humana)
     let hz = |i: usize| i as f32 * fps / n as f32;
     let (mut bi, mut bm) = (0, 0f32);
     for i in 1..n / 2 {
-        if hz(i) < 0.5 || hz(i) > 2.5 { continue; }
+        if hz(i) < 0.5 || hz(i) > 2.5 {
+            continue;
+        }
         let m = buf[i].norm();
-        if m > bm { bm = m; bi = i; }
+        if m > bm {
+            bm = m;
+            bi = i;
+        }
     }
-    if bi == 0 { return None; }
+    if bi == 0 {
+        return None;
+    }
     Some(hz(bi) * 2.0 * 60.0)
 }
 
@@ -52,6 +72,9 @@ pub struct FormMetrics {
     pub knee_contact_deg: Option<f32>,
     /// flexão do QUADRIL no apoio (graus): abertura tronco↔coxa.
     pub hip_contact_deg: Option<f32>,
+    /// Espaço geométrico dos ângulos de joelho/quadril expostos nesta análise. É metadado de
+    /// proveniência, não uma alegação de precisão 3D clínica.
+    pub joint_angle_space: String,
     /// inclinação do TRONCO em relação à vertical (graus). Leve inclinação pra frente
     /// (~5–10°) é eficiente; ereto/pra trás freia; muito inclinado sobrecarrega a lombar.
     pub trunk_lean_deg: Option<f32>,
@@ -59,7 +82,14 @@ pub struct FormMetrics {
     pub ground_contact_ms: Option<f32>,
     /// tempo de voo (ambos os pés no ar) por passo (ms).
     pub flight_ms: Option<f32>,
-    /// padrão de pisada ESTIMADO (sem keypoint de pé): "calcanhar" | "médio" | "antepé".
+    /// Sinal que ancorou GCT/voo/ângulos no apoio: pé direto quando disponível, tornozelo como
+    /// fallback. É proveniência, não uma nova métrica clínica.
+    pub ground_contact_source: Option<String>,
+    /// Cobertura dos pares calcanhar+ponta do pé entre as pernas detectadas (0–100). None em
+    /// layouts sem pontos de pé.
+    pub foot_landmark_coverage_pct: Option<f32>,
+    /// padrão de pisada ESTIMADO por tornozelo×joelho: "calcanhar" | "médio" | "antepé".
+    /// Mesmo layouts com calcanhar/ponta não o promovem a medida clínica de pronação.
     pub foot_strike: Option<String>,
     // ----- métricas do plano FRONTAL (só na vista frontal) -----
     /// queda pélvica contralateral (graus): a bacia caindo pro lado da perna no ar no apoio.
@@ -87,7 +117,9 @@ pub struct FormMetrics {
 
 /// amplitude robusta de uma série (p95 - p5; ignora outliers de detecção)
 fn amplitude(series: &[f32]) -> Option<f32> {
-    if series.len() < 8 { return None; }
+    if series.len() < 8 {
+        return None;
+    }
     let mut v: Vec<f32> = series.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let p = |q: f32| v[((v.len() - 1) as f32 * q) as usize];
@@ -96,16 +128,41 @@ fn amplitude(series: &[f32]) -> Option<f32> {
 
 /// Métricas vazias (base): tudo None, só frames/fps/detecção + reliable/nota. O main preenche o
 /// que fizer sentido por vista.
-fn empty_metrics(total_frames: usize, fps: f32, detection: f32, view: &str, reliable: bool,
-                 note: Option<String>, reason: &str) -> FormMetrics {
+fn empty_metrics(
+    total_frames: usize,
+    fps: f32,
+    detection: f32,
+    view: &str,
+    reliable: bool,
+    note: Option<String>,
+    reason: &str,
+) -> FormMetrics {
     FormMetrics {
-        frames: total_frames, fps, detection_rate_pct: detection,
-        cadence_spm: None, cadence_left: None, cadence_right: None, asymmetry_pct: None,
-        vertical_oscillation_pct: None, knee_contact_deg: None, hip_contact_deg: None,
-        trunk_lean_deg: None, ground_contact_ms: None, flight_ms: None, foot_strike: None,
-        pelvic_drop_deg: None, knee_valgus_deg: None, view: Some(view.to_string()),
-        reliable, quality_note: note,
-        reason: reason.to_string(), diag_vert_osc_pct: None, diag_leg_len_px: 0.0,
+        frames: total_frames,
+        fps,
+        detection_rate_pct: detection,
+        cadence_spm: None,
+        cadence_left: None,
+        cadence_right: None,
+        asymmetry_pct: None,
+        vertical_oscillation_pct: None,
+        knee_contact_deg: None,
+        hip_contact_deg: None,
+        joint_angle_space: PRODUCTION_JOINT_ANGLE_SPACE.to_string(),
+        trunk_lean_deg: None,
+        ground_contact_ms: None,
+        flight_ms: None,
+        ground_contact_source: None,
+        foot_landmark_coverage_pct: None,
+        foot_strike: None,
+        pelvic_drop_deg: None,
+        knee_valgus_deg: None,
+        view: Some(view.to_string()),
+        reliable,
+        quality_note: note,
+        reason: reason.to_string(),
+        diag_vert_osc_pct: None,
+        diag_leg_len_px: 0.0,
     }
 }
 
@@ -113,20 +170,43 @@ fn empty_metrics(total_frames: usize, fps: f32, detection: f32, view: &str, reli
 /// O QUE se mede e COMO se valida. `both_legs_ok` = as duas pernas ficaram visíveis (sinal de
 /// vista frontal boa). `leg_len_px` = mediana da distância quadril->tornozelo (escala do corpo).
 pub fn analyze_form(
-    ankle_l: &[f32], ankle_r: &[f32], hip_y: &[f32],
-    leg_len_px: f32, fps: f32, total_frames: usize, view: &str, both_legs_ok: bool,
+    ankle_l: &[f32],
+    ankle_r: &[f32],
+    hip_y: &[f32],
+    leg_len_px: f32,
+    fps: f32,
+    total_frames: usize,
+    view: &str,
+    both_legs_ok: bool,
 ) -> FormMetrics {
     let detection = if total_frames > 0 {
         ankle_l.len() as f32 / total_frames as f32 * 100.0
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     // Vídeo curto demais: poucos ciclos de passada -> métricas instáveis. Barra ANTES de tudo
     // (vale p/ lateral e frontal) — melhor pedir um vídeo maior do que analisar com pouco sinal.
-    let duration_s = if fps > 0.0 { total_frames as f32 / fps } else { 0.0 };
+    let duration_s = if fps > 0.0 {
+        total_frames as f32 / fps
+    } else {
+        0.0
+    };
     if duration_s < MIN_DURATION_S {
-        let nota = format!("Vídeo curto demais ({duration_s:.0}s) — filme pelo menos {:.0}s \
-            correndo, sem cortes, pra dar pra analisar com confiança.", MIN_DURATION_S);
-        return empty_metrics(total_frames, fps, detection, view, false, Some(nota), "too_short");
+        let nota = format!(
+            "Vídeo curto demais ({duration_s:.0}s) — filme pelo menos {:.0}s \
+            correndo, sem cortes, pra dar pra analisar com confiança.",
+            MIN_DURATION_S
+        );
+        return empty_metrics(
+            total_frames,
+            fps,
+            detection,
+            view,
+            false,
+            Some(nota),
+            "too_short",
+        );
     }
 
     // ---- VISTA FRONTAL: as métricas sagitais (cadência, oscilação, pisada) não fazem sentido.
@@ -134,11 +214,27 @@ pub fn analyze_form(
     // preenche pelvic_drop/knee_valgus.
     if view == "frontal" {
         let (note, reason) = if detection < 60.0 {
-            (Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into()), "low_detection")
+            (
+                Some(
+                    "O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível."
+                        .into(),
+                ),
+                "low_detection",
+            )
         } else if !both_legs_ok {
             (Some("Não deu pra ver as duas pernas — filme de FRENTE (ou de costas), corpo inteiro, pernas visíveis.".into()), "both_legs_missing")
-        } else { (None, "ok") };
-        return empty_metrics(total_frames, fps, detection, view, note.is_none(), note, reason);
+        } else {
+            (None, "ok")
+        };
+        return empty_metrics(
+            total_frames,
+            fps,
+            detection,
+            view,
+            note.is_none(),
+            note,
+            reason,
+        );
     }
 
     // ---- VISTA LATERAL (comportamento existente): cadência, assimetria, oscilação.
@@ -148,7 +244,11 @@ pub fn analyze_form(
     // a cadência de corrida verdadeira é a MAIOR (a perna visível oscila na fundamental);
     // só fazemos a média quando as duas concordam (vista frontal/simétrica, sem oclusão).
     let cadence = match (cl, cr) {
-        (Some(l), Some(r)) => Some(if (l - r).abs() / l.max(r) > 0.25 { l.max(r) } else { (l + r) / 2.0 }),
+        (Some(l), Some(r)) => Some(if (l - r).abs() / l.max(r) > 0.25 {
+            l.max(r)
+        } else {
+            (l + r) / 2.0
+        }),
         (a, b) => a.or(b),
     };
     // Assimetria bilateral NÃO é medível em vista LATERAL: a perna de trás é ocluída, então sua
@@ -169,14 +269,29 @@ pub fn analyze_form(
     // divergência de cadência entre pernas é ESPERADA, não sinal de erro.
     // fração de frames com quadril CONFIÁVEL (hip_y só entra com kp confiante no main). Baixa =
     // tronco fora do quadro (só pernas) — motivo DIFERENTE de "não-lateral", guia o usuário certo.
-    let hip_seen = if total_frames > 0 { hip_y.len() as f32 / total_frames as f32 } else { 0.0 };
+    let hip_seen = if total_frames > 0 {
+        hip_y.len() as f32 / total_frames as f32
+    } else {
+        0.0
+    };
     let (note, reason): (Option<String>, &str) = if detection < 60.0 {
-        (Some("O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível.".into()), "low_detection")
+        (
+            Some(
+                "O atleta sai do quadro em boa parte do vídeo — filme com ele sempre visível."
+                    .into(),
+            ),
+            "low_detection",
+        )
     } else if hip_seen < 0.5 {
         (Some("Não deu pra rastrear o quadril com confiança — filme o CORPO INTEIRO (tronco visível), não só as pernas.".into()), "torso_not_visible")
     } else if vert_osc.is_none() {
-        (Some("Ângulo parece não ser lateral — filme de LADO, corpo inteiro no quadro.".into()), "not_lateral")
-    } else { (None, "ok") };
+        (
+            Some("Ângulo parece não ser lateral — filme de LADO, corpo inteiro no quadro.".into()),
+            "not_lateral",
+        )
+    } else {
+        (None, "ok")
+    };
 
     FormMetrics {
         frames: total_frames,
@@ -187,13 +302,16 @@ pub fn analyze_form(
         cadence_right: cr,
         asymmetry_pct: asymmetry.map(|v| (v * 10.0).round() / 10.0),
         vertical_oscillation_pct: vert_osc.map(|v| (v * 10.0).round() / 10.0),
-        knee_contact_deg: None,   // preenchido pelo main a partir das séries de ângulo
+        knee_contact_deg: None, // preenchido pelo main a partir das séries de ângulo
         hip_contact_deg: None,
+        joint_angle_space: PRODUCTION_JOINT_ANGLE_SPACE.to_string(),
         trunk_lean_deg: None,
         ground_contact_ms: None,
         flight_ms: None,
+        ground_contact_source: None,
+        foot_landmark_coverage_pct: None,
         foot_strike: None,
-        pelvic_drop_deg: None,    // frontal — None na lateral
+        pelvic_drop_deg: None, // frontal — None na lateral
         knee_valgus_deg: None,
         view: Some("lateral".to_string()),
         reliable: note.is_none(),
@@ -210,7 +328,9 @@ pub fn analyze_form(
 /// ângulo instantâneo, que varia o tempo todo. None se a série for curta demais.
 pub fn contact_angle(angles: &[f32], ankle_y: &[f32]) -> Option<f32> {
     let n = angles.len().min(ankle_y.len());
-    if n < 12 { return None; }
+    if n < 12 {
+        return None;
+    }
     let mut vals = Vec::new();
     let mut last = 0usize;
     for i in 1..n - 1 {
@@ -221,7 +341,9 @@ pub fn contact_angle(angles: &[f32], ankle_y: &[f32]) -> Option<f32> {
             last = i;
         }
     }
-    if vals.len() < 2 { return None; }
+    if vals.len() < 2 {
+        return None;
+    }
     Some(((vals.iter().sum::<f32>() / vals.len() as f32) * 10.0).round() / 10.0)
 }
 
@@ -229,13 +351,17 @@ pub fn contact_angle(angles: &[f32], ankle_y: &[f32]) -> Option<f32> {
 /// comparado com o eixo vertical da imagem (y cresce pra baixo).
 pub fn trunk_lean_deg(shoulder: (f32, f32), hip: (f32, f32)) -> f32 {
     let (dx, dy) = (shoulder.0 - hip.0, hip.1 - shoulder.1); // dy>0 com ombro acima do quadril
-    if dy <= 0.0 { return 0.0; }
+    if dy <= 0.0 {
+        return 0.0;
+    }
     dx.abs().atan2(dy).to_degrees()
 }
 
 /// mediana de uma série (robusta a frames ruins)
 pub fn median(series: &[f32]) -> Option<f32> {
-    if series.is_empty() { return None; }
+    if series.is_empty() {
+        return None;
+    }
     let mut v = series.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     Some(v[v.len() / 2])
@@ -245,65 +371,128 @@ pub fn median(series: &[f32]) -> Option<f32> {
 /// as durações dos runs contíguos de apoio (>=2 frames, filtra ruído).
 fn stance_runs(ankle_y: &[f32]) -> (Vec<usize>, Vec<bool>) {
     let n = ankle_y.len();
-    if n < 8 { return (vec![], vec![false; n]); }
+    if n < 8 {
+        return (vec![], vec![false; n]);
+    }
     let mut v = ankle_y.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let p = |q: f32| v[(((n - 1) as f32) * q) as usize];
     let (p5, p95) = (p(0.05), p(0.95));
-    let thr = p95 - 0.30 * (p95 - p5);               // apoio = 30% inferior (mais fundo = chão)
+    let thr = p95 - 0.30 * (p95 - p5); // apoio = 30% inferior (mais fundo = chão)
     let down: Vec<bool> = ankle_y.iter().map(|&y| y >= thr).collect();
     let mut runs = Vec::new();
     let mut cur = 0usize;
     for &d in &down {
-        if d { cur += 1; } else if cur > 0 { runs.push(cur); cur = 0; }
+        if d {
+            cur += 1;
+        } else if cur > 0 {
+            runs.push(cur);
+            cur = 0;
+        }
     }
-    if cur > 0 { runs.push(cur); }
+    if cur > 0 {
+        runs.push(cur);
+    }
     runs.retain(|&r| r >= 2);
     (runs, down)
 }
 
-/// Tempo de contato com o solo (GCT) e tempo de voo, em ms, a partir das séries de
-/// tornozelo E/D. GCT = média das fases de apoio; voo = média das fases com AMBOS no ar.
-pub fn contact_flight_ms(ankle_l: &[f32], ankle_r: &[f32], fps: f32) -> (Option<f32>, Option<f32>) {
-    if fps <= 0.0 { return (None, None); }
+/// Tempo de contato com o solo (GCT) e tempo de voo, em ms, a partir do sinal vertical de solo
+/// E/D. No COCO é o tornozelo; no BlazePose é calcanhar/ponta do pé quando confiáveis. GCT = média
+/// das fases de apoio; voo = média das fases com AMBOS no ar.
+pub fn contact_flight_ms(
+    ground_l: &[f32],
+    ground_r: &[f32],
+    fps: f32,
+) -> (Option<f32>, Option<f32>) {
+    if fps <= 0.0 {
+        return (None, None);
+    }
     let to_ms = |frames: f32| (frames / fps * 1000.0 * 10.0).round() / 10.0;
-    let (runs_l, down_l) = stance_runs(ankle_l);
-    let (runs_r, down_r) = stance_runs(ankle_r);
+    let (runs_l, down_l) = stance_runs(ground_l);
+    let (runs_r, down_r) = stance_runs(ground_r);
 
     // Descarta apoios de duração IMPOSSÍVEL: um apoio de corrida dura ~60–500ms. Um "apoio" mais
     // longo é artefato (sinal achatado/vista não-lateral colapsa vários frames num run gigante) —
     // se entrasse na média, dava GCT absurdo (ex.: 2000ms). Na fonte, não deixa o número-lixo sair.
-    let plausivel = |r: &usize| { let ms = *r as f32 / fps * 1000.0; (60.0..=500.0).contains(&ms) };
+    let plausivel = |r: &usize| {
+        let ms = *r as f32 / fps * 1000.0;
+        (60.0..=500.0).contains(&ms)
+    };
     let ok_l: Vec<usize> = runs_l.iter().copied().filter(|r| plausivel(r)).collect();
     let ok_r: Vec<usize> = runs_r.iter().copied().filter(|r| plausivel(r)).collect();
 
     let gct = if ok_l.len() >= 2 && ok_r.len() >= 2 {
         let all: Vec<usize> = ok_l.iter().chain(ok_r.iter()).copied().collect();
         Some(to_ms(all.iter().sum::<usize>() as f32 / all.len() as f32))
-    } else { None };
+    } else {
+        None
+    };
 
     let n = down_l.len().min(down_r.len());
     let flight = if n >= 8 {
         let (mut runs, mut cur) = (Vec::new(), 0usize);
         for i in 0..n {
-            if !down_l[i] && !down_r[i] { cur += 1; } else if cur > 0 { runs.push(cur); cur = 0; }
+            if !down_l[i] && !down_r[i] {
+                cur += 1;
+            } else if cur > 0 {
+                runs.push(cur);
+                cur = 0;
+            }
         }
-        if cur > 0 { runs.push(cur); }
+        if cur > 0 {
+            runs.push(cur);
+        }
         if runs.len() >= 2 {
             Some(to_ms(runs.iter().sum::<usize>() as f32 / runs.len() as f32))
-        } else { None }
-    } else { None };
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     (gct, flight)
+}
+
+/// Folga de medição no gate de consistência temporal. Acima de 1.0 = passo teórico; o excedente
+/// tolera ruído de detecção. 1.15 separa captura boa (razão ~0.7) de captura com evento de solo
+/// perdido (razão >1.3), sem rejeitar borderline honesto.
+const TIMING_TOLERANCE: f32 = 1.15;
+
+/// Invariante biomecânica: numa passada, o tempo de contato + o tempo de voo é ~a duração do PASSO
+/// (contato de um pé → contato do outro), e NÃO pode exceder essa duração. Se GCT+voo estoura a
+/// passada derivada da cadência, um evento de solo foi perdido e o voo inflou (ex.: video_corrida_23,
+/// GCT+voo 498ms vs passo 361ms) — a temporização é não-confiável. `cadence<=0` → não dá pra checar.
+pub fn timing_consistent_with_cadence(cadence_spm: f32, gct_ms: f32, flight_ms: f32) -> bool {
+    if cadence_spm <= 0.0 {
+        return true;
+    }
+    let step_ms = 60_000.0 / cadence_spm; // ms por passo
+    (gct_ms + flight_ms) <= step_ms * TIMING_TOLERANCE
+}
+
+/// Ponto vertical que está mais próximo do solo em vista lateral (y cresce para baixo). No
+/// contato inicial o calcanhar costuma vencer; no toe-off, a ponta. O máximo preserva ambos sem
+/// precisar inferir um evento clínico a partir de um único frame.
+pub fn foot_ground_y(heel_y: f32, toe_y: f32) -> f32 {
+    heel_y.max(toe_y)
 }
 
 /// Padrão de pisada ESTIMADO pela posição do tornozelo × joelho no apoio (proxy da tíbia —
 /// não há keypoint de pé). `facing_dir` = sinal de (nariz − quadril) pra saber "pra frente".
 /// Tornozelo à frente do joelho no toque = passada longa → calcanhar.
-pub fn foot_strike(ankle_x: &[f32], ankle_y: &[f32], knee_x: &[f32],
-                   facing_dir: f32, leg_len_px: f32) -> Option<&'static str> {
+pub fn foot_strike(
+    ankle_x: &[f32],
+    ankle_y: &[f32],
+    knee_x: &[f32],
+    facing_dir: f32,
+    leg_len_px: f32,
+) -> Option<&'static str> {
     let n = ankle_x.len().min(ankle_y.len()).min(knee_x.len());
-    if n < 12 || leg_len_px <= 0.0 || facing_dir == 0.0 { return None; }
+    if n < 12 || leg_len_px <= 0.0 || facing_dir == 0.0 {
+        return None;
+    }
     let (mut offs, mut last) = (Vec::new(), 0usize);
     for i in 1..n - 1 {
         let contact = ankle_y[i] >= ankle_y[i - 1] && ankle_y[i] > ankle_y[i + 1];
@@ -312,16 +501,26 @@ pub fn foot_strike(ankle_x: &[f32], ankle_y: &[f32], knee_x: &[f32],
             last = i;
         }
     }
-    if offs.len() < 2 { return None; }
+    if offs.len() < 2 {
+        return None;
+    }
     let avg = offs.iter().sum::<f32>() / offs.len() as f32;
-    Some(if avg > 0.10 { "calcanhar" } else if avg < -0.06 { "antepé" } else { "médio" })
+    Some(if avg > 0.10 {
+        "calcanhar"
+    } else if avg < -0.06 {
+        "antepé"
+    } else {
+        "médio"
+    })
 }
 
 // ---------- plano FRONTAL (queda pélvica + valgo de joelho) ----------
 
 /// Percentil q (0..1) de uma série (robusto). None se curta demais.
 pub fn percentile(series: &[f32], q: f32) -> Option<f32> {
-    if series.len() < 8 { return None; }
+    if series.len() < 8 {
+        return None;
+    }
     let mut v = series.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     Some(v[((v.len() - 1) as f32 * q.clamp(0.0, 1.0)) as usize])
@@ -331,7 +530,9 @@ pub fn percentile(series: &[f32], q: f32) -> Option<f32> {
 /// nivelada). Por frame; a queda pélvica é o pico dessa inclinação no apoio (ver percentile).
 pub fn hip_tilt_deg(hip_l: (f32, f32, f32), hip_r: (f32, f32, f32)) -> f32 {
     let (dx, dy) = ((hip_r.0 - hip_l.0).abs(), (hip_r.1 - hip_l.1).abs());
-    if dx == 0.0 && dy == 0.0 { return 0.0; }
+    if dx == 0.0 && dy == 0.0 {
+        return 0.0;
+    }
     dy.atan2(dx).to_degrees()
 }
 
@@ -380,12 +581,33 @@ mod tests {
     }
 
     #[test]
+    fn sinal_do_pe_usa_o_ponto_mais_baixo_no_frame() {
+        assert_eq!(foot_ground_y(120.0, 105.0), 120.0); // heel-strike
+        assert_eq!(foot_ground_y(100.0, 130.0), 130.0); // toe-off
+    }
+
+    #[test]
+    fn timing_gate_rejeita_gct_mais_voo_maior_que_a_passada() {
+        // laisa real: passo ~362ms, GCT+voo 252ms (razão 0.70) -> consistente
+        assert!(timing_consistent_with_cadence(165.9, 142.5, 109.1));
+        // video_corrida_23 real: passo ~361ms, GCT+voo 498ms (razão 1.38, voo inflado) -> rejeita
+        assert!(!timing_consistent_with_cadence(166.0, 217.7, 280.8));
+        // sem cadência não dá pra checar -> não rejeita à toa
+        assert!(timing_consistent_with_cadence(0.0, 500.0, 500.0));
+    }
+
+    #[test]
     fn gct_descarta_apoio_impossivel() {
         // sinal quase todo "no chão" (vista ruim) -> apoios gigantes -> descartados, gct None
         let mut s = vec![100.0f32; 200];
-        for i in (0..200).step_by(50) { s[i] = 10.0; }
+        for i in (0..200).step_by(50) {
+            s[i] = 10.0;
+        }
         let (gct, _) = contact_flight_ms(&s, &s, 25.0);
-        assert!(gct.is_none(), "apoio impossível deveria virar None, veio {gct:?}");
+        assert!(
+            gct.is_none(),
+            "apoio impossível deveria virar None, veio {gct:?}"
+        );
     }
 
     #[test]
@@ -393,15 +615,29 @@ mod tests {
         // Na LATERAL a perna de trás é ocluída -> assimetria bilateral não é medível (seria
         // fantasma, ~40%, inflando o risco). Deve ser None; a oscilação vertical segue medida.
         let l = sine(1.4, 30.0, 16.0, 20.0);
-        let r = sine(1.4, 30.0, 16.0, 14.0);          // amplitudes diferentes (oclusão)
-        let m = analyze_form(&l, &r, &sine(2.8, 30.0, 16.0, 4.0), 100.0, 30.0, 480, "lateral", true);
-        assert!(m.asymmetry_pct.is_none(), "assimetria deve ser None na lateral");
+        let r = sine(1.4, 30.0, 16.0, 14.0); // amplitudes diferentes (oclusão)
+        let m = analyze_form(
+            &l,
+            &r,
+            &sine(2.8, 30.0, 16.0, 4.0),
+            100.0,
+            30.0,
+            480,
+            "lateral",
+            true,
+        );
+        assert!(
+            m.asymmetry_pct.is_none(),
+            "assimetria deve ser None na lateral"
+        );
         assert!(m.vertical_oscillation_pct.unwrap() > 5.0);
     }
 
     #[test]
     fn series_curtas_degradam_gracioso() {
-        let m = analyze_form(&[1.0; 4], &[1.0; 4], &[1.0; 4], 100.0, 30.0, 4, "lateral", true);
+        let m = analyze_form(
+            &[1.0; 4], &[1.0; 4], &[1.0; 4], 100.0, 30.0, 4, "lateral", true,
+        );
         assert!(m.cadence_spm.is_none() && m.asymmetry_pct.is_none());
     }
 
@@ -413,23 +649,57 @@ mod tests {
         // não da média com a ocluída.
         let near = sine(1.4, 25.0, 16.0, 20.0);
         let far = sine(0.7, 25.0, 16.0, 6.0);
-        let m = analyze_form(&near, &far, &sine(2.8, 25.0, 16.0, 8.0), 100.0, 25.0, near.len(), "lateral", true);
-        assert!(m.reliable && m.quality_note.is_none(), "lateral com oclusão deve ser confiável");
-        assert!(m.cadence_spm.unwrap() > 150.0, "cadência deve vir da perna visível, veio {:?}", m.cadence_spm);
+        let m = analyze_form(
+            &near,
+            &far,
+            &sine(2.8, 25.0, 16.0, 8.0),
+            100.0,
+            25.0,
+            near.len(),
+            "lateral",
+            true,
+        );
+        assert!(
+            m.reliable && m.quality_note.is_none(),
+            "lateral com oclusão deve ser confiável"
+        );
+        assert!(
+            m.cadence_spm.unwrap() > 150.0,
+            "cadência deve vir da perna visível, veio {:?}",
+            m.cadence_spm
+        );
     }
 
     #[test]
     fn guard_descarta_oscilacao_vertical_absurda() {
         // hip_y com amplitude enorme vs perna curta (vista frontal) -> osc. vertical implausível
         let l = sine(1.4, 25.0, 16.0, 20.0);
-        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 16.0, 500.0), 100.0, 25.0, l.len(), "lateral", true);
+        let m = analyze_form(
+            &l,
+            &l,
+            &sine(2.8, 25.0, 16.0, 500.0),
+            100.0,
+            25.0,
+            l.len(),
+            "lateral",
+            true,
+        );
         assert!(m.vertical_oscillation_pct.is_none() && !m.reliable);
     }
 
     #[test]
     fn boa_entrada_e_confiavel() {
         let l = sine(1.4, 25.0, 16.0, 20.0);
-        let m = analyze_form(&l, &l, &sine(2.8, 25.0, 16.0, 8.0), 100.0, 25.0, l.len(), "lateral", true);
+        let m = analyze_form(
+            &l,
+            &l,
+            &sine(2.8, 25.0, 16.0, 8.0),
+            100.0,
+            25.0,
+            l.len(),
+            "lateral",
+            true,
+        );
         assert!(m.reliable && m.vertical_oscillation_pct.is_some() && m.quality_note.is_none());
     }
 
@@ -445,9 +715,18 @@ mod tests {
     fn tronco_fora_do_quadro_rejeita_com_motivo_certo() {
         // tornozelos cheios (detecção ok) mas quadril confiável em POUCOS frames (tronco fora) ->
         // motivo 'torso_not_visible', não o enganoso 'not_lateral'
-        let ankles = sine(1.4, 25.0, 16.0, 20.0);        // 400 frames (>15s)
-        let hip_sparse = vec![100.0f32; 40];             // 40/400 < 0.5
-        let m = analyze_form(&ankles, &ankles, &hip_sparse, 100.0, 25.0, ankles.len(), "lateral", true);
+        let ankles = sine(1.4, 25.0, 16.0, 20.0); // 400 frames (>15s)
+        let hip_sparse = vec![100.0f32; 40]; // 40/400 < 0.5
+        let m = analyze_form(
+            &ankles,
+            &ankles,
+            &hip_sparse,
+            100.0,
+            25.0,
+            ankles.len(),
+            "lateral",
+            true,
+        );
         assert!(!m.reliable && m.reason == "torso_not_visible");
     }
 
@@ -455,7 +734,10 @@ mod tests {
     fn contato_mede_o_angulo_na_fase_de_apoio() {
         // tornozelo oscila (y máx = apoio). No apoio o joelho está em ~160°; no voo, ~90°.
         let ankle = sine(1.4, 30.0, 6.0, 20.0);
-        let knee: Vec<f32> = ankle.iter().map(|&y| if y > 0.0 { 160.0 } else { 90.0 }).collect();
+        let knee: Vec<f32> = ankle
+            .iter()
+            .map(|&y| if y > 0.0 { 160.0 } else { 90.0 })
+            .collect();
         let a = contact_angle(&knee, &ankle).expect("deve achar apoios");
         assert!((a - 160.0).abs() < 5.0, "esperava ~160° no apoio, veio {a}");
     }
@@ -469,10 +751,14 @@ mod tests {
     fn gct_e_voo_de_series_conhecidas() {
         // dois pés em contra-fase a 1.5 Hz, 30fps: há apoio em cada pé e momentos de voo
         let l = sine(1.5, 30.0, 6.0, 20.0);
-        let r: Vec<f32> = l.iter().map(|&y| -y).collect();  // fase oposta
+        let r: Vec<f32> = l.iter().map(|&y| -y).collect(); // fase oposta
         let (gct, flight) = contact_flight_ms(&l, &r, 30.0);
         assert!(gct.is_some(), "GCT deveria existir");
-        assert!(gct.unwrap() > 0.0 && gct.unwrap() < 1000.0, "GCT plausível, veio {:?}", gct);
+        assert!(
+            gct.unwrap() > 0.0 && gct.unwrap() < 1000.0,
+            "GCT plausível, veio {:?}",
+            gct
+        );
         assert!(flight.is_some(), "voo deveria existir");
     }
 
@@ -487,9 +773,15 @@ mod tests {
         // tornozelo oscila (apoio no y máx); no apoio fica 30px À FRENTE do joelho
         let ankle_y = sine(1.4, 30.0, 6.0, 20.0);
         let knee_x = vec![100.0; ankle_y.len()];
-        let ankle_x: Vec<f32> = ankle_y.iter().map(|&y| if y > 0.0 { 130.0 } else { 100.0 }).collect();
+        let ankle_x: Vec<f32> = ankle_y
+            .iter()
+            .map(|&y| if y > 0.0 { 130.0 } else { 100.0 })
+            .collect();
         // facing_dir positivo (corre pra +x), perna 200px
-        assert_eq!(foot_strike(&ankle_x, &ankle_y, &knee_x, 1.0, 200.0), Some("calcanhar"));
+        assert_eq!(
+            foot_strike(&ankle_x, &ankle_y, &knee_x, 1.0, 200.0),
+            Some("calcanhar")
+        );
     }
 
     #[test]
@@ -520,8 +812,8 @@ mod tests {
 
     #[test]
     fn frontal_confia_com_duas_pernas_recusa_com_uma() {
-        let s = sine(1.0, 25.0, 16.0, 5.0);   // série qualquer (>15s), boa detecção
-        // as duas pernas visíveis -> confiável (métricas sagitais None)
+        let s = sine(1.0, 25.0, 16.0, 5.0); // série qualquer (>15s), boa detecção
+                                            // as duas pernas visíveis -> confiável (métricas sagitais None)
         let ok = analyze_form(&s, &s, &s, 100.0, 25.0, s.len(), "frontal", true);
         assert!(ok.reliable && ok.cadence_spm.is_none() && ok.view.as_deref() == Some("frontal"));
         // uma perna ocluída (both_legs_ok=false) -> recusa com nota de vista frontal
