@@ -85,66 +85,106 @@ def by_index(dump: dict) -> dict:
     return {r["i"]: r for r in dump.get("frames", [])}
 
 
+def _angle_reader(mode: str):
+    """Escolhe explicitamente a geometria usada pelo relatório.
+
+    ``world_3d`` é uma estimativa 3D do modelo, não uma verdade clínica. Ele evita a
+    projeção no plano da câmera; só o mocap/força no ``truth`` pode validar acurácia.
+    Não há modo ``auto`` de propósito: misturar 2D e 3D sem registrá-lo tornou um
+    resultado anterior impossível de reproduzir.
+    """
+    readers = {"2d": angle_at, "world_3d": angle_at_3d}
+    try:
+        return readers[mode]
+    except KeyError as exc:
+        raise ValueError("angle_mode deve ser '2d' ou 'world_3d'") from exc
+
+
 def paired_agreement(dump_a: dict, dump_b: dict, joint: str, leg: str,
-                     frames: Optional[list] = None) -> dict:
+                     frames: Optional[list] = None, *, mode_a: str = "2d",
+                     mode_b: str = "2d") -> dict:
     """Bland-Altman de b−a no MESMO frame. `frames`=None usa todos onde ambos têm pose (diagnóstico
     de agreement, NÃO ancorado em evento). `frames`=eventos anotados dá a comparação válida."""
+    reader_a, reader_b = _angle_reader(mode_a), _angle_reader(mode_b)
     ia, ib = by_index(dump_a), by_index(dump_b)
     idxs = frames if frames is not None else sorted(set(ia) & set(ib))
     diffs = []
     for i in idxs:
-        a = angle_at(ia.get(i, {}), joint, leg)
-        b = angle_at(ib.get(i, {}), joint, leg)
+        a = reader_a(ia.get(i, {}), joint, leg)
+        b = reader_b(ib.get(i, {}), joint, leg)
         if a is not None and b is not None:
             diffs.append(b - a)
     if not diffs:
-        return {"n": 0}
+        return {"n": 0, "modes": {"a": mode_a, "b": mode_b}}
     bias = st.mean(diffs)
     sd = st.pstdev(diffs) if len(diffs) > 1 else 0.0
     return {"n": len(diffs), "mae_deg": round(st.mean(map(abs, diffs)), 1),
             "bias_deg": round(bias, 1), "sd_deg": round(sd, 1),
             "loa_deg": [round(bias - 1.96 * sd, 1), round(bias + 1.96 * sd, 1)],
-            "event_anchored": frames is not None}
+            "event_anchored": frames is not None,
+            "modes": {"a": mode_a, "b": mode_b}}
 
 
-def error_vs_truth(dump: dict, truth: dict, joint: str, leg: str) -> dict:
-    """MAE/viés de um backend contra o ângulo VERDADEIRO. `truth`={frame_index: angulo_graus}."""
+def error_vs_truth(dump: dict, truth: dict, joint: str, leg: str, *, mode: str = "2d") -> dict:
+    """MAE/viés de um backend contra o ângulo VERDADEIRO.
+
+    ``truth`` é ``{frame_index: angulo_graus}``; ``mode`` fica no resultado para que um
+    MAE 2D nunca seja apresentado como resultado dos world landmarks 3D.
+    """
+    reader = _angle_reader(mode)
     idx = by_index(dump)
     errs = []
     for i, gt in truth.items():
-        a = angle_at(idx.get(int(i), {}), joint, leg)
+        a = reader(idx.get(int(i), {}), joint, leg)
         if a is not None:
             errs.append(a - gt)
     if not errs:
-        return {"n": 0}
+        return {"n": 0, "mode": mode}
     return {"n": len(errs), "mae_deg": round(st.mean(map(abs, errs)), 1),
-            "bias_deg": round(st.mean(errs), 1)}
+            "bias_deg": round(st.mean(errs), 1), "mode": mode}
 
 
 def report(dumps: dict, baseline: str, candidate: str, leg: str = "l",
-           events: Optional[dict] = None, truth: Optional[dict] = None) -> dict:
+           events: Optional[dict] = None, truth: Optional[dict] = None,
+           *, baseline_mode: str = "2d", candidate_mode: str = "2d",
+           legs: Optional[dict] = None) -> dict:
     """Relatório por articulação. `dumps[subject][backend]=dump`. `events[subject]=[frames]` (comuns
-    aos dois backends). `truth[subject][joint]={frame: angulo}` do mocap. Honesto sobre o que falta."""
+    aos dois backends). `truth[subject][joint]={frame: angulo}` do mocap.
+
+    ``legs`` permite uma perna visível por corredor, escolhida por uma regra independente da verdade;
+    se ausente, preserva o ``leg`` global para os testes e usos antigos.
+    """
     subjects = [s for s in dumps if baseline in dumps[s] and candidate in dumps[s]]
+    # Um relatório ancorado em eventos não pode contar um dump sem evento só porque há frames
+    # disponíveis. Isso inflaria n_subjects_agree com acordo de fases arbitrárias.
+    if events is not None:
+        subjects = [s for s in subjects if s in events]
     joints = {}
     for joint in CONTACT_JOINTS:
         agrees, base_err, cand_err = [], [], []
         for s in subjects:
+            subject_leg = (legs or {}).get(s, leg)
+            if subject_leg not in ("l", "r"):
+                raise ValueError("legs deve mapear cada corredor para 'l' ou 'r'")
             ev = (events or {}).get(s)
-            ag = paired_agreement(dumps[s][baseline], dumps[s][candidate], joint, leg, ev)
+            ag = paired_agreement(dumps[s][baseline], dumps[s][candidate], joint, subject_leg, ev,
+                                  mode_a=baseline_mode, mode_b=candidate_mode)
             if ag["n"]:
                 agrees.append(ag)
             gt = (truth or {}).get(s, {}).get(joint)
             if gt:
-                be = error_vs_truth(dumps[s][baseline], gt, joint, leg)
-                ce = error_vs_truth(dumps[s][candidate], gt, joint, leg)
+                be = error_vs_truth(dumps[s][baseline], gt, joint, subject_leg, mode=baseline_mode)
+                ce = error_vs_truth(dumps[s][candidate], gt, joint, subject_leg, mode=candidate_mode)
                 if be["n"] and ce["n"]:
                     base_err.append(be["mae_deg"])
                     cand_err.append(ce["mae_deg"])
         joints[joint] = _summarize(agrees, base_err, cand_err)
     return {"baseline": baseline, "candidate": candidate, "leg": leg,
+            "angle_modes": {baseline: baseline_mode, candidate: candidate_mode},
+            "legs": {s: (legs or {}).get(s, leg) for s in subjects},
             "n_subjects": len(subjects), "event_anchored": bool(events),
             "has_ground_truth": bool(truth), "joints": joints,
+            "study_scope": "piloto_de_engenharia_nao_validacao_clinica",
             "verdict": _verdict(len(subjects), bool(events), bool(truth), joints)}
 
 
@@ -171,7 +211,7 @@ def _verdict(n: int, anchored: bool, truth: bool, joints: dict) -> str:
         return "sem_ground_truth — pareado em eventos, mas só concordância entre backends; falta a verdade (mocap)."
     if n < MIN_SUBJECTS:
         return f"piloto_engenharia ({n}<{MIN_SUBJECTS} corredores) — mede erro real, mas não valida clinicamente."
-    return "valido — pareado em eventos + ground-truth; ver *_mae_vs_truth por articulação"
+    return "avaliacao_pareada_de_engenharia — eventos + ground-truth; não é validação clínica"
 
 
 def load_dumps(directory: str) -> dict:
@@ -191,10 +231,16 @@ if __name__ == "__main__":
     ap.add_argument("--baseline", default="yolo17")
     ap.add_argument("--candidate", default="blazepose33")
     ap.add_argument("--leg", default="l", choices=["l", "r"])
+    ap.add_argument("--baseline-mode", default="2d", choices=["2d", "world_3d"])
+    ap.add_argument("--candidate-mode", default="2d", choices=["2d", "world_3d"])
     ap.add_argument("--events", help="JSON {subject: [frames_de_evento]}")
     ap.add_argument("--truth", help="JSON {subject: {joint: {frame: angulo}}}")
+    ap.add_argument("--legs", help="JSON opcional {subject: 'l'|'r'} (perna visível por corredor)")
     args = ap.parse_args()
     ev = json.loads(Path(args.events).read_text()) if args.events else None
     gt = json.loads(Path(args.truth).read_text()) if args.truth else None
+    legs = json.loads(Path(args.legs).read_text()) if args.legs else None
     print(json.dumps(report(load_dumps(args.dumps_dir), args.baseline, args.candidate,
-                            args.leg, ev, gt), indent=2, ensure_ascii=False))
+                            args.leg, ev, gt, baseline_mode=args.baseline_mode,
+                            candidate_mode=args.candidate_mode, legs=legs), indent=2,
+                     ensure_ascii=False))

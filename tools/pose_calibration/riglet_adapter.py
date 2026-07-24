@@ -110,9 +110,8 @@ def condition_events_truth(csv_paths: list, side: str, event: str = "strike",
     return sorted(set(frames)), truth
 
 
-def visible_leg(dump: dict) -> str:
-    """Perna VISÍVEL (a da frente na lateral) = maior confiança somada de joelho+tornozelo. A de
-    trás é ocluída e não-confiável — comparar ela contra o mocac é ruído (é o que inflava o MAE)."""
+def leg_confidence(dump: dict) -> dict:
+    """Confiança acumulada de joelho+tornozelo por perna, sem consultar mocap/erro."""
     tot = {"l": 0.0, "r": 0.0}
     for rec in dump.get("frames", []):
         kp = rec.get("kp") if rec.get("present") else None
@@ -120,7 +119,23 @@ def visible_leg(dump: dict) -> str:
             continue
         for leg in ("l", "r"):
             tot[leg] += sum(kp[n][2] for n in (f"knee_{leg}", f"ankle_{leg}") if n in kp)
+    return tot
+
+
+def visible_leg(dump: dict) -> str:
+    """Perna VISÍVEL (a da frente na lateral) pela maior confiança somada de joelho+tornozelo."""
+    tot = leg_confidence(dump)
     return "r" if tot["r"] >= tot["l"] else "l"
+
+
+def visible_leg_pair(baseline_dump: dict, candidate_dump: dict) -> str:
+    """Escolhe uma única perna por corredor com evidência dos DOIS backends.
+
+    A regra é definida antes de consultar a verdade: nunca escolhe a menor diferença contra mocap,
+    o que enviesaria o MAE do piloto em favor de uma perna/backend.
+    """
+    a, b = leg_confidence(baseline_dump), leg_confidence(candidate_dump)
+    return "r" if a["r"] + b["r"] >= a["l"] + b["l"] else "l"
 
 
 def run_pose(binary: str, avi: str, backend: str, out_json: str, env: dict) -> None:

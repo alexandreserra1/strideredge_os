@@ -72,6 +72,18 @@ def test_visible_leg_escolhe_a_perna_de_maior_confianca():
     assert ra.visible_leg(dump) == "l"                            # esquerda bem mais confiável
 
 
+def test_visible_leg_pair_usa_confianca_dos_dois_sem_olhar_o_mocap():
+    # Um backend só favorece a esquerda, mas a evidência combinada favorece a direita.
+    yolo = {"frames": [{"present": True, "kp": {
+        "knee_l": [0, 0, 0.9], "ankle_l": [0, 0, 0.9],
+        "knee_r": [0, 0, 0.6], "ankle_r": [0, 0, 0.6]}}]}
+    blaze = {"frames": [{"present": True, "kp": {
+        "knee_l": [0, 0, 0.2], "ankle_l": [0, 0, 0.2],
+        "knee_r": [0, 0, 0.9], "ankle_r": [0, 0, 0.9]}}]}
+    assert ra.visible_leg(yolo) == "l"
+    assert ra.visible_leg_pair(yolo, blaze) == "r"
+
+
 def test_check_sync_casa_apoios_da_pose_com_strikes(tmp_path):
     # dump sintético: tornozelo em mínimo (y alto) exatamente nos frames de strike -> lag ~0
     frames = [50, 75]
