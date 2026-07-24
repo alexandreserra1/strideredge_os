@@ -19,7 +19,7 @@ científicas. Autossuficiente: só precisa de uma câmera, 100% no aparelho.
 Frontend web (React/Vite)  ──REST──►  API (FastAPI, controllers finos)
                                           │
    upload de vídeo ──► fila de jobs (core/jobs.py) ──► worker:
-       ffmpeg (transcode) → stride_vision (pose YOLO11 via ONNX) → métricas (JSON)
+       ffmpeg (transcode) → stride_vision (BlazePose nativo; YOLO17 shadow temporário) → métricas (JSON)
                                           │
    plano corretivo ◄── FormCoach ◄── RAG híbrido (denso+BM25 + contextual retrieval + grounding)
                                           │
@@ -33,8 +33,56 @@ diagnóstico determinístico (medido × ideal personalizado); plano corretivo co
 
 ## Stack
 
-Python · **Rust** (`stride_vision`, motor de pose standalone via ONNX) · **DuckDB** ·
+Python · **Rust** (`stride_vision`, motor standalone via ONNX e ponte C++/MediaPipe Tasks) · **DuckDB** ·
 **Ollama** (Qwen 7B + bge-m3) · FastAPI · React/Vite · structlog. Sem custo de token.
+
+O backend principal é **BlazePose GHUM Full** (Apache-2.0), com 33 landmarks e ponte nativa já
+medida. Calcanhar+ponta ancoram contato/voo quando confiáveis; o resultado registra quando precisou
+usar o tornozelo como proxy. **YOLO17** fica temporariamente como shadow opt-in da mesma captura,
+nunca fallback silencioso. O **Halpe26/RTMPose** segue experimental: seus assets não têm
+procedência/licença comercial confirmada. A validação pareada das métricas e o empacotamento do
+runtime por plataforma continuam pendentes; isso não habilita diagnóstico de pronação/dorsiflexão.
+Ver [`ADR 0002`](docs/adr/0002-blazepose-apache-candidate.md).
+
+### Assets do BlazePose (obrigatórios para upload)
+
+Os pesos e o runtime não entram no Git. Antes de iniciar a API, coloque o runtime MediaPipe e o
+bundle oficial `pose_landmarker_full.task` numa pasta privada (`chmod 700`), calcule seus SHA-256 e
+crie um manifesto dentro da mesma pasta. O servidor só entrega esses caminhos ao Rust depois de
+validá-los.
+
+```json
+{
+  "schema_version": 1,
+  "backend": "blazepose33",
+  "status": "experimental",
+  "model_version": "pose-landmarker-full-<versao>",
+  "assets": {
+    "runtime": {"file": "libmediapipe.dylib", "sha256": "<sha256-do-runtime>"},
+    "pose_landmarker": {"file": "pose_landmarker_full.task", "sha256": "<sha256-do-task>"}
+  }
+}
+```
+
+```bash
+export STRIDE_MODEL_ROOT=/caminho/privado/para/assets
+export STRIDE_BLAZEPOSE_ASSET_MANIFEST="$STRIDE_MODEL_ROOT/blazepose-assets.json"
+# Opcional durante a migração: mede YOLO no mesmo vídeo, sem mudar a resposta ao atleta.
+export STRIDE_POSE_SHADOW_BACKEND=yolo17
+```
+
+Sem esses assets, o upload retorna indisponibilidade explícita; ele nunca troca silenciosamente
+para YOLO.
+
+Com o shadow ligado, o operador pode acompanhar a transição sem acessar vídeos ou identidade de
+atletas:
+
+```bash
+.venv/bin/python tools/pose_calibration/summarize_shadow.py
+```
+
+O relatório só agrega qualidade e deltas Blaze→YOLO por versão de modelo; divergência não é tratada
+como erro clínico nem como mudança de forma do corredor.
 
 ## Como rodar
 

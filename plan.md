@@ -5,7 +5,32 @@
 > Muitas seções abaixo descrevem essa arquitetura antiga e são **HISTÓRICAS** — valem como registro
 > de decisões, não como o estado atual. O que SEGUE valendo: §6.5 (análise de movimento por vídeo),
 > o RAG, a fila de jobs (§9.2), a fronteira de isolamento vira moot (só resta a fonte vídeo).
-> Fonte de verdade do estado atual: `CLAUDE.md` e `README.md`.
+> Fonte de verdade do estado atual: o checkpoint abaixo, `README.md`, `AI-STRATEGY.md` e
+> `constitution.md`. As seções históricas não são backlog executável.
+
+## Estado atual — vídeo-first (jul/2026)
+
+O produto em operação é **login → upload de vídeo → job em background → métricas de forma → coach
+corretivo citado**. A stack ativa é FastAPI/Python, `stride_vision` Rust standalone, DuckDB,
+React/Vite e Ollama+RAG local; não há ingestão `.FIT`, Garmin, Streamlit, maturin ou hardware no
+escopo atual.
+
+- **Entregue:** perfil de risco por lesão, captura lateral+frontal, log OSTRC e ponte longitudinal
+  para outcomes, prior bayesiano online e robustez a rotação/codec de vídeo.
+- **Halpe26:** backend Rust experimental de 26 keypoints, opt-in. Ele foi benchmarkado contra o
+  YOLO17, mas seus assets seguem bloqueados de produto por licença/procedência não confirmadas.
+  O candidato permissivo é o BlazePose GHUM Full (33 pontos, Apache-2.0): ponte nativa e seleção
+  observável por manifesto já existem. Ele é o padrão de novas análises; YOLO17 permanece somente
+  como shadow opt-in para comparação pareada. Eventos de solo do Blaze usam calcanhar+ponta quando
+  disponíveis e registram fallback. Faltam runtime empacotado por plataforma e validação clínica
+  das métricas. Ver `docs/adr/0002`.
+- **Entregue:** evolução pessoal de forma: só compara análises confiáveis do mesmo atleta, vista,
+  backend, versão e geometria; exige três capturas e não vira ranking ou diagnóstico.
+- **Entregue:** `tools/pose_calibration/summarize_shadow.py` agrega a telemetria privada
+  BlazePose→YOLO por versão de modelo (qualidade, compatibilidade e deltas), sem vídeo, path,
+  `analysis_id` ou identidade de atleta. É a evidência operacional para desligar o shadow.
+- **Próximo roadmap:** validar métricas e guardrails com a telemetria shadow → beta controlada. O modelo de risco
+  continua evoluindo pela coleta de outcomes reais, não pelo RF sintético.
 
 # StriderEdge OS - Documentação Oficial de Engenharia e System Design
 
@@ -79,8 +104,9 @@ NÍVEL ATLETA e LONGITUDINAL** — `form_analyses.user_id` liga cada análise ao
 convidado fica anônimo), e `analytics/injury_dataset.py` junta lesão×análises-antes-do-onset numa
 janela (`build_dataset`) — a ponte que vai alimentar o modelo treinado quando houver casos.
 
-**Próximo (produto):** tela "Minhas lesões" (log estruturado) · **upgrade de pose RTMPose** (26
-keypoints c/ pés → pisada/pronação REAIS + vista de trás; hoje a pisada é estimativa) · **gerador de
+**Próximo (produto):** tela "Minhas lesões" (log estruturado) · **validação do pose BlazePose
+GHUM Full** (33 keypoints com calcanhar+ponta do pé, ponte nativa pronta; não chamar de pronação
+clínica sem validação) · **gerador de
 plano adaptativo** (§0.3) · motores de movimento **HYROX/CrossFit** (classificar exercício, contar
 reps, ginástica×LPO) · dado ao vivo (Connect IQ) · app mobile · **Hospedar = por último** (§10).
 
@@ -562,8 +588,10 @@ def generate_coach_prompt(summary_metrics: dict, anomalies: list) -> str:
   (mesma guarda de aterramento do coach; sem fonte, não inventa).
 - **Validação:** contra o ground-truth do Garmin (cadência da câmera vs. do relógio) — diferencial
   que o mercado (ex.: Ochy) não tem, pois valida a própria precisão.
-- **Próximo:** trocar YOLO11 por **RTMPose Halpe26** (26 keypoints, 6 nos pés) → pisada/pronação
-  REAIS + análise de vista de trás; e estender o padrão pra movimentos de HYROX/CrossFit.
+- **Próximo:** validar primeiro a métrica lateral do segmento do pé do candidato permissivo
+  **BlazePose GHUM Full** (ponte nativa já disponível: 33 keypoints, calcanhar+ponta dos pés). O
+  Halpe26 não é rota de produto até sua licença/procedência ser comprovada; nenhuma das opções
+  permite declarar pronação clínica sem validação específica de vista traseira.
 
 ---
 

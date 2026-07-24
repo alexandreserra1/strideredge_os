@@ -42,3 +42,7 @@ storage/.auth_secret
 
 # datasets externos (grandes + licença de terceiros — não versionar)
 data/
+
+# tooling local de agentes (não versionar)
+.claude/
+.agents/

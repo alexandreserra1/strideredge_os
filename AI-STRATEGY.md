@@ -104,7 +104,7 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   licença/alinhamento), **D** survival / tempo-até-lesão (Cox/RSF — o formato biológico certo quando
   o dado maturar). Ordem honesta: B (feito) faz a espera render → A traz o dado → D é o alvo.
 
-### [PRÓXIMO — alavancagem #1] Perfil de risco POR LESÃO (decomposição, sem esperar dado)
+### [FEITO — alavancagem #1] Perfil de risco POR LESÃO (decomposição, sem esperar dado)
 
 > Diagnóstico honesto (E2E jul/2026, 2 vídeos reais): a saída ficou **crua e pouco diferenciada**
 > entre atletas. Causa raiz NÃO é o RF (esse está data-blocked) — é que **não usamos o conhecimento
@@ -123,16 +123,20 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
   `pelvic_drop`+`knee_valgus`, só vindos do plano FRONTAL) sai como **"não avaliável"**, nunca como
   "risco baixo" — ausência de medida ≠ ausência de risco.
 
-### [PRÓXIMO — alavancagem #2] Captura dos DOIS planos (lateral + frontal)
+### [FEITO — alavancagem #2] Captura dos DOIS planos (lateral + frontal)
 
-- O plano FRONTAL já existe no motor (`stride_vision`, commit da análise frontal: queda pélvica +
-  valgo de joelho), mas o fluxo roda só o lateral. Sagital sozinho **não mede** os discriminantes do
-  joelho/quadril → PFP, ITBS e metade da canelite ficam invisíveis (por isso os atletas convergem).
-- Fluxo: pedir 2 clipes curtos (lado + frente); fundir as métricas antes do `assess`. Destrava a
-  família de joelho no perfil #1 e é o maior salto de COBERTURA de lesão sem trocar de modelo.
-- **#3 Halpe26** (costura pronta, `stride_vision/README-KEYPOINTS.md`): pé medido → fascite/Aquiles
-  de proxy p/ primário. **#4 RF treinado por diagnóstico**: só quando `build_dataset` tiver N atletas
-  com desfecho — é o horizonte, não o atalho. Ordem de valor: **#1 → #2 → #3 → #4**.
+- O fluxo aceita lateral e frontal, funde as métricas antes do `assess` e preserva o comportamento
+  lateral quando o segundo clipe não existe. Assim, quedas pélvicas e valgo deixam de ser tratados
+  como risco baixo quando não foram medidos.
+- **#3 Halpe26**: backend Rust experimental de 26 keypoints (RTMDet + RTMPose SimCC) pronto para
+  benchmark opt-in; seus assets não têm procedência/licença comercial confirmada e seguem bloqueados
+  de produto. **BlazePose GHUM Full** é o candidato permissivo (33 pontos, Apache-2.0) para a
+  migração do padrão: ponte nativa C++/MediaPipe Tasks → `PoseBackend` Rust implementada e medida
+  a 59,7 FPS no M1 Pro (vs. YOLO 53,2 FPS no mesmo vídeo). Continua **experimental** até validar
+  métricas pareadas/clinicamente e empacotar o runtime oficial por plataforma — ver
+  `docs/adr/0002`. **#4 RF treinado por
+  diagnóstico**: só quando `build_dataset` tiver N atletas com desfecho — é o horizonte, não o
+  atalho. Ordem de valor realizada: **#1 → #2 → #3 experimental → #4**.
 
 ### Taxonomia + coleta (OSTRC) + ponte pro ML — a fundação do outcome
 
@@ -144,9 +148,9 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
      Hoje é referência pra `validate_literature_model`; no modelo treinado vira o PRIOR que regulariza
      com pouco dado. **As 6 lesões têm mapa (`mapped=True`) com fonte citável.** Fascite/Aquiles usam
      fatores PROXY de carga (`cadence_spm`+`vertical_oscillation_pct` / `cadence_spm`+`knee_contact_deg`)
-     porque o risco primário delas (dorsiflexão/pronação do pé) **não é medível com o pose COCO-17
-     atual** — migra pra fator primário quando o motor subir p/ Halpe26 (ver `docs/adr/0001`). Mapa
-     só onde há fonte.
+     porque o risco primário delas (dorsiflexão/pronação do pé) **não é medível pelo backend padrão
+     COCO-17**. O backend Halpe26 existe apenas em modo experimental; só migraremos para fator
+     primário após validação das métricas e dos assets (ver `docs/adr/0001`). Mapa só onde há fonte.
   3. **`fator↔exercício`** (`analytics/exercises.py`, seed) — biblioteca determinística e citada que o
      FormCoach pode usar como fonte de verdade (o LLM personaliza a entrega, não inventa exercício).
 - **[FEITO] Coleta**: `injury_reports` (migration 014) + `InjuryService` (`api/injuries.py`, espelha
@@ -218,8 +222,12 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
 
 ### Fase 2 — superfície AI-first (roteiro amplo — reavaliar pós-pivot)
 5. **Coach agêntico**: unificar RAG + métricas de forma + risco num agente que PLANEJA.
-6. Comparar forma AO LONGO DO TEMPO (deriva = fadiga/risco) → janela temporal do risco.
-7. Mais fatores frontais (RTMPose/Halpe26 → pronação real) alimentando o mesmo modelo de risco.
+6. **[FEITO — baseline pessoal]** Comparar forma ao longo do tempo: `FormProgressService` mostra
+   apenas a evolução do próprio atleta, com pelo menos três capturas confiáveis de mesma vista,
+   backend, versão e geometria. A mudança YOLO→Blaze abre nova baseline; não é vendida como melhora
+   clínica. A janela temporal do **risco** continua dependente de outcomes reais.
+7. Mais fatores frontais somente após captura e validação próprias; BlazePose melhora o segmento
+   lateral do pé, mas não autoriza inferir pronação clínica por si só.
 
 ### Fase 3 — especialização de modelo (só quando houver dados)
 8. **Fine-tune LoRA** (Qwen 1.5–7B) em 500–2000 pares (métricas→veredito/plano) pra travar
