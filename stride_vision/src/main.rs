@@ -10,12 +10,66 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use stride_vision::{analyze_form, contact_angle, contact_flight_ms, foot_strike, draw_angles,
                     hip_tilt_deg, joint_angle, knee_valgus_deg, median, percentile,
-                    trunk_lean_deg, draw_pose, PoseBackend, PoseEngine, RtmPose26Backend};
+                    trunk_lean_deg, draw_pose, BlazePoseBackend, Pose, PoseBackend, PoseEngine,
+                    RtmPose26Backend};
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
 // o quadril "borderline" (0.42-0.45) num enquadramento ruim (só pernas) saltava e poluía a
 // amplitude/leg_len. 0.5 é o padrão "visível" — separa quadril real (>0.6) do chute do modelo.
 const KP_CONF: f32 = 0.5;
+
+/// Timestamp estável para backends de vídeo: a mesma sequência decodificada sempre recebe os
+/// mesmos milissegundos. `probe` já valida FPS; o fallback protege CLI/testes de divisão por zero.
+fn frame_timestamp_ms(frame: u32, fps: f32) -> u64 {
+    if fps.is_finite() && fps > 0.0 {
+        ((frame as f64 * 1_000.0) / fps as f64).round() as u64
+    } else {
+        frame as u64
+    }
+}
+
+/// Um registro por FRAME DECODIFICADO pro dump de calibração: índice, timestamp, se houve pose,
+/// confiança e os landmarks por NOME SEMÂNTICO (x, y, conf). Pontos de pé só quando o layout os
+/// traz. Backend-independente: o arnês recomputa qualquer ângulo no MESMO frame pros dois motores.
+fn frame_record(pose: &Option<Pose>, i: u32, t_ms: u64) -> serde_json::Value {
+    let Some(p) = pose else {
+        return serde_json::json!({ "i": i, "t_ms": t_ms, "present": false });
+    };
+    let (lay, kp) = (p.layout, &p.keypoints);
+    let mut kpm = serde_json::Map::new();
+    let named = [
+        ("nose", lay.nose), ("shoulder_l", lay.shoulder_l), ("shoulder_r", lay.shoulder_r),
+        ("hip_l", lay.hip_l), ("hip_r", lay.hip_r), ("knee_l", lay.knee_l), ("knee_r", lay.knee_r),
+        ("ankle_l", lay.ankle_l), ("ankle_r", lay.ankle_r),
+    ];
+    for (name, idx) in named {
+        let (x, y, c) = kp[idx];
+        kpm.insert(name.to_string(), serde_json::json!([x, y, c]));
+    }
+    for (name, opt) in [("heel_l", lay.heel_l), ("heel_r", lay.heel_r),
+                        ("big_toe_l", lay.big_toe_l), ("big_toe_r", lay.big_toe_r)] {
+        if let Some(idx) = opt {
+            let (x, y, c) = kp[idx];
+            kpm.insert(name.to_string(), serde_json::json!([x, y, c]));
+        }
+    }
+    let mut record = serde_json::Map::new();
+    record.insert("i".into(), serde_json::json!(i));
+    record.insert("t_ms".into(), serde_json::json!(t_ms));
+    record.insert("present".into(), serde_json::json!(true));
+    record.insert("conf".into(), serde_json::json!(p.confidence));
+    record.insert("kp".into(), serde_json::Value::Object(kpm));
+    // world landmarks 3D (metros) por nome — só o BlazePose traz; permite o ângulo 3D no arnês.
+    if let Some(w) = &p.world {
+        let mut wm = serde_json::Map::new();
+        for (name, idx) in named {
+            let (x, y, z) = w[idx];
+            wm.insert(name.to_string(), serde_json::json!([x, y, z]));
+        }
+        record.insert("kpw".into(), serde_json::Value::Object(wm));
+    }
+    serde_json::Value::Object(record)
+}
 
 /// Dono de um filho ffmpeg enquanto o pipeline usa seus pipes. `Child` não espera nem mata o
 /// processo no `Drop`; portanto uma saída antecipada por erro de inferência poderia deixá-lo
@@ -92,7 +146,7 @@ fn main() -> Result<()> {
         }
     }
     if pos.is_empty() {
-        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal] [--backend yolo17|halpe26]");
+        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal] [--backend yolo17|halpe26|blazepose33]");
     }
     let view = if view == "frontal" { "frontal" } else { "lateral" };
     let input = &pos[0];
@@ -109,7 +163,14 @@ fn main() -> Result<()> {
                 .context("halpe26 exige STRIDE_HALPE_POSE (ONNX RTMPose Halpe26)")?;
             Box::new(RtmPose26Backend::new(&detector, &pose)?)
         }
-        other => bail!("backend inválido '{other}': use yolo17 ou halpe26"),
+        "blazepose33" => {
+            let runtime = std::env::var("STRIDE_MEDIAPIPE_LIB")
+                .context("blazepose33 exige STRIDE_MEDIAPIPE_LIB (runtime C oficial MediaPipe)")?;
+            let model = std::env::var("STRIDE_BLAZEPOSE_MODEL")
+                .context("blazepose33 exige STRIDE_BLAZEPOSE_MODEL (bundle .task oficial)")?;
+            Box::new(BlazePoseBackend::new(&runtime, &model)?)
+        }
+        other => bail!("backend inválido '{other}': use yolo17, halpe26 ou blazepose33"),
     };
 
     if benchmark {
@@ -131,7 +192,7 @@ fn main() -> Result<()> {
 fn run_image(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result<()> {
     let mut img = image::open(input).context("abrindo imagem")?.to_rgb8();
     let t = std::time::Instant::now();
-    match engine.infer(&img)? {
+    match engine.infer(&img, 0)? {
         Some(pose) => {
             println!("pessoa detectada (conf {:.2}) em {:?}", pose.confidence, t.elapsed());
             for (k, &(x, y, c)) in pose.keypoints.iter().enumerate() {
@@ -164,7 +225,7 @@ fn run_benchmark(engine: &mut dyn PoseBackend, input: &str, out: &str) -> Result
     loop {
         if read_exact_or_eof(&mut src, &mut buf).is_err() { break }
         let img = RgbImage::from_raw(w, h, buf.clone()).unwrap();
-        if let Some(pose) = engine.infer(&img)? {
+        if let Some(pose) = engine.infer(&img, frame_timestamp_ms(frames, fps))? {
             detected += 1;
             if layout.has_foot() {
                 let foot_indices = [layout.big_toe_l, layout.big_toe_r, layout.small_toe_l,
@@ -248,13 +309,20 @@ fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str, o
     let mut nose_dx = Vec::new();   // nariz − quadril-médio (sinal = direção da corrida)
     let mut pelvic_tilt = Vec::new();   // inclinação da linha do quadril por frame (plano frontal)
     let t = std::time::Instant::now();
+    // DIAGNÓSTICO de calibração (STRIDE_DUMP_SERIES): coleta 1 registro por FRAME DECODIFICADO —
+    // índice, timestamp, se houve pose, confiança e os landmarks semânticos. Assim o arnês mede os
+    // DOIS backends no MESMO frame/evento anotado pelo ground-truth (não nos picos que cada um acha).
+    let want_dump = std::env::var("STRIDE_DUMP_SERIES").ok();
+    let mut frame_records: Vec<serde_json::Value> = Vec::new();
 
     loop {
         if let Err(e) = read_exact_or_eof(&mut src, &mut buf) {
             if frames == 0 { bail!("nada decodificado: {e}") } else { break }
         }
         let mut img: RgbImage = RgbImage::from_raw(w, h, buf.clone()).unwrap();
-        if let Some(pose) = engine.infer(&img)? {
+        let ts = frame_timestamp_ms(frames, fps);
+        let pose_opt = engine.infer(&img, ts)?;
+        if let Some(pose) = &pose_opt {
             let kp = &pose.keypoints;
             ankle_l.push(kp[lay.ankle_l].1);
             ankle_r.push(kp[lay.ankle_r].1);
@@ -294,10 +362,11 @@ fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str, o
                 pelvic_tilt.push(hip_tilt_deg(kp[lay.hip_l], kp[lay.hip_r]));
             }
             if overlay {
-                draw_pose(&mut img, &pose);
-                if view == "lateral" { draw_angles(&mut img, &pose); }   // goniômetros sagitais só na lateral
+                draw_pose(&mut img, pose);
+                if view == "lateral" { draw_angles(&mut img, pose); }   // goniômetros sagitais só na lateral
             }
         }
+        if want_dump.is_some() { frame_records.push(frame_record(&pose_opt, frames, ts)); }
         if let Some(d) = dst.as_mut() { d.write_all(img.as_raw())?; }   // só reencoda na passada de overlay
         frames += 1;
     }
@@ -306,6 +375,15 @@ fn run_video(engine: &mut dyn PoseBackend, input: &str, out: &str, view: &str, o
     if let Some(e) = enc.as_mut() { e.wait_success()?; }
     let el = t.elapsed().as_secs_f32();
     println!("{frames} frames em {el:.1}s ({:.1} fps de processamento)", frames as f32 / el);
+
+    // Grava o dump por-frame (se pedido). Backend-independente: landmarks por NOME semântico +
+    // fps/layout, pra o arnês recomputar qualquer ângulo no MESMO frame pros dois backends.
+    if let Some(dump_path) = &want_dump {
+        let doc = serde_json::json!({
+            "layout": lay.name, "fps": fps, "frames_total": frames, "frames": frame_records,
+        });
+        std::fs::write(dump_path, serde_json::to_string(&doc)?)?;
+    }
 
     // métricas consolidadas -> JSON ao lado do vídeo (o backend lê daqui)
     leg_lens.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -394,7 +472,7 @@ fn oriented_dimensions(width: u32, height: u32, rotation: i32) -> (u32, u32) {
 
 #[cfg(test)]
 mod cli_tests {
-    use super::{oriented_dimensions, ManagedChild};
+    use super::{frame_timestamp_ms, oriented_dimensions, ManagedChild};
     use std::process::Command;
 
     #[test]
@@ -421,5 +499,13 @@ mod cli_tests {
         let child = Command::new("sh").args(["-c", "exit 7"]).spawn().unwrap();
         let mut managed = ManagedChild::new(child, "ffmpeg de teste");
         assert!(managed.wait_success().is_err());
+    }
+
+    #[test]
+    fn timestamp_de_video_e_deterministico_e_monotonico() {
+        assert_eq!(frame_timestamp_ms(0, 30.0), 0);
+        assert_eq!(frame_timestamp_ms(1, 30.0), 33);
+        assert_eq!(frame_timestamp_ms(30, 30.0), 1_000);
+        assert_eq!(frame_timestamp_ms(4, 0.0), 4);
     }
 }

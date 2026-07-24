@@ -97,7 +97,7 @@ impl PoseEngine {
             let y = (at(6 + k * 3, i) - py) / scale;
             kps[k] = (x.clamp(0.0, ow), y.clamp(0.0, oh), at(7 + k * 3, i));
         }
-        Ok(Some(Pose { keypoints: kps, confidence: conf, layout: self.layout }))
+        Ok(Some(Pose { keypoints: kps, confidence: conf, layout: self.layout, world: None }))
     }
 }
 
@@ -109,7 +109,7 @@ impl PoseBackend for PoseEngine {
         PoseEngine::layout(self)
     }
 
-    fn infer(&mut self, img: &RgbImage) -> Result<Option<Pose>> {
+    fn infer(&mut self, img: &RgbImage, _timestamp_ms: u64) -> Result<Option<Pose>> {
         PoseEngine::infer(self, img)
     }
 }

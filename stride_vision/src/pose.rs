@@ -16,12 +16,17 @@ pub struct Pose {
     pub confidence: f32,
     /// layout que descreve esses keypoints (índices semânticos, nomes, esqueleto)
     pub layout: &'static KeypointLayout,
+    /// (x, y, z) em METROS (origem no quadril), um por keypoint — SÓ o BlazePose entrega (3D real);
+    /// None nos backends 2D (YOLO/RTM). Permite o ângulo articular imune à projeção 2D.
+    pub world: Option<Vec<(f32, f32, f32)>>,
 }
 
-/// Contrato de inferência de pose. Hoje `PoseEngine` (YOLO11) é a única implementação ativa; o
-/// `RtmPose26Backend` (Halpe26) só entra depois que o spike em `tools/halpe26/` validar o ONNX e
-/// os keypoints dos pés em vídeo real.
+/// Contrato de inferência de pose. Três implementações: `PoseEngine` (YOLO11, padrão de transição),
+/// `RtmPose26Backend` (Halpe26, experimental, bloqueado por licença dos pesos) e `BlazePoseBackend`
+/// (candidato comercial Apache-2.0, opt-in por asset). Trocar de motor é trocar a impl — desenho e
+/// métricas não mudam porque falam em índices semânticos do `KeypointLayout`.
 pub trait PoseBackend {
     fn layout(&self) -> &'static KeypointLayout;
-    fn infer(&mut self, img: &RgbImage) -> Result<Option<Pose>>;
+    /// `timestamp_ms` é monotônico para vídeo; backends sem rastreamento temporal podem ignorá-lo.
+    fn infer(&mut self, img: &RgbImage, timestamp_ms: u64) -> Result<Option<Pose>>;
 }

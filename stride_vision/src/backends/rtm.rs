@@ -158,14 +158,14 @@ impl RtmPose26Backend {
             keypoints.push((x.clamp(0.0, img.width() as f32), y.clamp(0.0, img.height() as f32),
                             ((x_score + y_score) * 0.5).clamp(0.0, 1.0)));
         }
-        Ok(Pose { keypoints, confidence, layout: &HALPE26 })
+        Ok(Pose { keypoints, confidence, layout: &HALPE26, world: None })
     }
 }
 
 impl PoseBackend for RtmPose26Backend {
     fn layout(&self) -> &'static KeypointLayout { &HALPE26 }
 
-    fn infer(&mut self, img: &RgbImage) -> Result<Option<Pose>> {
+    fn infer(&mut self, img: &RgbImage, _timestamp_ms: u64) -> Result<Option<Pose>> {
         let Some((confidence, crop)) = self.detect(img)? else { return Ok(None); };
         Ok(Some(self.decode(img, crop, confidence)?))
     }
