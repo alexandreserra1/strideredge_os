@@ -62,11 +62,21 @@ uma afirmação de erro angular, diagnóstico ou validade clínica.
 
 ## Portão para promoção a padrão
 
-- o runtime oficial para macOS/Linux é empacotado e testado sem depender de uma instalação Python;
-- asset, licença Apache-2.0, URL, versão, hash e avisos de terceiros estão registrados;
-- teste E2E e benchmark comparável passam em CI, incluindo vídeo ruim e ausência de pessoa;
-- avaliação pareada contra referência/ground truth demonstra que as métricas expostas são estáveis;
-- textos do produto não fazem diagnóstico e conservam os guardrails de captura e de risco.
+- [x] **runtime empacotado sem depender de Python** — `tools/blazepose/provision.py` extrai o
+  `libmediapipe` do wheel oficial UMA vez, fixa o SHA-256 e o servidor só faz `dlopen` no binário
+  (o wheel vira procedência, não dependência de execução). Provado E2E fora do venv pip. **macOS
+  arm64 feito; falta rodar o mesmo no alvo Linux (`.so`) — o toolkit já suporta.**
+- [x] **asset, licença Apache-2.0, URL, versão, hash e NOTICE registrados** —
+  `tools/blazepose/ASSET-PROVENANCE.md` + validação SHA em `core/model_assets.BlazePoseAssets`.
+- [~] **E2E e benchmark em CI, incluindo vídeo ruim e ausência de pessoa** — o CI agora builda e
+  testa o motor Rust (`ci.yml` job `rust`, 37 testes) e cobre HERMETICAMENTE ausência-de-pessoa e
+  detecção parcial (gate `reliable`). **Falta:** o E2E-com-BlazePose-em-vídeo-real não roda em CI
+  (exige o binário Apache vendorizado + vídeo, que não entram no Git) — roda local/manualmente.
+- [ ] **avaliação pareada estável** — o piloto Riglet (12 corredores) mostrou BlazePose world-3D =
+  23,7° MAE, MAS o 2D oscilou 21,9°↔28,6° entre subconjuntos: instável com piloto pequeno. **Falta
+  2ª base / mais corredores** pra cravar (ver `CALIBRATION_FINDINGS.md`).
+- [x] **textos sem diagnóstico + guardrails de captura/risco** — grounding + gate de timing +
+  `reliable=false` em captura ruim.
 
 ## Consequências
 

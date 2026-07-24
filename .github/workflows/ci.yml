@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,5 +23,32 @@ jobs:
 
       # Os testes Ollama-gated pulam sozinhos (sem LLM no CI). O banco é temporário/hermético
       # (conftest) e os testes de visão usam fakes — não precisa do motor Rust nem de vídeo.
-      - name: Testes
+      - name: Testes Python
         run: pytest -q -k "not e2e"
+
+  rust:
+    # Motor de pose (stride_vision): build + testes. O bridge C++ do MediaPipe compila com cc
+    # (só precisa de compilador C++), e o runtime real é dlopen em execução — então o CI valida
+    # build/contrato/métricas SEM a dylib do MediaPipe nem vídeo. O E2E-com-BlazePose-em-vídeo
+    # fica de fora (exige o binário Apache vendorizado + vídeo, que não entram no Git).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            stride_vision/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('stride_vision/Cargo.lock') }}
+
+      - name: Build (release)
+        run: cargo build --release --manifest-path stride_vision/Cargo.toml
+
+      - name: Testes Rust
+        run: cargo test --release --manifest-path stride_vision/Cargo.toml

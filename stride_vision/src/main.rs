@@ -801,6 +801,24 @@ mod cli_tests {
     }
 
     #[test]
+    fn benchmark_sem_pessoa_nao_e_confiavel() {
+        // Ausência de pessoa: 0 detecções em N frames -> reliable=false, pé não visível.
+        // O produto NÃO deve opinar em cima disso (degrada gracioso, pede refilmagem).
+        let report = super::benchmark_report("/tmp/vazio.mp4", 120, 0, 0, 3.0, 30.0, 1);
+        let run = &report["runs"][0];
+        assert_eq!(run["detection_rate_pct"], 0.0);
+        assert_eq!(run["reliable"], false);
+        assert_eq!(run["foot_points_visible"], false);
+    }
+
+    #[test]
+    fn benchmark_deteccao_parcial_reprova_no_gate() {
+        // Vídeo ruim: pessoa entra/sai do quadro (50% de detecção) -> abaixo do piso de 80%.
+        let report = super::benchmark_report("/tmp/ruim.mp4", 100, 50, 10, 3.0, 30.0, 1);
+        assert_eq!(report["runs"][0]["reliable"], false);
+    }
+
+    #[test]
     fn processo_filhos_com_erro_nao_sao_sucesso() {
         let child = Command::new("sh").args(["-c", "exit 7"]).spawn().unwrap();
         let mut managed = ManagedChild::new(child, "ffmpeg de teste");
