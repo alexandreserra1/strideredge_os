@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clapperboard, Info, Loader2, Upload } from 'lucide-react'
+import { Clapperboard, Info, Loader2, TrendingUp, Upload } from 'lucide-react'
 import { api } from '@strideredge/core'
-import type { FormAnalysis as Analysis, FormPlan } from '@strideredge/core'
+import type { FormAnalysis as Analysis, FormPlan, FormProgress } from '@strideredge/core'
 import InfoHint from './InfoHint'
 import CorrectivePlan from './CorrectivePlan'
 import ShoeBlock from './ShoeBlock'
@@ -98,13 +98,31 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [plan, setPlan] = useState<FormPlan | null>(null)
+  const [progress, setProgress] = useState<FormProgress | null>(null)
   const [planLoading, setPlanLoading] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const lateralFileRef = useRef<HTMLInputElement>(null)
+  const frontalFileRef = useRef<HTMLInputElement>(null)
+  const [selectedLateral, setSelectedLateral] = useState<File | null>(null)
+  const [selectedFrontal, setSelectedFrontal] = useState<File | null>(null)
 
   // última análise enviada
   useEffect(() => {
-    api.form.list().then(list => setAnalysis(list[0] ?? null)).catch(() => {})
+    api.form.list().then(list => setAnalysis(list[0] ?? null)).catch(() => {
+      const guestId = api.form.lastGuestAnalysisId()
+      if (guestId) api.form.get(guestId).then(setAnalysis).catch(() => {})
+    })
   }, [])
+
+  useEffect(() => {
+    if (analysis?.status !== 'done') return
+    let active = true
+    api.form.video(analysis.analysis_id).then(url => {
+      if (active) setVideoUrl(url)
+      else URL.revokeObjectURL(url)
+    }).catch(() => setVideoUrl(null))
+    return () => { active = false; setVideoUrl(old => { if (old) URL.revokeObjectURL(old); return null }) }
+  }, [analysis?.analysis_id, analysis?.status])
 
   const genPlan = useCallback(async () => {
     if (!analysis) return
@@ -123,19 +141,41 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
     return () => clearInterval(t)
   }, [analysis?.status, analysis?.analysis_id])
 
-  const onFile = useCallback(async (file: File) => {
+  useEffect(() => {
+    if (analysis?.status !== 'done' || analysis.metrics?.reliable !== true) return
+    api.form.progress().then(setProgress).catch(() => setProgress(null))
+  }, [analysis?.status, analysis?.analysis_id, analysis?.metrics?.reliable])
+
+  const submitFiles = useCallback(async (file: File, videoFrontal?: File) => {
     setError('')
     setUploading(true)
     try {
-      const out = await api.form.upload(file, { modality, view })
+      const out = await api.form.upload(file, { modality, view, videoFrontal })
       setAnalysis({ analysis_id: out.analysis_id, activity_id: null, status: 'processing',
-                    video_path: null, metrics: null, error: null, created_at: '' })
+                    metrics: null, error: null, created_at: '' })
+      setSelectedLateral(null)
+      setSelectedFrontal(null)
     } catch {
       setError('Falha no upload — a API está no ar?')
     } finally {
       setUploading(false)
     }
   }, [modality, view])
+
+  const onPrimarySelected = useCallback((file: File) => {
+    // Na vista frontal isolada, o comportamento de um clique continua idêntico ao anterior.
+    if (view === 'frontal') void submitFiles(file)
+    else {
+      setSelectedLateral(file)
+      setSelectedFrontal(null)
+    }
+  }, [submitFiles, view])
+
+  const startNewAnalysis = useCallback(() => {
+    setSelectedLateral(null)
+    setSelectedFrontal(null)
+    lateralFileRef.current?.click()
+  }, [])
 
   return (
     <div className="card overflow-hidden ring-1 ring-brand/20">
@@ -145,23 +185,63 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand/12 text-brand">A IA vendo seu movimento</span>
         </h3>
         {analysis?.status === 'done' && (
-          <button onClick={() => fileRef.current?.click()} className="btn-ghost text-xs">Nova análise</button>
+          <button onClick={startNewAnalysis} className="btn-ghost text-xs">Nova análise</button>
         )}
       </div>
 
-      <input ref={fileRef} type="file" accept="video/*" className="hidden"
-        onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
+      <input ref={lateralFileRef} type="file" accept="video/*" className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          e.target.value = '' // permite escolher o mesmo arquivo depois de cancelar
+          if (file) onPrimarySelected(file)
+        }} />
+      <input ref={frontalFileRef} type="file" accept="video/*" className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) setSelectedFrontal(file)
+        }} />
 
-      {!analysis && (
-        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+      {!analysis && !selectedLateral && (
+        <button onClick={() => lateralFileRef.current?.click()} disabled={uploading}
           className="w-full rounded-xl border-2 border-dashed border-border-medium hover:border-brand/50 transition-colors p-8 text-center">
           <Upload size={22} className="mx-auto text-text-secondary mb-2" />
           <p className="text-sm font-medium">{uploading ? 'Enviando…' : 'Enviar vídeo do treino'}</p>
           <p className="text-xs text-text-muted mt-1">
-            Filme de LADO, corpo inteiro no quadro, 20–30s (esteira funciona ótimo).
+            {view === 'frontal'
+              ? 'Filme de FRENTE, corpo inteiro no quadro, 20–30s.'
+              : 'Filme de LADO, corpo inteiro no quadro, 20–30s (esteira funciona ótimo).'}
             A IA desenha seu esqueleto e mede cadência, assimetria e oscilação — 100% local.
           </p>
         </button>
+      )}
+
+      {!analysis && selectedLateral && (
+        <div className="rounded-xl border border-brand/25 bg-brand/[0.04] p-4">
+          <p className="text-sm font-medium">Vídeo lateral selecionado</p>
+          <p className="mt-0.5 truncate text-[11px] text-text-secondary">{selectedLateral.name}</p>
+          <p className="mt-3 text-xs text-text-secondary leading-snug">
+            Quer adicionar um clipe de frente? Ele mede queda pélvica e valgo de joelho; sem ele,
+            a análise lateral continua completa para cadência, contato e ângulos sagitais.
+          </p>
+          {selectedFrontal ? (
+            <p className="mt-2 text-[11px] text-brand">✓ Frontal: {selectedFrontal.name}</p>
+          ) : (
+            <button onClick={() => frontalFileRef.current?.click()} className="btn-ghost text-xs mt-2">
+              + Adicionar vídeo frontal (opcional)
+            </button>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => void submitFiles(selectedLateral)} disabled={uploading}
+              className="btn-ghost text-xs">Analisar só lateral</button>
+            <button onClick={() => void submitFiles(selectedLateral, selectedFrontal ?? undefined)}
+              disabled={!selectedFrontal || uploading} className="btn-primary text-xs">
+              Analisar os dois planos
+            </button>
+            <button onClick={() => { setSelectedLateral(null); setSelectedFrontal(null) }}
+              disabled={uploading} className="btn-ghost text-xs">Cancelar</button>
+          </div>
+        </div>
       )}
 
       {analysis?.status === 'processing' && (
@@ -177,7 +257,7 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
       {analysis?.status === 'failed' && (
         <div className="p-4 rounded-xl bg-accent-red/10 border border-accent-red/20">
           <p className="text-sm text-accent-red">Não consegui analisar: {analysis.error}</p>
-          <button onClick={() => fileRef.current?.click()} className="btn-ghost text-xs mt-2">Tentar outro vídeo</button>
+          <button onClick={startNewAnalysis} className="btn-ghost text-xs mt-2">Tentar outro vídeo</button>
         </div>
       )}
 
@@ -186,7 +266,7 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
           {/* vídeo compacto e centralizado — é o produto, não pode disputar espaço com nada */}
           <div className="mx-auto max-w-sm">
             <video controls loop muted playsInline className="w-full rounded-xl border border-border-light bg-black"
-              src={api.form.videoUrl(analysis.analysis_id)} />
+              src={videoUrl ?? undefined} />
             {/* legenda das cores dos arcos (o texto é de graça aqui; no vídeo fica só o arco) */}
             <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-text-secondary">
               <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full" style={{ background: '#78E8FF' }} /> ângulo do joelho</span>
@@ -230,7 +310,9 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
             <div className="flex items-center justify-center gap-1.5 mt-3 text-[11px]">
               <span className="text-text-secondary">Pisada estimada:</span>
               <span className="font-semibold text-text-primary capitalize">{analysis.metrics.foot_strike}</span>
-              <InfoHint text="Estimativa pela posição do tornozelo em relação ao joelho no apoio (o modelo não tem ponto no pé, então é uma inferência, não medida direta). Pisar com o pé muito à frente do corpo (calcanhar) aumenta o freio e o impacto." />
+              <InfoHint text={analysis.metrics.ground_contact_source === 'heel_toe_landmarks'
+                ? 'O instante de apoio usou calcanhar e ponta do pé detectados. A classificação de pisada ainda é uma estimativa pela posição tornozelo–joelho; não mede pronação nem substitui avaliação clínica.'
+                : 'A classificação de pisada é uma estimativa pela posição tornozelo–joelho no apoio. Quando os pontos do pé não estão confiáveis, o sistema usa o tornozelo como proxy; não mede pronação nem substitui avaliação clínica.'} />
             </div>
           )}
 
@@ -247,6 +329,36 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
           <p className="text-[10px] text-text-muted flex items-center justify-center gap-1 mt-2">
             <Info size={10} /> Qualidade da detecção: {Math.round(analysis.metrics.detection_rate_pct)}% dos frames
           </p>
+
+          {progress && (
+            <div className="mt-4 rounded-xl border border-brand/20 bg-brand/[0.04] p-3">
+              <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                <TrendingUp size={14} className="text-brand" /> Sua evolução de forma
+              </h4>
+              {progress.status === 'ok' ? (
+                <>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {progress.metrics.slice(0, 6).map(metric => (
+                      <div key={metric.metric} className="rounded-lg bg-surface-100 px-2 py-1.5">
+                        <p className="text-[10px] text-text-secondary">{metric.label}</p>
+                        <p className="text-xs font-semibold tabular-nums">
+                          {metric.current} {metric.unit}
+                          <span className="ml-1 text-[10px] text-text-muted">
+                            ({metric.delta > 0 ? '+' : ''}{metric.delta})
+                          </span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] text-text-muted">{progress.caveat}</p>
+                </>
+              ) : (
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  Mais {Math.max(0, 3 - progress.comparable_analyses)} captura(s) comparável(is) para liberar sua tendência.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Algoritmo Corretivo: dos desvios -> exercícios citados (coach local + ciência) */}
           <div className="mt-4 pt-4 border-t border-border-light">

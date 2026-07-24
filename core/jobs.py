@@ -27,8 +27,8 @@ class JobQueue(ABC):
     quem/como processa — só chama `enqueue`."""
 
     @abstractmethod
-    def enqueue(self, fn: Callable, *args, **kwargs) -> None:
-        """Agenda `fn(*args, **kwargs)` pra rodar em background."""
+    def enqueue(self, fn: Callable, *args, **kwargs) -> bool:
+        """Agenda `fn(*args, **kwargs)` e informa se a fila aceitou o trabalho."""
 
     @abstractmethod
     def start(self) -> None:
@@ -44,9 +44,10 @@ class LocalJobQueue(JobQueue):
     o próximo job roda normal.
     """
 
-    def __init__(self, workers: int = 2):
-        self._q: "queue.Queue" = queue.Queue()
+    def __init__(self, workers: int = 2, max_pending: int = 8):
+        self._q: "queue.Queue" = queue.Queue(maxsize=max_pending)
         self._workers = workers
+        self._max_pending = max_pending
         self._threads: list = []
         self._started = False
 
@@ -58,7 +59,7 @@ class LocalJobQueue(JobQueue):
             t = threading.Thread(target=self._run, name=f"job-worker-{i}", daemon=True)
             t.start()
             self._threads.append(t)
-        _log.info("job_queue_started", workers=self._workers)
+        _log.info("job_queue_started", workers=self._workers, max_pending=self._max_pending)
 
     def _run(self) -> None:
         while True:
@@ -70,5 +71,12 @@ class LocalJobQueue(JobQueue):
             finally:
                 self._q.task_done()
 
-    def enqueue(self, fn: Callable, *args, **kwargs) -> None:
-        self._q.put((fn, args, kwargs))
+    def enqueue(self, fn: Callable, *args, **kwargs) -> bool:
+        """Não bloqueia o request quando a capacidade acabou: o controller pode devolver 503."""
+        try:
+            self._q.put_nowait((fn, args, kwargs))
+            return True
+        except queue.Full:
+            _log.warning("job_queue_full", fn=getattr(fn, "__name__", str(fn)),
+                         max_pending=self._max_pending)
+            return False

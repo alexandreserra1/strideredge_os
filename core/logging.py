@@ -15,7 +15,7 @@ import logging
 
 import structlog
 
-from core.database import PROJECT_ROOT
+from core.database import PROJECT_ROOT, restrict_permissions
 
 LOG_FILE = PROJECT_ROOT / "storage" / "strideredge.log"
 
@@ -34,6 +34,9 @@ class Logger:
         if cls._configured:
             return
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        restrict_permissions(LOG_FILE.parent, 0o700)
+        log_handle = open(LOG_FILE, "a", encoding="utf-8")
+        restrict_permissions(LOG_FILE, 0o600)
         structlog.configure(
             processors=[
                 structlog.contextvars.merge_contextvars,
@@ -42,7 +45,7 @@ class Logger:
                 structlog.processors.JSONRenderer(),
             ],
             wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-            logger_factory=structlog.PrintLoggerFactory(file=open(LOG_FILE, "a", encoding="utf-8")),
+            logger_factory=structlog.PrintLoggerFactory(file=log_handle),
             cache_logger_on_first_use=False,  # False p/ capture_logs funcionar nos testes
         )
         cls._configured = True

@@ -29,6 +29,14 @@ _generation = 0
 _local = threading.local()
 
 
+def restrict_permissions(path: Path, mode: int) -> None:
+    """Best-effort POSIX hardening; não impede execução em plataformas sem chmod útil."""
+    try:
+        path.chmod(mode)
+    except OSError:
+        pass
+
+
 def _resolve_db_path() -> str:
     """Caminho do banco. STRIDEREDGE_DB permite os testes usarem um banco temporario."""
     return os.environ.get("STRIDEREDGE_DB", str(DB_PATH))
@@ -44,8 +52,12 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     global _connection
     if _connection is None:
         path = _resolve_db_path()
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        db_file = Path(path)
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        restrict_permissions(db_file.parent, 0o700)
         _connection = duckdb.connect(path)
+        restrict_permissions(db_file, 0o600)
+        restrict_permissions(Path(f"{path}.wal"), 0o600)
     if getattr(_local, "gen", None) != _generation or getattr(_local, "cursor", None) is None:
         _local.cursor = _connection.cursor()
         _local.gen = _generation

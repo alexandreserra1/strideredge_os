@@ -11,9 +11,13 @@ export interface FormMetrics {
   vertical_oscillation_pct: number | null
   knee_contact_deg: number | null
   hip_contact_deg: number | null
+  // Proveniência: ângulos produtivos vêm da imagem 2D; world-3D só existe em dumps diagnósticos.
+  joint_angle_space?: 'image_2d'
   trunk_lean_deg: number | null
   ground_contact_ms: number | null
   flight_ms: number | null
+  ground_contact_source?: 'heel_toe_landmarks' | 'heel_toe_with_ankle_fallback' | 'ankle_proxy' | null
+  foot_landmark_coverage_pct?: number | null
   foot_strike: string | null
   // plano frontal (vista frontal)
   pelvic_drop_deg?: number | null
@@ -27,11 +31,30 @@ export interface FormAnalysis {
   analysis_id: string
   activity_id: string | null
   status: 'processing' | 'done' | 'failed'
-  video_path: string | null
   metrics: FormMetrics | null
   error: string | null
   created_at: string
   modality?: string
+}
+
+export interface FormMetricProgress {
+  metric: string
+  label: string
+  unit: string
+  baseline: number
+  current: number
+  delta: number
+  baseline_samples: number
+  current_samples: number
+}
+
+export interface FormProgress {
+  status: 'ok' | 'insufficient_history'
+  comparable_analyses: number
+  excluded_incompatible: number
+  signature: { view: string; backend: string; model_version: string; joint_angle_space: string } | null
+  metrics: FormMetricProgress[]
+  caveat: string
 }
 
 // Algoritmo corretivo: desvios (medido × ideal) + plano com exercícios citados

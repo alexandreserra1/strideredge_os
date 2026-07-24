@@ -31,3 +31,11 @@ def test_endpoints_protegidos_exigem_sessao():
 
 def test_rota_inexistente_da_404():
     assert client.get("/api/v1/nao-existe").status_code == 404
+
+
+def test_api_emite_cabecalhos_de_seguranca():
+    r = client.get("/api/v1/injuries/taxonomy")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["x-frame-options"] == "DENY"
+    assert r.headers["referrer-policy"] == "no-referrer"
+    assert "default-src 'none'" in r.headers["content-security-policy"]

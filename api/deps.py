@@ -46,6 +46,12 @@ def get_form_service() -> FormService:
     return FormService(queue=get_job_queue())
 
 
+def get_form_progress_service():
+    """Evolução temporal das métricas de forma; serviço puro de leitura do atleta autenticado."""
+    from analytics.form_progress import FormProgressService
+    return FormProgressService()
+
+
 def get_profile_service() -> ProfileService:
     return ProfileService()
 
