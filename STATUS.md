@@ -32,9 +32,11 @@ prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
 ## 🟡 FALTA (curto, priorizado)
 1. **Polir a UX no navegador** — o backend entrega tudo; falta passar as 2 telas no browser e ajustar.
    *(o valor pro usuário/portfólio está aqui, não em mais backend.)*
-2. **BlazePose virar default (opcional — upgrade de licença AGPL→Apache).** Único bloqueio de
-   conteúdo: **avaliação pareada estável** — com n=12 do Riglet, 3D>YOLO NÃO é significativo (IC
-   cruza 0). Precisa de mais corredores. Enquanto isso, **YOLO segue default e o produto funciona.**
+2. **Solidificar a validação do BlazePose (que JÁ é o default).** O default de produção é
+   `blazepose33` (config + E2E confirmam) — correto, pois é o único motor com licença comercial
+   (Apache); YOLO é AGPL e serve só de régua/shadow. O que FALTA não é trocar o default, é a
+   **evidência pareada estável**: com n=12 do Riglet, 3D>2D é significativo, mas 3D>YOLO NÃO (IC
+   cruza 0). Não bloqueia o produto — é rigor de validação. Precisa de mais corredores.
 3. **Provisionar o runtime BlazePose no Linux** — passo mecânico (rodar `tools/blazepose/provision.py`
    contra o wheel manylinux numa máquina Linux). Mecanismo já provado.
 4. **Anotar os 2 vídeos próprios** (`~/Desktop/anotacao_propria/`) — âncora manual de sanity na
