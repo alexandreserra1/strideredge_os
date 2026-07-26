@@ -106,11 +106,15 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
   const [selectedLateral, setSelectedLateral] = useState<File | null>(null)
   const [selectedFrontal, setSelectedFrontal] = useState<File | null>(null)
 
-  // última análise enviada
+  // última análise enviada (na montagem). NUNCA sobrescreve uma análise mais nova que já esteja
+  // na tela (ex.: um upload feito pelo usuário enquanto esta busca ainda estava em voo) — só
+  // preenche a tela se ela ainda estiver vazia. Sem isso, a resposta desta busca (potencialmente
+  // de uma análise de convidado antiga/órfã) podia chegar DEPOIS do upload e substituir o ID novo
+  // por um velho, travando o polling num 404 permanente.
   useEffect(() => {
-    api.form.list().then(list => setAnalysis(list[0] ?? null)).catch(() => {
+    api.form.list().then(list => setAnalysis(prev => prev ?? list[0] ?? null)).catch(() => {
       const guestId = api.form.lastGuestAnalysisId()
-      if (guestId) api.form.get(guestId).then(setAnalysis).catch(() => {})
+      if (guestId) api.form.get(guestId).then(a => setAnalysis(prev => prev ?? a)).catch(() => {})
     })
   }, [])
 
