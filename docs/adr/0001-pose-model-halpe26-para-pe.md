@@ -1,6 +1,11 @@
 # ADR 0001 — Fascite plantar e Aquiles exigem upgrade do modelo de pose (COCO-17 → Halpe26)
 
-- **Status:** aceito; implementação experimental concluída (jul/2026)
+- **Status:** ⚠️ **SUPERADO pelo ADR 0002 (jul/2026).** O problema (COCO-17 não tem pé) é real e
+  segue válido; a SOLUÇÃO mudou: em vez do Halpe26/RTMPose (pesos com licença pendente, não
+  distribuível), o **BlazePose GHUM** (Apache-2.0) entrega calcanhar+ponta e virou o motor do
+  produto. O track Halpe26/RTMPose foi **removido do código**. Este ADR fica como registro histórico
+  do achado (por que precisávamos de pé), não da implementação.
+- **Status original:** aceito; implementação experimental concluída (jul/2026)
 - **Contexto do achado:** entrevista de design da tela "Minhas lesões" (log OSTRC → dataset de risco).
 
 ## Contexto

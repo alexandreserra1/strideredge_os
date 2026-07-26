@@ -27,7 +27,7 @@ impl PoseEngine {
         Self::with_layout(model_path, &COCO17)
     }
 
-    /// Motor com um layout explícito (ex.: `&HALPE26` quando o modelo estiver disponível).
+    /// Motor com um layout explícito.
     pub fn with_layout(model_path: &str, layout: &'static KeypointLayout) -> Result<Self> {
         let session = load_session(model_path)?;
         Ok(Self {
@@ -63,7 +63,7 @@ impl PoseEngine {
         let tensor = o(ort::value::TensorRef::from_array_view(input.view()))?;
         let outputs = o(self.session.run(ort::inputs![tensor]))?;
         // saída YOLO-pose: [1, 4+1+3*K, N] — 4 box + 1 conf + 3 (x,y,conf) por keypoint.
-        // COCO-17 => 56 canais; Halpe26 => 5+78 = 83. Derivado do layout, não hard-coded.
+        // COCO-17 => 56 canais. Derivado do layout, não hard-coded.
         let out = o(outputs[0].try_extract_array::<f32>())?;
         let k_count = self.layout.count;
         let n = out.shape()[2];
@@ -119,7 +119,7 @@ impl PoseEngine {
 }
 
 /// O YOLO11 segue sendo o backend de produção. Esta implementação deixa explícito que o motor
-/// atual fala o contrato genérico, sem declarar falsamente que um ONNX RTMPose já é compatível
+/// atual fala o contrato genérico do layout
 /// com o decoder YOLO acima.
 impl PoseBackend for PoseEngine {
     fn layout(&self) -> &'static KeypointLayout {

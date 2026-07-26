@@ -56,22 +56,6 @@ class ServerPoseBackendResolver:
                 model_assets={"yolo11n-pose.onnx": self._sha256(self.yolo_model)},
                 subprocess_env={"STRIDE_MODEL": str(self.yolo_model)},
             )
-        if backend == "halpe26":
-            try:
-                from core.model_assets import Halpe26Assets
-                assets = Halpe26Assets.from_environment()
-            except (ImportError, ValueError, OSError) as exc:
-                raise BackendConfigurationError("Assets Halpe26 indisponíveis no servidor.") from exc
-            if not assets.detector_path.is_file() or not assets.pose_path.is_file():
-                raise BackendConfigurationError("Assets Halpe26 indisponíveis no servidor.")
-            return PoseBackendSnapshot(
-                requested=backend, effective=assets.backend, model_version=assets.version,
-                model_assets={
-                    "detector": assets.detector_sha256,
-                    "pose": assets.pose_sha256,
-                },
-                subprocess_env=assets.subprocess_env(),
-            )
         if backend == "blazepose33":
             try:
                 from core.model_assets import BlazePoseAssets

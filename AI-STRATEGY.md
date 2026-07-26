@@ -2,8 +2,8 @@
 
 > ⚠️ **Pós-pivot (jul/2026):** o app é 100% **visão computacional pra prevenção de lesão**. O
 > text-to-SQL e o coach de treino (`.FIT`) saíram; o RAG e os evals **ficam** (aterram o plano
-> corretivo do vídeo). O roteiro AI/ML abaixo vale, reorientado pro eixo VÍDEO: pose melhor
-> (RTMPose → pisada/pronação reais), **modelo de risco de lesão** (biomecânica → score, aterrado
+> corretivo do vídeo). O roteiro AI/ML abaixo vale, reorientado pro eixo VÍDEO: pose com pés+3D
+> (BlazePose GHUM, Apache), **modelo de risco de lesão** (biomecânica → score, aterrado
 > na literatura), forma ao longo do tempo (deriva = fadiga/risco), evals RAGAS de tudo isso.
 
 Como aprofundar a IA do StriderEdge, aproveitando o que já temos (Qwen local + RAG citável +
@@ -128,13 +128,12 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
 - O fluxo aceita lateral e frontal, funde as métricas antes do `assess` e preserva o comportamento
   lateral quando o segundo clipe não existe. Assim, quedas pélvicas e valgo deixam de ser tratados
   como risco baixo quando não foram medidos.
-- **#3 Halpe26**: backend Rust experimental de 26 keypoints (RTMDet + RTMPose SimCC) pronto para
-  benchmark opt-in; seus assets não têm procedência/licença comercial confirmada e seguem bloqueados
-  de produto. **BlazePose GHUM Full** é o candidato permissivo (33 pontos, Apache-2.0) para a
-  migração do padrão: ponte nativa C++/MediaPipe Tasks → `PoseBackend` Rust implementada e medida
-  a 59,7 FPS no M1 Pro (vs. YOLO 53,2 FPS no mesmo vídeo). Continua **experimental** até validar
-  métricas pareadas/clinicamente e empacotar o runtime oficial por plataforma — ver
-  `docs/adr/0002`. **#4 RF treinado por
+- **#3 BlazePose GHUM Full** (motor do produto): 33 pontos + world-3D, **Apache-2.0** (comercial OK).
+  Ponte nativa C++/MediaPipe Tasks → `PoseBackend` Rust, runtime empacotado por plataforma
+  (`tools/blazepose/`), overlay reusa poses (sem re-inferir). Validado: world-3D bate o 2D (bootstrap
+  significativo). **Default de seleção do servidor**; YOLO fica como régua da avaliação pareada.
+  O track **Halpe26/RTMPose foi REMOVIDO** — pesos com licença pendente + superado pelo pé do
+  BlazePose (ver `docs/adr/0001` superado por `0002`). **#4 RF treinado por
   diagnóstico**: só quando `build_dataset` tiver N atletas com desfecho — é o horizonte, não o
   atalho. Ordem de valor realizada: **#1 → #2 → #3 experimental → #4**.
 
@@ -148,9 +147,9 @@ RAG ingênuo (só embeddings, o nosso hoje) acerta ~44% dos fatos; com técnicas
      Hoje é referência pra `validate_literature_model`; no modelo treinado vira o PRIOR que regulariza
      com pouco dado. **As 6 lesões têm mapa (`mapped=True`) com fonte citável.** Fascite/Aquiles usam
      fatores PROXY de carga (`cadence_spm`+`vertical_oscillation_pct` / `cadence_spm`+`knee_contact_deg`)
-     porque o risco primário delas (dorsiflexão/pronação do pé) **não é medível pelo backend padrão
-     COCO-17**. O backend Halpe26 existe apenas em modo experimental; só migraremos para fator
-     primário após validação das métricas e dos assets (ver `docs/adr/0001`). Mapa só onde há fonte.
+     porque o risco primário delas (dorsiflexão/pronação do pé) **não é medível com robustez**: o
+     BlazePose dá calcanhar+ponta (contato/pisada), mas não hálux/dedinho pra pronação clínica. Só
+     migraremos pra fator primário com captura/validação própria. Mapa só onde há fonte.
   3. **`fator↔exercício`** (`analytics/exercises.py`, seed) — biblioteca determinística e citada que o
      FormCoach pode usar como fonte de verdade (o LLM personaliza a entrega, não inventa exercício).
 - **[FEITO] Coleta**: `injury_reports` (migration 014) + `InjuryService` (`api/injuries.py`, espelha

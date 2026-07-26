@@ -38,10 +38,10 @@ Python · **Rust** (`stride_vision`, motor standalone via ONNX e ponte C++/Media
 
 O backend principal é **BlazePose GHUM Full** (Apache-2.0), com 33 landmarks e ponte nativa já
 medida. Calcanhar+ponta ancoram contato/voo quando confiáveis; o resultado registra quando precisou
-usar o tornozelo como proxy. **YOLO17** fica temporariamente como shadow opt-in da mesma captura,
-nunca fallback silencioso. O **Halpe26/RTMPose** segue experimental: seus assets não têm
-procedência/licença comercial confirmada. A validação pareada das métricas e o empacotamento do
-runtime por plataforma continuam pendentes; isso não habilita diagnóstico de pronação/dorsiflexão.
+usar o tornozelo como proxy. **YOLO17** fica como shadow opt-in da mesma captura (a régua da
+avaliação pareada), nunca fallback silencioso. O track **Halpe26/RTMPose foi removido** (pesos sem
+licença comercial confirmada + superado pelo pé do BlazePose). A validação pareada das métricas
+continua pendente; isso não habilita diagnóstico de pronação/dorsiflexão.
 Ver [`ADR 0002`](docs/adr/0002-blazepose-apache-candidate.md).
 
 ### Assets do BlazePose (obrigatórios para upload)

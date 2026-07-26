@@ -110,7 +110,7 @@ def test_upload_ignora_backend_enviado_pelo_cliente():
     """Não existe campo de seleção no endpoint: multipart extra não pode alterar o job."""
     app.dependency_overrides[get_form_service] = FakeFormService
     try:
-        r = client.post("/api/v1/form", data={"backend": "halpe26"},
+        r = client.post("/api/v1/form", data={"backend": "blazepose33"},
                         files={"video": ("run.mp4", b"fake-bytes", "video/mp4")})
         done = _wait_done(r.json()["analysis_id"], r.json()["access_token"])
         assert done["backend"]["requested"] == "yolo17"

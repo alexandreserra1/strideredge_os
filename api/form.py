@@ -41,7 +41,7 @@ class FormService(FormProcessingMixin):
              "modality, view, user_id, access_token_hash, access_token_expires_at, "
              "backend_requested, backend_effective, model_version, model_assets")
     # Shadow é telemetria de transição: o produto mede com BlazePose, e YOLO só observa a mesma
-    # captura. Halpe26 não entra porque seus pesos não estão aprovados para produto.
+    # captura (a régua da avaliação pareada).
     _ALLOWED_SHADOW_PAIRS = {"blazepose33": "yolo17"}
 
     def __init__(self, queue: JobQueue, binary: Path = BINARY, model: Path = MODEL,
@@ -76,11 +76,10 @@ class FormService(FormProcessingMixin):
             raise
         except (ValueError, OSError) as exc:
             raise BackendConfigurationError("Assets do motor indisponíveis no servidor.") from exc
-        if snapshot.requested != backend or snapshot.effective not in ("yolo17", "halpe26", "blazepose33"):
+        if snapshot.requested != backend or snapshot.effective not in ("yolo17", "blazepose33"):
             raise BackendConfigurationError("Resposta inválida do registro de assets.")
         expected_env = {
             "yolo17": {"STRIDE_MODEL"},
-            "halpe26": {"STRIDE_HALPE_DETECTOR", "STRIDE_HALPE_POSE"},
             "blazepose33": {"STRIDE_MEDIAPIPE_LIB", "STRIDE_BLAZEPOSE_MODEL"},
         }[snapshot.effective]
         if set(snapshot.subprocess_env) != expected_env:

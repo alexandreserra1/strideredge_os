@@ -12,7 +12,7 @@ use stride_vision::{
     analyze_form, contact_angle, contact_flight_ms, draw_angles, draw_pose, foot_ground_y,
     foot_strike, hip_tilt_deg, joint_angle, knee_valgus_deg, layout_by_name, median, percentile,
     timing_consistent_with_cadence, trunk_lean_deg, BlazePoseBackend, KeypointLayout, Pose,
-    PoseBackend, PoseEngine, RtmPose26Backend,
+    PoseBackend, PoseEngine,
 };
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
@@ -228,7 +228,7 @@ fn main() -> Result<()> {
         }
     }
     if pos.is_empty() {
-        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal] [--backend yolo17|halpe26|blazepose33]");
+        bail!("uso: stride-vision <foto.jpg|video.mp4> [saida] [--view lateral|frontal] [--backend yolo17|blazepose33]");
     }
     let view = if view == "frontal" {
         "frontal"
@@ -248,13 +248,6 @@ fn main() -> Result<()> {
                 std::env::var("STRIDE_MODEL").unwrap_or_else(|_| "models/yolo11n-pose.onnx".into());
             Box::new(PoseEngine::new(&model)?)
         }
-        "halpe26" => {
-            let detector = std::env::var("STRIDE_HALPE_DETECTOR")
-                .context("halpe26 exige STRIDE_HALPE_DETECTOR (ONNX do detector de pessoa)")?;
-            let pose = std::env::var("STRIDE_HALPE_POSE")
-                .context("halpe26 exige STRIDE_HALPE_POSE (ONNX RTMPose Halpe26)")?;
-            Box::new(RtmPose26Backend::new(&detector, &pose)?)
-        }
         "blazepose33" => {
             let runtime = std::env::var("STRIDE_MEDIAPIPE_LIB")
                 .context("blazepose33 exige STRIDE_MEDIAPIPE_LIB (runtime C oficial MediaPipe)")?;
@@ -262,7 +255,7 @@ fn main() -> Result<()> {
                 .context("blazepose33 exige STRIDE_BLAZEPOSE_MODEL (bundle .task oficial)")?;
             Box::new(BlazePoseBackend::new(&runtime, &model)?)
         }
-        other => bail!("backend inválido '{other}': use yolo17, halpe26 ou blazepose33"),
+        other => bail!("backend inválido '{other}': use yolo17 ou blazepose33"),
     };
 
     if benchmark {

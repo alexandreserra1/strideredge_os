@@ -1,12 +1,11 @@
-"""Registro verificável de assets para backends de visão experimentais.
+"""Registro verificável de assets para o motor de pose BlazePose.
 
 O binário Rust recebe caminhos por ambiente, mas não deve confiar em qualquer caminho
 que o processo herdou. Este módulo é a fronteira Python: somente um manifest versionado
 e checado por SHA-256 pode produzir as variáveis que serão passadas ao subprocesso.
 
 Não faz download nem converte modelos. A integração de jobs deve chamar
-``Halpe26Assets.from_environment().subprocess_env()`` antes de iniciar o backend
-experimental ``halpe26``.
+``BlazePoseAssets.from_environment().subprocess_env()`` antes de iniciar o backend ``blazepose33``.
 """
 
 import hashlib
@@ -20,84 +19,10 @@ from typing import Mapping, Optional
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_REQUIRED_ASSETS = ("detector", "pose")
 
 
 class AssetValidationError(ValueError):
     """Configuração ou arquivo de modelo não é seguro/reproduzível para uso."""
-
-
-@dataclass(frozen=True)
-class Halpe26Assets:
-    """Assets Halpe26 aprovados para uma execução, com a procedência preservada."""
-
-    backend: str
-    version: str
-    manifest_path: Path
-    manifest_sha256: str
-    detector_path: Path
-    detector_sha256: str
-    pose_path: Path
-    pose_sha256: str
-
-    @classmethod
-    def from_environment(cls, environ: Optional[Mapping[str, str]] = None) -> "Halpe26Assets":
-        """Valida o manifest configurado explicitamente no ambiente.
-
-        Requer ``STRIDE_MODEL_ROOT`` e ``STRIDE_HALPE_ASSET_MANIFEST``. Ambos devem ser
-        caminhos absolutos; o manifest e seus ONNX ficam *dentro* da raiz, sem symlinks.
-        Isso impede path traversal e evita que o servidor execute pesos trocados em cache.
-        """
-        env = os.environ if environ is None else environ
-        root = _configured_directory(env.get("STRIDE_MODEL_ROOT"), "STRIDE_MODEL_ROOT")
-        manifest_path = _configured_file(
-            env.get("STRIDE_HALPE_ASSET_MANIFEST"), "STRIDE_HALPE_ASSET_MANIFEST", root
-        )
-        manifest_bytes = _read_file(manifest_path, "manifest")
-        try:
-            manifest = json.loads(manifest_bytes)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise AssetValidationError("manifest Halpe26 não contém JSON válido") from exc
-        if not isinstance(manifest, dict):
-            raise AssetValidationError("manifest Halpe26 deve ser um objeto JSON")
-
-        if manifest.get("schema_version") != 1:
-            raise AssetValidationError("manifest Halpe26 exige schema_version=1")
-        if manifest.get("backend") != "halpe26":
-            raise AssetValidationError("manifest não pertence ao backend halpe26")
-        version = manifest.get("model_version")
-        if not isinstance(version, str) or not version.strip():
-            raise AssetValidationError("manifest Halpe26 exige model_version não vazio")
-        if manifest.get("status") != "experimental":
-            raise AssetValidationError("manifest Halpe26 deve declarar status experimental")
-
-        assets = manifest.get("assets")
-        if not isinstance(assets, dict):
-            raise AssetValidationError("manifest Halpe26 exige o objeto assets")
-        checked = {}
-        for name in _REQUIRED_ASSETS:
-            descriptor = assets.get(name)
-            if not isinstance(descriptor, dict):
-                raise AssetValidationError("manifest Halpe26 exige assets.%s" % name)
-            checked[name] = _validate_asset(root, name, descriptor, {".onnx"})
-
-        return cls(
-            backend="halpe26",
-            version=version.strip(),
-            manifest_path=manifest_path,
-            manifest_sha256=_sha256_bytes(manifest_bytes),
-            detector_path=checked["detector"][0],
-            detector_sha256=checked["detector"][1],
-            pose_path=checked["pose"][0],
-            pose_sha256=checked["pose"][1],
-        )
-
-    def subprocess_env(self) -> dict:
-        """As únicas variáveis de assets que o executor Rust precisa receber."""
-        return {
-            "STRIDE_HALPE_DETECTOR": str(self.detector_path),
-            "STRIDE_HALPE_POSE": str(self.pose_path),
-        }
 
 
 @dataclass(frozen=True)

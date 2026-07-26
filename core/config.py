@@ -10,7 +10,7 @@ IS_PROD = ENV in ("production", "prod")
 
 # A seleção do motor de pose é uma decisão de implantação, nunca um parâmetro HTTP.  Manter a
 # allowlist aqui evita que qualquer valor inesperado vire argumento/env de um subprocesso.
-_POSE_BACKENDS = frozenset(("yolo17", "halpe26", "blazepose33"))
+_POSE_BACKENDS = frozenset(("yolo17", "blazepose33"))
 _DEFAULT_POSE_BACKEND = "blazepose33"
 
 

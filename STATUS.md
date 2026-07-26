@@ -13,8 +13,9 @@ O fluxo real roda: **registrar → login → upload de vídeo → processa em ba
 plano corretivo citado**. Rodado E2E via API real (26/jul), coach respondeu em ~24s com 3 ações
 prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
 
-- **Motor de pose (Rust `stride_vision`)** — YOLO11 (default) + BlazePose GHUM (candidato Apache) +
-  RTMPose (experimental). Modular, com quality gate de timing (rejeita dado implausível).
+- **Motor de pose (Rust `stride_vision`)** — **2 motores:** BlazePose GHUM (Apache, default de
+  produto, pés+3D) + YOLO11 (régua da avaliação pareada). RTMPose/Halpe26 foi **removido** (pesos
+  com licença pendente + superado pelo pé do BlazePose). Modular, com quality gate de timing.
 - **Pipeline de vídeo** — transcode + pose + métricas em background pela fila; upload responde na hora.
 - **Métricas** — cadência (FFT), contato/voo, oscilação vertical, ângulos de joelho/quadril/tronco,
   pisada; plano frontal (queda pélvica, valgo) quando há 2º clipe. Degrada gracioso (`reliable:false`).
@@ -42,7 +43,8 @@ prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
 ## 🔵 FUTURO (não agora — não abrir sem decisão)
 - **Modelo de risco TREINADO** (Random Forest) — pipeline pronto (`analytics/injury_model.py`),
   bloqueado por **outcomes de lesão rotulados** (o log OSTRC vai acumulando esse `y`).
-- **Pronação/pisada reais** — exige trocar a pose pra Halpe26 (6 pontos do pé) — ADR 0001.
+- **Pronação/eversão reais** — o BlazePose já dá calcanhar+ponta (pisada/contato), mas não hálux/
+  dedinho; pronação clínica exigiria captura/validação própria. Não é prioridade.
 - **App mobile** (reusa `packages/core`) e **wearable** (peitoral IMU) — norte de longo prazo.
 
 ## Onde está o quê
