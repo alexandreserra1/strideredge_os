@@ -19,6 +19,11 @@ prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
 - **Pipeline de vídeo** — transcode + pose + métricas em background pela fila; upload responde na hora.
 - **Métricas** — cadência (FFT), contato/voo, oscilação vertical, ângulos de joelho/quadril/tronco,
   pisada; plano frontal (queda pélvica, valgo) quando há 2º clipe. Degrada gracioso (`reliable:false`).
+- **Confiabilidade por métrica** — cada métrica carrega `metric_confidence`/`metric_cv` (Rust); o
+  `diagnose()` suprime desvio quando a qualidade (confiança × estabilidade entre passadas) é baixa,
+  expondo a métrica como `uncertain_metrics` em vez de diagnosticar em cima de ruído — o coach nunca
+  vê o suprimido. O frontend mostra o valor com um selo "medição incerta" (nada é escondido).
+  Verificado ponta-a-ponta com vídeo real: `trunk_lean_deg` (CV 0,56) foi corretamente suprimido.
 - **Coach RAG** — busca híbrida densa+BM25, contextual retrieval, roteamento multi-domínio, grounding
   anti-alucinação, fontes citáveis (PMC/DOI). Eval estilo RAGAS. Streaming SSE.
 - **Risco de lesão** — score v1 aterrado na literatura (faixa relativa, nunca "X%") + perfil por
