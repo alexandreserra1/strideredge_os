@@ -9,10 +9,11 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use stride_vision::{
-    analyze_form, contact_angle, contact_flight_ms, draw_angles, draw_pose, foot_ground_y,
-    foot_strike, hip_tilt_deg, joint_angle, knee_valgus_deg, layout_by_name, median, percentile,
-    timing_consistent_with_cadence, trunk_lean_deg, BlazePoseBackend, KeypointLayout, Pose,
-    PoseBackend, PoseEngine,
+    analyze_form, coefficient_of_variation, confidence_fraction, contact_angle,
+    contact_angle_samples, contact_flight_ms, draw_angles, draw_pose, flight_ms_samples,
+    foot_ground_y, foot_strike, hip_tilt_deg, joint_angle, knee_valgus_deg, layout_by_name, median,
+    percentile, stance_ms_samples, timing_consistent_with_cadence, trunk_lean_deg,
+    BlazePoseBackend, KeypointLayout, Pose, PoseBackend, PoseEngine,
 };
 
 // Confiança mínima de keypoint p/ ENTRAR nas séries de quadril/tronco. 0.4 era baixo demais:
@@ -594,6 +595,13 @@ fn run_video(
     let (mut knee_l, mut knee_r, mut hip_l, mut hip_r) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut conf_l, mut conf_r) = (0f32, 0f32);
+    // Flags de confiança POR FRAME (mesma régua KP_CONF), paralelas às séries acima — a base do
+    // metric_confidence por métrica no JSON final. Uniforme: cada métrica usa a confiança dos
+    // MESMOS keypoints que entram na sua própria conta, sem caso especial pro joelho.
+    let (mut ankle_l_ok, mut ankle_r_ok): (Vec<bool>, Vec<bool>) = (Vec::new(), Vec::new());
+    let (mut ground_l_ok, mut ground_r_ok): (Vec<bool>, Vec<bool>) = (Vec::new(), Vec::new());
+    let (mut knee_l_ok, mut knee_r_ok): (Vec<bool>, Vec<bool>) = (Vec::new(), Vec::new());
+    let (mut hip_l_ok, mut hip_r_ok): (Vec<bool>, Vec<bool>) = (Vec::new(), Vec::new());
     let mut trunk = Vec::new(); // inclinação do tronco por frame
                                 // séries X (posição horizontal) p/ padrão de pisada + direção "pra frente"
     let (mut ax_l, mut ax_r, mut kx_l, mut kx_r) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -627,6 +635,8 @@ fn run_video(
             let kp = &pose.keypoints;
             ankle_l.push(kp[lay.ankle_l].1);
             ankle_r.push(kp[lay.ankle_r].1);
+            ankle_l_ok.push(kp[lay.ankle_l].2 >= KP_CONF);
+            ankle_r_ok.push(kp[lay.ankle_r].2 >= KP_CONF);
             let ground_y = |ankle: usize, heel: Option<usize>, toe: Option<usize>| match (heel, toe)
             {
                 (Some(h), Some(t)) if kp[h].2 >= KP_CONF && kp[t].2 >= KP_CONF => {
@@ -638,6 +648,10 @@ fn run_video(
             let (ground_right, right_foot) = ground_y(lay.ankle_r, lay.heel_r, lay.big_toe_r);
             ground_l.push(ground_left);
             ground_r.push(ground_right);
+            // confiança do sinal de solo: verdadeiro quando calcanhar+ponta confiáveis entraram
+            // (left_foot/right_foot), senão cai no fallback do tornozelo -> confiança do tornozelo.
+            ground_l_ok.push(left_foot || kp[lay.ankle_l].2 >= KP_CONF);
+            ground_r_ok.push(right_foot || kp[lay.ankle_r].2 >= KP_CONF);
             foot_landmark_points += u32::from(left_foot) + u32::from(right_foot);
             // BUG corrigido: hip_y e leg_len entravam SEM guarda de confiança (diferente de
             // trunk/pelvic abaixo). Keypoint de baixa confiança tem coordenada-lixo -> quadril
@@ -666,6 +680,28 @@ fn run_video(
             hip_r.push(angle(lay.shoulder_r, lay.hip_r, lay.knee_r));
             conf_l += kp[lay.hip_l].2.min(kp[lay.knee_l].2).min(kp[lay.ankle_l].2);
             conf_r += kp[lay.hip_r].2.min(kp[lay.knee_r].2).min(kp[lay.ankle_r].2);
+            // confiança do ângulo de joelho = os 3 keypoints que o formam (quadril-joelho-tornozelo);
+            // do ângulo de quadril = ombro-quadril-joelho. Mesma régua KP_CONF, sem exceção.
+            knee_l_ok.push(
+                kp[lay.hip_l].2 >= KP_CONF
+                    && kp[lay.knee_l].2 >= KP_CONF
+                    && kp[lay.ankle_l].2 >= KP_CONF,
+            );
+            knee_r_ok.push(
+                kp[lay.hip_r].2 >= KP_CONF
+                    && kp[lay.knee_r].2 >= KP_CONF
+                    && kp[lay.ankle_r].2 >= KP_CONF,
+            );
+            hip_l_ok.push(
+                kp[lay.shoulder_l].2 >= KP_CONF
+                    && kp[lay.hip_l].2 >= KP_CONF
+                    && kp[lay.knee_l].2 >= KP_CONF,
+            );
+            hip_r_ok.push(
+                kp[lay.shoulder_r].2 >= KP_CONF
+                    && kp[lay.hip_r].2 >= KP_CONF
+                    && kp[lay.knee_r].2 >= KP_CONF,
+            );
             ax_l.push(kp[lay.ankle_l].0);
             ax_r.push(kp[lay.ankle_r].0);
             kx_l.push(kp[lay.knee_l].0);
@@ -756,6 +792,28 @@ fn run_video(
         both_legs_ok,
     );
 
+    // ---- Confiança/CV por métrica: SEMPRE a mesma régua (fração de frames >= KP_CONF nos
+    // keypoints que formam a métrica; CV entre as amostras de passada-a-passada quando há mais de
+    // uma). Só entra no mapa quando a própria métrica foi calculada (None = ausente, nunca 0.0
+    // fantasma). cadence_spm é valor único de FFT -> confiança sim, CV não.
+    if metrics.cadence_spm.is_some() {
+        let conf = (confidence_fraction(&ankle_l_ok) + confidence_fraction(&ankle_r_ok)) / 2.0;
+        metrics.metric_confidence.insert("cadence_spm".to_string(), conf);
+    }
+    if metrics.vertical_oscillation_pct.is_some() {
+        let conf = if frames > 0 {
+            hip_y.len() as f32 / frames as f32
+        } else {
+            0.0
+        };
+        metrics
+            .metric_confidence
+            .insert("vertical_oscillation_pct".to_string(), conf);
+        if let Some(cv) = coefficient_of_variation(&hip_y) {
+            metrics.metric_cv.insert("vertical_oscillation_pct".to_string(), cv);
+        }
+    }
+
     if view == "frontal" {
         // plano frontal: queda pélvica (pico da inclinação da bacia) + valgo (pior perna)
         metrics.pelvic_drop_deg = percentile(&pelvic_tilt, 0.90).map(|v| (v * 10.0).round() / 10.0);
@@ -766,6 +824,27 @@ fn run_video(
                 Some(acc.map_or(v, |a| a.max(v)))
             });
         metrics.knee_valgus_deg = valgus;
+
+        if metrics.pelvic_drop_deg.is_some() {
+            let conf = if frames > 0 {
+                pelvic_tilt.len() as f32 / frames as f32
+            } else {
+                0.0
+            };
+            metrics.metric_confidence.insert("pelvic_drop_deg".to_string(), conf);
+            if let Some(cv) = coefficient_of_variation(&pelvic_tilt) {
+                metrics.metric_cv.insert("pelvic_drop_deg".to_string(), cv);
+            }
+        }
+        if metrics.knee_valgus_deg.is_some() {
+            let conf = (confidence_fraction(&knee_l_ok) + confidence_fraction(&knee_r_ok)) / 2.0;
+            metrics.metric_confidence.insert("knee_valgus_deg".to_string(), conf);
+            let mut samples = knee_l.clone();
+            samples.extend(knee_r.iter().copied());
+            if let Some(cv) = coefficient_of_variation(&samples) {
+                metrics.metric_cv.insert("knee_valgus_deg".to_string(), cv);
+            }
+        }
     } else {
         // vista lateral: ângulo no APOIO (perna mais visível), contato/voo, pisada, tronco
         let right = conf_r >= conf_l;
@@ -808,6 +887,59 @@ fn run_video(
                 metrics.ground_contact_source = Some("rejected_timing_vs_cadence".to_string());
             }
         }
+
+        let (knee_ok, hip_ok) = if right {
+            (&knee_r_ok, &hip_r_ok)
+        } else {
+            (&knee_l_ok, &hip_l_ok)
+        };
+        if metrics.knee_contact_deg.is_some() {
+            metrics
+                .metric_confidence
+                .insert("knee_contact_deg".to_string(), confidence_fraction(knee_ok));
+            if let Some(cv) = coefficient_of_variation(&contact_angle_samples(knee_ser, ground_ser))
+            {
+                metrics.metric_cv.insert("knee_contact_deg".to_string(), cv);
+            }
+        }
+        if metrics.hip_contact_deg.is_some() {
+            metrics
+                .metric_confidence
+                .insert("hip_contact_deg".to_string(), confidence_fraction(hip_ok));
+            if let Some(cv) = coefficient_of_variation(&contact_angle_samples(hip_ser, ground_ser))
+            {
+                metrics.metric_cv.insert("hip_contact_deg".to_string(), cv);
+            }
+        }
+        if metrics.trunk_lean_deg.is_some() {
+            let conf = if frames > 0 {
+                trunk.len() as f32 / frames as f32
+            } else {
+                0.0
+            };
+            metrics.metric_confidence.insert("trunk_lean_deg".to_string(), conf);
+            if let Some(cv) = coefficient_of_variation(&trunk) {
+                metrics.metric_cv.insert("trunk_lean_deg".to_string(), cv);
+            }
+        }
+        let ground_conf = (confidence_fraction(&ground_l_ok) + confidence_fraction(&ground_r_ok)) / 2.0;
+        if metrics.ground_contact_ms.is_some() {
+            metrics
+                .metric_confidence
+                .insert("ground_contact_ms".to_string(), ground_conf);
+            if let Some(cv) = coefficient_of_variation(&stance_ms_samples(&ground_l, &ground_r, fps))
+            {
+                metrics.metric_cv.insert("ground_contact_ms".to_string(), cv);
+            }
+        }
+        if metrics.flight_ms.is_some() {
+            metrics.metric_confidence.insert("flight_ms".to_string(), ground_conf);
+            if let Some(cv) = coefficient_of_variation(&flight_ms_samples(&ground_l, &ground_r, fps))
+            {
+                metrics.metric_cv.insert("flight_ms".to_string(), cv);
+            }
+        }
+
         let facing = median(&nose_dx).unwrap_or(0.0);
         let (ax, kx) = if right {
             (&ax_r, &kx_r)

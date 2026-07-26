@@ -21,8 +21,10 @@ pub use backends::{BlazePoseBackend, PoseEngine};
 pub use draw::{draw_angles, draw_pose, joint_angle, joint_angle_3d};
 pub use layout::{layout_by_name, KeypointLayout, BLAZEPOSE33, COCO17};
 pub use metrics::{
-    analyze_form, cadence_spm, contact_angle, contact_flight_ms, foot_ground_y, foot_strike,
-    hip_tilt_deg, knee_valgus_deg, median, percentile, timing_consistent_with_cadence,
-    trunk_lean_deg, FormMetrics, MIN_DURATION_S, PRODUCTION_JOINT_ANGLE_SPACE,
+    analyze_form, cadence_spm, coefficient_of_variation, confidence_fraction, contact_angle,
+    contact_angle_samples, contact_flight_ms, flight_ms_samples, foot_ground_y, foot_strike,
+    hip_tilt_deg, knee_valgus_deg, median, percentile, stance_ms_samples,
+    timing_consistent_with_cadence, trunk_lean_deg, FormMetrics, MIN_DURATION_S,
+    PRODUCTION_JOINT_ANGLE_SPACE,
 };
 pub use pose::{Pose, PoseBackend};

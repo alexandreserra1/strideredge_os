@@ -5,6 +5,7 @@
 //! vista (lateral × frontal). Séries curtas/ruins degradam gracioso (None + nota), nunca chutam.
 
 use rustfft::{num_complex::Complex, FftPlanner};
+use std::collections::HashMap;
 
 /// Geometria dos ângulos articulares expostos pelo produto.
 ///
@@ -113,6 +114,42 @@ pub struct FormMetrics {
     pub diag_vert_osc_pct: Option<f32>,
     /// comprimento de perna em px (denominador da razão) — ver se a rejeição foi encurtamento de perspectiva
     pub diag_leg_len_px: f32,
+    /// Confiabilidade POR MÉTRICA (0.0–1.0): fração dos frames/amostras usados no cálculo de CADA
+    /// métrica cujos keypoints envolvidos tiveram confiança >= KP_CONF (main.rs). Mesma régua p/
+    /// toda métrica — sem caso especial pro joelho. Chaves = nomes dos campos acima (ex.:
+    /// "knee_contact_deg", "cadence_spm"). Ausência de chave = métrica não computada nesta corrida
+    /// (não confundir com 0.0, que é "computada mas com keypoints de baixa confiança").
+    pub metric_confidence: HashMap<String, f32>,
+    /// Coeficiente de variação (desvio-padrão / |média|) entre as AMOSTRAS de métricas com
+    /// MÚLTIPLAS amostras por passada (ângulo no apoio, contato, voo, oscilação). Cadência é valor
+    /// único de FFT e não entra aqui (ausente, não zero). CV alto = passadas inconsistentes entre
+    /// si (ruído de rastreio ou variabilidade real do atleta) — outro sinal de quanto confiar.
+    pub metric_cv: HashMap<String, f32>,
+}
+
+/// Fração (0.0–1.0) de flags `true` num vetor de confiança por-amostra (>= KP_CONF, decidido pelo
+/// chamador). 0.0 quando não há amostra — a AUSÊNCIA da chave no mapa (não este valor) é quem
+/// sinaliza "métrica não computada"; uma vez inserida, a fração é sempre um número.
+pub fn confidence_fraction(flags: &[bool]) -> f32 {
+    if flags.is_empty() {
+        return 0.0;
+    }
+    flags.iter().filter(|&&f| f).count() as f32 / flags.len() as f32
+}
+
+/// Coeficiente de variação (desvio-padrão / |média|) de um conjunto de amostras da MESMA métrica
+/// (ex.: o ângulo do joelho em cada apoio detectado). `None` com <2 amostras ou média ~0 (evita
+/// dividir por zero ou inventar um CV de sinal degenerado).
+pub fn coefficient_of_variation(samples: &[f32]) -> Option<f32> {
+    if samples.len() < 2 {
+        return None;
+    }
+    let mean = samples.iter().sum::<f32>() / samples.len() as f32;
+    if mean.abs() < 1e-6 {
+        return None;
+    }
+    let var = samples.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / samples.len() as f32;
+    Some((var.sqrt() / mean.abs() * 1000.0).round() / 1000.0)
 }
 
 /// amplitude robusta de uma série (p95 - p5; ignora outliers de detecção)
@@ -163,6 +200,8 @@ fn empty_metrics(
         reason: reason.to_string(),
         diag_vert_osc_pct: None,
         diag_leg_len_px: 0.0,
+        metric_confidence: HashMap::new(),
+        metric_cv: HashMap::new(),
     }
 }
 
@@ -319,6 +358,10 @@ pub fn analyze_form(
         reason: reason.to_string(),
         diag_vert_osc_pct: raw_vert.map(|v| (v * 10.0).round() / 10.0),
         diag_leg_len_px: (leg_len_px * 10.0).round() / 10.0,
+        // Preenchidos pelo main.rs (é quem tem a confiança por-frame dos keypoints); aqui só o
+        // esqueleto vazio, no mesmo padrão de knee_contact_deg/trunk_lean_deg/etc. acima.
+        metric_confidence: HashMap::new(),
+        metric_cv: HashMap::new(),
     }
 }
 
@@ -327,9 +370,19 @@ pub fn analyze_form(
 /// Medir SEMPRE na mesma fase da passada dá um número estável e comparável — diferente do
 /// ângulo instantâneo, que varia o tempo todo. None se a série for curta demais.
 pub fn contact_angle(angles: &[f32], ankle_y: &[f32]) -> Option<f32> {
+    let vals = contact_angle_samples(angles, ankle_y);
+    if vals.len() < 2 {
+        return None;
+    }
+    Some(((vals.iter().sum::<f32>() / vals.len() as f32) * 10.0).round() / 10.0)
+}
+
+/// As amostras cruas por-apoio usadas por `contact_angle` (um ângulo por evento de apoio
+/// detectado), expostas separadamente pra quem quiser o CV entre apoios sem duplicar a detecção.
+pub fn contact_angle_samples(angles: &[f32], ankle_y: &[f32]) -> Vec<f32> {
     let n = angles.len().min(ankle_y.len());
     if n < 12 {
-        return None;
+        return Vec::new();
     }
     let mut vals = Vec::new();
     let mut last = 0usize;
@@ -341,10 +394,7 @@ pub fn contact_angle(angles: &[f32], ankle_y: &[f32]) -> Option<f32> {
             last = i;
         }
     }
-    if vals.len() < 2 {
-        return None;
-    }
-    Some(((vals.iter().sum::<f32>() / vals.len() as f32) * 10.0).round() / 10.0)
+    vals
 }
 
 /// Inclinação do tronco em relação à vertical (graus). 0° = ereto. Vetor quadril→ombro
@@ -453,6 +503,56 @@ pub fn contact_flight_ms(
     };
 
     (gct, flight)
+}
+
+/// Durações (ms) de cada apoio PLAUSÍVEL (60–500ms) de qualquer um dos pés — as mesmas amostras
+/// que `contact_flight_ms` promedia pro GCT, expostas separadamente pra quem quiser o CV entre
+/// apoios sem duplicar o filtro de plausibilidade.
+pub fn stance_ms_samples(ground_l: &[f32], ground_r: &[f32], fps: f32) -> Vec<f32> {
+    if fps <= 0.0 {
+        return Vec::new();
+    }
+    let to_ms = |frames: f32| (frames / fps * 1000.0 * 10.0).round() / 10.0;
+    let (runs_l, _) = stance_runs(ground_l);
+    let (runs_r, _) = stance_runs(ground_r);
+    let plausivel = |r: &usize| {
+        let ms = *r as f32 / fps * 1000.0;
+        (60.0..=500.0).contains(&ms)
+    };
+    runs_l
+        .iter()
+        .chain(runs_r.iter())
+        .filter(|r| plausivel(r))
+        .map(|&r| to_ms(r as f32))
+        .collect()
+}
+
+/// Durações (ms) de cada intervalo de VOO (ambos os pés no ar) — as mesmas amostras que
+/// `contact_flight_ms` promedia pro tempo de voo, expostas pra quem quiser o CV entre passadas.
+pub fn flight_ms_samples(ground_l: &[f32], ground_r: &[f32], fps: f32) -> Vec<f32> {
+    if fps <= 0.0 {
+        return Vec::new();
+    }
+    let to_ms = |frames: f32| (frames / fps * 1000.0 * 10.0).round() / 10.0;
+    let (_, down_l) = stance_runs(ground_l);
+    let (_, down_r) = stance_runs(ground_r);
+    let n = down_l.len().min(down_r.len());
+    if n < 8 {
+        return Vec::new();
+    }
+    let (mut runs, mut cur) = (Vec::new(), 0usize);
+    for i in 0..n {
+        if !down_l[i] && !down_r[i] {
+            cur += 1;
+        } else if cur > 0 {
+            runs.push(cur);
+            cur = 0;
+        }
+    }
+    if cur > 0 {
+        runs.push(cur);
+    }
+    runs.into_iter().map(|r| to_ms(r as f32)).collect()
 }
 
 /// Folga de medição no gate de consistência temporal. Acima de 1.0 = passo teórico; o excedente
@@ -819,5 +919,109 @@ mod tests {
         // uma perna ocluída (both_legs_ok=false) -> recusa com nota de vista frontal
         let bad = analyze_form(&s, &s, &s, 100.0, 25.0, s.len(), "frontal", false);
         assert!(!bad.reliable && bad.quality_note.unwrap().to_lowercase().contains("frente"));
+    }
+
+    // ---------- confiança/CV por métrica (metric_confidence / metric_cv) ----------
+
+    #[test]
+    fn confianca_alta_quando_todos_os_frames_sao_confiaveis() {
+        // (a) keypoints sempre confiáveis -> metric_confidence == 1.0
+        let flags = vec![true; 50];
+        assert_eq!(confidence_fraction(&flags), 1.0);
+    }
+
+    #[test]
+    fn confianca_meio_a_meio_fica_perto_de_0_5() {
+        // (b) metade dos frames de baixa confiança -> metric_confidence ~0.5
+        let mut flags = vec![true; 20];
+        flags.extend(vec![false; 20]);
+        assert!((confidence_fraction(&flags) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn confianca_vazia_e_zero_nao_pane() {
+        assert_eq!(confidence_fraction(&[]), 0.0);
+    }
+
+    #[test]
+    fn cv_baixo_com_amostras_estaveis() {
+        // (c) amostras quase idênticas (ex.: ângulo de joelho estável apoio a apoio) -> CV baixo
+        let samples = vec![160.0, 160.5, 159.8, 160.2, 160.1];
+        let cv = coefficient_of_variation(&samples).expect("devia calcular CV");
+        assert!(cv < 0.02, "CV deveria ser baixo p/ amostras estáveis, veio {cv}");
+    }
+
+    #[test]
+    fn cv_alto_com_amostras_dispersas() {
+        // (d) amostras bem dispersas (rastreio ruim / passadas inconsistentes) -> CV alto
+        let samples = vec![100.0, 20.0, 180.0, 40.0, 150.0];
+        let cv = coefficient_of_variation(&samples).expect("devia calcular CV");
+        assert!(cv > 0.3, "CV deveria ser alto p/ amostras dispersas, veio {cv}");
+    }
+
+    #[test]
+    fn cv_precisa_de_pelo_menos_duas_amostras() {
+        assert!(coefficient_of_variation(&[160.0]).is_none());
+        assert!(coefficient_of_variation(&[]).is_none());
+    }
+
+    #[test]
+    fn contact_angle_samples_alimenta_o_mesmo_valor_que_contact_angle() {
+        // as amostras cruas devem ser consistentes com a média que contact_angle expõe
+        let ankle = sine(1.4, 30.0, 6.0, 20.0);
+        let knee: Vec<f32> = ankle
+            .iter()
+            .map(|&y| if y > 0.0 { 160.0 } else { 90.0 })
+            .collect();
+        let samples = contact_angle_samples(&knee, &ankle);
+        let mean = samples.iter().sum::<f32>() / samples.len() as f32;
+        let a = contact_angle(&knee, &ankle).unwrap();
+        assert!(samples.len() >= 2);
+        assert!((mean - a).abs() < 0.2, "média das amostras {mean} != contact_angle {a}");
+    }
+
+    #[test]
+    fn stance_e_flight_ms_samples_tem_media_igual_ao_contact_flight_ms() {
+        let l = sine(1.5, 30.0, 6.0, 20.0);
+        let r: Vec<f32> = l.iter().map(|&y| -y).collect();
+        let (gct, flight) = contact_flight_ms(&l, &r, 30.0);
+        let stance = stance_ms_samples(&l, &r, 30.0);
+        let fl = flight_ms_samples(&l, &r, 30.0);
+        assert!(!stance.is_empty(), "devia ter amostras de apoio");
+        assert!(!fl.is_empty(), "devia ter amostras de voo");
+        let mean_stance = stance.iter().sum::<f32>() / stance.len() as f32;
+        let mean_flight = fl.iter().sum::<f32>() / fl.len() as f32;
+        assert!((mean_stance - gct.unwrap()).abs() < 1.0);
+        assert!((mean_flight - flight.unwrap()).abs() < 1.0);
+    }
+
+    #[test]
+    fn serializacao_json_inclui_metric_confidence_e_metric_cv_sem_quebrar_schema() {
+        // (e) serialização JSON: os dois mapas novos aparecem, e os campos antigos continuam lá
+        let l = sine(1.4, 25.0, 16.0, 20.0);
+        let mut m = analyze_form(
+            &l,
+            &l,
+            &sine(2.8, 25.0, 16.0, 8.0),
+            100.0,
+            25.0,
+            l.len(),
+            "lateral",
+            true,
+        );
+        m.metric_confidence.insert("cadence_spm".to_string(), 0.92);
+        m.metric_confidence.insert("knee_contact_deg".to_string(), 0.5);
+        m.metric_cv.insert("knee_contact_deg".to_string(), 0.04);
+
+        let json = serde_json::to_value(&m).expect("deve serializar");
+        assert!((json["metric_confidence"]["cadence_spm"].as_f64().unwrap() - 0.92).abs() < 1e-4);
+        assert_eq!(json["metric_confidence"]["knee_contact_deg"], 0.5);
+        assert!((json["metric_cv"]["knee_contact_deg"].as_f64().unwrap() - 0.04).abs() < 1e-4);
+        // schema antigo continua presente e coerente (aditivo, não quebrou nada)
+        assert_eq!(json["reliable"], true);
+        assert!(json["cadence_spm"].is_number());
+        assert!(json["vertical_oscillation_pct"].is_number());
+        // métrica nunca computada nesta corrida (frontal-only) fica AUSENTE, não zero
+        assert!(json["metric_confidence"].get("pelvic_drop_deg").is_none());
     }
 }
