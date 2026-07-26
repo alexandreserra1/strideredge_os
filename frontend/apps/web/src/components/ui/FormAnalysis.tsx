@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clapperboard, Info, Loader2, TrendingUp, Upload } from 'lucide-react'
+import { AlertTriangle, Clapperboard, Info, Loader2, TrendingUp, Upload } from 'lucide-react'
 import { api } from '@strideredge/core'
 import type { FormAnalysis as Analysis, FormPlan, FormProgress } from '@strideredge/core'
 import InfoHint from './InfoHint'
@@ -291,6 +291,7 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
               const v = analysis.metrics![def.key]
               if (v == null) return null
               const lv = def.level(v)
+              const uncertain = !!plan?.uncertain_metrics?.includes(def.key)
               return (
                 <div key={def.key}
                   className="flex items-center gap-2 rounded-full bg-surface-200 border border-border-light pl-3 pr-2.5 py-1.5">
@@ -299,6 +300,13 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                   <span className="text-xs font-bold tabular-nums" style={{ color: LEVEL_COLOR[lv] }}>
                     {Math.round(v * 10) / 10}<span className="text-[9px] font-medium ml-0.5">{def.unit}</span>
                   </span>
+                  {uncertain && (
+                    <span className="flex items-center gap-0.5 text-[9px] font-semibold whitespace-nowrap"
+                      style={{ color: '#FBBF24' }}
+                      title="Medida capturada, mas a confiabilidade não bastou pro coach usar esse número no diagnóstico.">
+                      <AlertTriangle size={10} /> incerta
+                    </span>
+                  )}
                   <InfoHint text={def.why} />
                 </div>
               )

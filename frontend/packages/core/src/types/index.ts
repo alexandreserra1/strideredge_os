@@ -97,6 +97,9 @@ export interface FormPlan {
   citations: string[]
   deviations: FormDeviation[]   // o que corrigir — determinístico (medido × ideal)
   risk?: InjuryRisk        // faixa de risco relativa (aterrada, citada)
+  // nomes de métrica (mesma chave de FormMetrics) medidos mas confiabilidade insuficiente
+  // pro coach diagnosticar — a métrica CONTINUA aparecendo na tela, só ganha um selo
+  uncertain_metrics?: string[]
 }
 
 // Plano corretivo multi-semana (analytics/training_plan.py) — faseado e citado
