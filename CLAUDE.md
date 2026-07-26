@@ -13,6 +13,9 @@ Autossuficiente: só precisa de uma câmera, 100% no aparelho, sem depender de A
 
 ## Leia antes de decidir
 
+- **`STATUS.md`** — o que está PRONTO, o que FALTA e o que é FUTURO, em uma página. É a fonte da
+  verdade do "o que falta": olhar aqui antes de abrir tarefa (evita dar voltas).
+
 - **`constitution.md`** — princípios não-negociáveis (critério de desempate de TODA decisão:
   Rust só p/ compute pesado, dado validado, conclusão-pronta pro LLM, sem overengineering, fontes
   citáveis — é app de risco de lesão, etc.). Respeite sempre.
