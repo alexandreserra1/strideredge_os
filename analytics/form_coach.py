@@ -134,7 +134,7 @@ class FormCoach:
                 "verdict": f"Ainda nao da pra analisar sua forma com confianca: {nota} "
                            "Refaca a filmagem e envie de novo — assim o plano sai certo.",
                 "actions": [], "citations": [], "targets": targets, "deviations": [],
-                "unreliable": True,
+                "unreliable": True, "uncertain_metrics": [],
             }
 
         # Defesa em profundidade: nulifica métrica impossível do motor (ex.: gct 2000ms) antes de
@@ -142,6 +142,10 @@ class FormCoach:
         metrics, _nulled = sanitize_metrics(metrics)
 
         devs = diagnose(metrics, targets)
+        # Métricas que bateriam a faixa de desvio mas foram suprimidas por baixa confiabilidade
+        # de medição (ver Deviations.low_quality_metrics em biomechanics.py). Não vira alegação
+        # do LLM — só um sinal pro frontend mostrar selo de "medição incerta" (§7).
+        uncertain = getattr(devs, "low_quality_metrics", [])
         risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)
 
         if not devs:
@@ -149,6 +153,7 @@ class FormCoach:
                 "verdict": "Sua forma esta dentro das faixas ideais nas metricas medidas. "
                            "Mantenha o trabalho e refaca a analise conforme evoluir.",
                 "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
+                "uncertain_metrics": uncertain,
             }
 
         # Roteamento: consulta só os domínios relevantes aos desvios (evita bleed) + biblioteca
@@ -174,6 +179,7 @@ class FormCoach:
             "deviations": devs,
             "risk": risk,
             "injury_profile": risk.get("by_injury", []),   # risco decomposto POR LESAO (aditivo)
+            "uncertain_metrics": uncertain,   # suprimidas por baixa confiabilidade — selo na UI
         }
 
     @staticmethod

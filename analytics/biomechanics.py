@@ -86,6 +86,41 @@ CORRECTIVE_QUERY = {
 }
 
 
+def metric_quality(metrics: dict, key: str) -> Optional[float]:
+    """Confiabilidade [0,1] de UMA métrica medida, combinando confiança dos keypoints
+    (fração de frames confiáveis) e variabilidade entre passadas (coeficiente de variação).
+
+    Contrato (ver stride_vision/metrics.rs): `metrics["metric_confidence"]` e
+    `metrics["metric_cv"]` são dicts opcionais chave=nome-da-métrica. Ausência de
+    `metric_confidence` = "sem informação de qualidade" (dumps antigos/testes) -> None,
+    e quem chama deve se comportar EXATAMENTE como antes (sem essa noção). Se a chave não
+    estiver em `metric_confidence`, também é None (sem info pra ESSA métrica específica).
+    Com confiança presente: `quality = confidence * (1 - min(cv, 1.0))` quando há CV pra
+    essa chave (métricas de amostra única, tipo cadência, não têm CV entre passadas);
+    senão `quality = confidence`."""
+    confidence = metrics.get("metric_confidence")
+    if confidence is None:
+        return None
+    conf = confidence.get(key)
+    if conf is None:
+        return None
+    cv = (metrics.get("metric_cv") or {}).get(key)
+    if cv is None:
+        return conf
+    return conf * (1 - min(cv, 1.0))
+
+
+class Deviations(list):
+    """Lista de desvios (mesmo shape de sempre) + canal lateral opcional com as métricas
+    que baterim faixa mas foram SUPRIMIDAS por baixa confiabilidade de medição. `list`
+    puro por fora (compara/itera igual, não quebra call-sites nem testes existentes) —
+    quem quiser o detalhe lê `.low_quality_metrics` (lista de dicts: metric/label/value/
+    quality/side). Vazio quando não há supressão (comportamento de hoje)."""
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.low_quality_metrics: list = []
+
+
 def diagnose(metrics: dict, targets: dict) -> list:
     """Compara o medido × alvo. Devolve desvios (fora da faixa) ordenados do pior pro
     melhor. `severity` = quão longe da faixa, normalizado pela largura (comparável entre
@@ -96,8 +131,17 @@ def diagnose(metrics: dict, targets: dict) -> list:
         (cadência alta protege contra impacto); tratar o topo como teto rígido geraria conselho
         invertido ('reduza a cadência') num app de prevenção de lesão.
       - lower_better (contato, oscilação, joelho, assimetria): só incomoda passar do teto.
-      - range (inclinação de tronco): fora da faixa nos dois lados."""
-    out = []
+      - range (inclinação de tronco): fora da faixa nos dois lados.
+
+    CONFIABILIDADE DA MEDIÇÃO (ex.: ângulo de joelho por pose tem MAE de 24-29° vs mocap —
+    ver tools/pose_calibration/CALIBRATION_FINDINGS.md): uma métrica que bateria a faixa de
+    desvio mas tem `metric_quality(metrics, key) < 0.6` NÃO entra nos desvios — o erro de
+    medição pode ser maior que a margem de decisão clínica, e cravar o desvio seria alegação
+    não aterrada (constituição §7). Ela some da lista mas fica visível em
+    `out.low_quality_metrics` pro chamador sinalizar "medição incerta" (não é feedback
+    silencioso). Sem `metric_confidence` no dict (dumps antigos/testes) -> `metric_quality`
+    é None -> comportamento IDÊNTICO ao de antes desta mudança."""
+    out = Deviations()
     for key, t in targets.items():
         v = metrics.get(key)
         if v is None:
@@ -118,6 +162,15 @@ def diagnose(metrics: dict, targets: dict) -> list:
                 side, gap = "alto", v - hi
             else:
                 continue
+
+        quality = metric_quality(metrics, key)
+        if quality is not None and quality < 0.6:
+            out.low_quality_metrics.append({
+                "metric": key, "label": t["label"], "value": v, "side": side,
+                "quality": round(quality, 3),
+            })
+            continue
+
         width = max(hi - lo, 1e-6)
         out.append({
             "metric": key, "label": t["label"], "value": v, "lo": lo, "hi": hi,
