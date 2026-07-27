@@ -1,6 +1,7 @@
 import type {
   AuthResponse,
   AuthUser,
+  CorrectivePlan,
   FormAnalysis,
   FormProgress,
   FormPlan,
@@ -125,9 +126,15 @@ export const api = {
       return URL.createObjectURL(await res.blob())
     },
     coach: (id: string) => request<FormPlan>(`/form/${id}/coach`, { method: 'POST', headers: analysisHeaders(id) }),
-    // Plano corretivo de N semanas (faseado, citado) a partir da análise
-    plan: (id: string, weeks: number) =>
-      request<PlanResponse>(`/form/${id}/plan?weeks=${weeks}`, { method: 'POST', headers: analysisHeaders(id) }),
+    // Plano corretivo de N semanas (faseado, citado) a partir da análise.
+    // A rota devolve o plano ANINHADO sob `plan` ({analysis_id, plan:{...}}); aqui achatamos pro
+    // shape que a UI consome (PlanResponse = CorrectivePlan & {analysis_id}). Sem isso, o componente
+    // lê plan.priority/plan.weeks no topo -> undefined.length -> TypeError -> tela preta.
+    plan: async (id: string, weeks: number): Promise<PlanResponse> => {
+      const r = await request<{ analysis_id: string; plan: CorrectivePlan }>(
+        `/form/${id}/plan?weeks=${weeks}`, { method: 'POST', headers: analysisHeaders(id) })
+      return { ...r.plan, analysis_id: r.analysis_id }
+    },
     // Recomendação de tênis honesta (pisada + oscilação + perfil + histórico)
     shoe: (id: string) => request<ShoeRecommendation>(`/form/${id}/shoe`, { method: 'POST', headers: analysisHeaders(id) }),
   },

@@ -112,10 +112,20 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
   // de uma análise de convidado antiga/órfã) podia chegar DEPOIS do upload e substituir o ID novo
   // por um velho, travando o polling num 404 permanente.
   useEffect(() => {
-    api.form.list().then(list => setAnalysis(prev => prev ?? list[0] ?? null)).catch(() => {
+    // Restaura a última análise ao recarregar (F5). Convidado: `/form` (list) exige conta e
+    // falha/retorna vazio, então re-busca a última análise do guest por id+token guardados em
+    // sessionStorage. Faz o fallback tanto no erro (401) QUANTO na lista vazia — antes, uma lista
+    // vazia (200 []) devolvia null e a análise do convidado nunca voltava no reload.
+    const restoreGuest = () => {
       const guestId = api.form.lastGuestAnalysisId()
       if (guestId) api.form.get(guestId).then(a => setAnalysis(prev => prev ?? a)).catch(() => {})
-    })
+    }
+    api.form.list()
+      .then(list => {
+        if (list[0]) setAnalysis(prev => prev ?? list[0])
+        else restoreGuest()
+      })
+      .catch(restoreGuest)
   }, [])
 
   // O overlay (MP4 com o esqueleto) é renderizado por um job de FUNDO que termina alguns segundos
@@ -423,30 +433,34 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                 </h4>
 
                 {/* Faixa de risco de lesão — RELATIVA, aterrada na literatura (não é probabilidade) */}
-                {plan.risk && (
+                {plan.risk && (() => {
+                  const band = RISK_COLOR[plan.risk.risk_band] ?? '#94A3B8'  // banda desconhecida -> cinza neutro
+                  const factors = plan.risk.factors ?? []
+                  return (
                   <div className="rounded-xl border p-3"
-                    style={{ borderColor: RISK_COLOR[plan.risk.risk_band] + '55', background: RISK_COLOR[plan.risk.risk_band] + '12' }}>
+                    style={{ borderColor: band + '55', background: band + '12' }}>
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: RISK_COLOR[plan.risk.risk_band] }} />
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: band }} />
                       <span className="text-xs font-semibold">Risco de lesão: <span className="capitalize">{plan.risk.risk_band}</span></span>
                       <InfoHint text={plan.risk.caveat} />
                     </div>
-                    {plan.risk.factors.length > 0 && (
+                    {factors.length > 0 && (
                       <p className="text-[10px] text-text-muted mt-1">
-                        Puxado por: {plan.risk.factors.slice(0, 3).map(f => f.label).join(' · ')}
+                        Puxado por: {factors.slice(0, 3).map(f => f.label).join(' · ')}
                       </p>
                     )}
                   </div>
-                )}
+                  )
+                })()}
 
-                {plan.deviations.length === 0 && (
+                {(plan.deviations?.length ?? 0) === 0 && (
                   <p className="text-sm text-text-secondary leading-relaxed">{plan.verdict}</p>
                 )}
-                {plan.deviations.length > 0 && (
+                {(plan.deviations?.length ?? 0) > 0 && (
                   <div>
                     <h5 className="text-[11px] font-semibold uppercase tracking-wider mb-2 text-accent-orange">O que está te segurando</h5>
                     <ul className="space-y-2.5">
-                      {plan.deviations.map(d => (
+                      {(plan.deviations ?? []).map(d => (
                         <li key={d.metric} className="flex items-start gap-2">
                           <span className="text-accent-orange mt-0.5 shrink-0">!</span>
                           <div>
@@ -460,14 +474,14 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                     </ul>
                   </div>
                 )}
-                {plan.actions.length > 0 && (
-                  <PlanList title="O que fazer nos próximos treinos" items={plan.actions} color="#38BDF8" glyph="→" />
+                {(plan.actions?.length ?? 0) > 0 && (
+                  <PlanList title="O que fazer nos próximos treinos" items={plan.actions ?? []} color="#38BDF8" glyph="→" />
                 )}
-                {plan.citations.length > 0 && (
+                {(plan.citations?.length ?? 0) > 0 && (
                   <div className="pt-1">
                     <p className="text-[10px] text-text-muted mb-1">Baseado em:</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {plan.citations.map((c, i) => (
+                      {(plan.citations ?? []).map((c, i) => (
                         <span key={i} title={c}
                           className="text-[10px] text-text-secondary bg-surface-200 border border-border-light px-2 py-0.5 rounded-full">
                           📚 {sourceLabel(c)}
