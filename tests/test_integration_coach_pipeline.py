@@ -63,13 +63,12 @@ def test_estagios_intermediarios_se_encaixam():
 
     plan = build_plan(risk["factors"], weeks=6)
     assert plan["duration_weeks"] == 6
-    assert len(plan["weeks"]) == 6
-    # cada semana tem sessões e cada sessão traz o COMO fazer (plano explicativo, não só nome)
-    semanas_com_sessao = [w for w in plan["weeks"] if w["sessions"]]
-    assert semanas_com_sessao, "com desvio de cadência tem que haver sessão prescrita"
-    for w in semanas_com_sessao:
-        for s in w["sessions"]:
-            assert s["source"] and "how" in s
+    # plano faseado (não por semana): cada fase traz porquê + exercícios com COMO fazer + progressão
+    assert plan["phases"], "com desvio tem que haver fase prescrita"
+    for ph in plan["phases"]:
+        assert ph["why"] and ph["weeks_label"] and ph["exercises"]
+        for ex in ph["exercises"]:
+            assert ex["source"] and ex.get("how") and ex.get("progression")
 
 
 def test_plan_devolve_contrato_completo_com_desvio():

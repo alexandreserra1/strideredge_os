@@ -148,7 +148,7 @@ def test_fluxo_completo_frontend_contrato():
         body = r.json()
         assert body["analysis_id"] == aid and "plan" in body
         plan = body["plan"]
-        assert plan["duration_weeks"] >= 2 and isinstance(plan["weeks"], list)
+        assert plan["duration_weeks"] >= 2 and isinstance(plan["phases"], list)
 
         # o plano gerado por logado persiste e aparece na lista
         plans = client.get("/api/v1/plans", headers=auth)

@@ -109,27 +109,29 @@ export interface FormPlan {
   uncertain_metrics?: UncertainMetric[]
 }
 
-// Plano corretivo multi-semana (analytics/training_plan.py) — faseado e citado
-export interface PlanSession {
+// Plano corretivo faseado (analytics/training_plan.py) — POR FASE, não por semana (explicativo, sem
+// repetir o exercício toda semana). Cada fase: título + janela de semanas + porquê + exercícios.
+export interface PlanExercise {
   exercise: string
-  phase: string          // 'ativacao' | 'mobilidade' | 'forca' | 'drill'
-  dose: string
+  how?: string           // como executar + se auto-conferir
+  progression?: string   // o que muda ao longo das semanas (dose progressiva)
   source: string
-  how?: string           // como executar + se auto-conferir (plano explicativo)
 }
 
-export interface PlanWeek {
-  n: number
-  bloco: string          // 'base' | 'forca' | 'drill_de_marcha'
+export interface PlanPhase {
+  key: string            // 'base' | 'forca' | 'drill_de_marcha'
+  title: string          // rótulo humano (ex.: 'Força — fortalecer')
+  weeks_label: string    // ex.: 'Semanas 1–3'
+  why: string            // por que esta fase, nesta ordem
   focus: string
-  sessions: PlanSession[]
+  exercises: PlanExercise[]
 }
 
 export interface CorrectivePlan {
   duration_weeks: number
   priority: { metric: string; label: string }[]
   intro?: string
-  weeks: PlanWeek[]
+  phases: PlanPhase[]
   caveat: string
   unreliable?: boolean   // captura ruim -> sem plano, só o aviso de refilmar
   cover?: string         // capa humana opcional (LLM)

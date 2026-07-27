@@ -1,22 +1,8 @@
 import { useCallback, useState } from 'react'
 import { CalendarRange, Info, Loader2, Sparkles } from 'lucide-react'
 import { api } from '@strideredge/core'
-import type { PlanResponse, PlanWeek } from '@strideredge/core'
+import type { PlanResponse, PlanPhase } from '@strideredge/core'
 import InfoHint from './InfoHint'
-
-// Rótulo humano de cada bloco temporal do plano (o backend emite a chave técnica).
-const BLOCO_LABEL: Record<string, string> = {
-  base: 'Base — ativar',
-  forca: 'Força — fortalecer',
-  drill_de_marcha: 'Drill de marcha — treinar o gesto',
-}
-// Cor por fase da sessão (mesma paleta didática do resto do app).
-const PHASE_COLOR: Record<string, string> = {
-  ativacao: '#34D399', mobilidade: '#38BDF8', forca: '#FBBF24', drill: '#FB923C',
-}
-const PHASE_LABEL: Record<string, string> = {
-  ativacao: 'ativação', mobilidade: 'mobilidade', forca: 'força', drill: 'drill',
-}
 
 const WEEK_OPTIONS = [4, 6, 8, 12] as const
 
@@ -114,14 +100,14 @@ export default function CorrectivePlan({ analysisId }: { analysisId: string }) {
             </div>
           )}
 
-          {(plan.weeks?.length ?? 0) === 0 && (
+          {(plan.phases?.length ?? 0) === 0 && (
             <p className="text-sm text-text-secondary leading-relaxed">{plan.caveat}</p>
           )}
 
-          {(plan.weeks ?? []).map(w => <WeekCard key={w.n} week={w} />)}
+          {(plan.phases ?? []).map((ph, i) => <PhaseCard key={ph.key} phase={ph} step={i + 1} />)}
 
           {/* Caveat de honestidade em destaque */}
-          {(plan.weeks?.length ?? 0) > 0 && (
+          {(plan.phases?.length ?? 0) > 0 && (
             <div className="rounded-xl bg-accent-yellow/10 border border-accent-yellow/25 p-3">
               <p className="text-[11px] text-text-secondary leading-snug flex items-start gap-1.5">
                 <Info size={13} className="text-accent-yellow shrink-0 mt-0.5" />
@@ -139,37 +125,38 @@ export default function CorrectivePlan({ analysisId }: { analysisId: string }) {
   )
 }
 
-// Uma semana do plano: cabeçalho (n, bloco, foco) + as sessões (exercício, dose, fonte citada).
-function WeekCard({ week }: { week: PlanWeek }) {
+// Uma FASE do plano: passo (1/2/3), título, janela de semanas, o PORQUÊ da fase, e os exercícios
+// (cada um UMA vez, com 'como fazer' + progressão + fonte). Sem repetir semana a semana.
+function PhaseCard({ phase, step }: { phase: PlanPhase; step: number }) {
   return (
-    <div className="rounded-xl border border-border-light bg-surface-200 p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-bold text-text-primary">Semana {week.n}</span>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand/12 text-brand">
-          {BLOCO_LABEL[week.bloco] ?? week.bloco}
+    <div className="rounded-xl border border-border-light bg-surface-200 p-3.5">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-brand text-white text-[10px] font-bold shrink-0">{step}</span>
+        <span className="text-sm font-bold text-text-primary">{phase.title}</span>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand/12 text-brand ml-auto whitespace-nowrap">
+          {phase.weeks_label}
         </span>
       </div>
-      <p className="text-[10px] text-text-muted mb-2">Foco: {week.focus}</p>
-      <ul className="space-y-2">
-        {(week.sessions ?? []).map((s, i) => (
-          <li key={i} className="flex items-start gap-2">
-            <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
-              style={{ background: PHASE_COLOR[s.phase] ?? '#94A3B8' }} />
-            <div className="min-w-0">
-              <p className="text-xs text-text-primary leading-snug">
-                <span className="font-semibold">{s.exercise}</span>
-                <span className="text-text-secondary"> — {s.dose}</span>
+      {phase.why && (
+        <p className="text-[12px] text-text-secondary leading-snug mb-3">{phase.why}</p>
+      )}
+      <ul className="space-y-3">
+        {(phase.exercises ?? []).map((ex, i) => (
+          <li key={i} className="border-l-2 border-brand/30 pl-3">
+            <p className="text-xs font-semibold text-text-primary leading-snug">{ex.exercise}</p>
+            {ex.how && (
+              <p className="text-[11px] text-text-secondary mt-1 leading-snug">
+                <span className="font-medium text-brand">Como fazer:</span> {ex.how}
               </p>
-              {s.how && (
-                <p className="text-[11px] text-text-secondary mt-1 leading-snug">
-                  <span className="font-medium text-brand">Como fazer:</span> {s.how}
-                </p>
-              )}
-              <p className="text-[10px] text-text-muted mt-0.5">
-                {PHASE_LABEL[s.phase] ?? s.phase}
-                {s.source && <span title={s.source}> · 📚 {s.source}</span>}
+            )}
+            {ex.progression && (
+              <p className="text-[11px] text-text-secondary mt-1 leading-snug">
+                <span className="font-medium text-accent-green">Progressão:</span> {ex.progression}
               </p>
-            </div>
+            )}
+            {ex.source && (
+              <p className="text-[10px] text-text-muted mt-0.5" title={ex.source}>📚 {ex.source}</p>
+            )}
           </li>
         ))}
       </ul>
