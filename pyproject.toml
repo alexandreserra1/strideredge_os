@@ -16,6 +16,7 @@ requires-python = ">=3.9"
 dependencies = [
     "duckdb",     # banco embutido (auth, analises de forma, perfil; base RAG em .db separado)
     "fastapi",    # framework da API REST
+    "python-multipart",  # upload de vídeo (Form/File do FastAPI) — sem ela os endpoints de upload nem carregam
     "uvicorn",    # servidor que roda a API
     "structlog",  # logs estruturados em JSON
     "httpx",      # cliente HTTP (Ollama, embeddings, RAG)

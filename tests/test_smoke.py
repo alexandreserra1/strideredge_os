@@ -9,7 +9,10 @@ client = TestClient(app)
 
 
 def test_app_sobe_e_tem_as_rotas_essenciais():
-    paths = {r.path for r in app.routes}
+    # Introspecção via schema OpenAPI (contrato público estável). Versões novas do FastAPI
+    # adiam a materialização das rotas em `app.routes` (wrappers `_IncludedRouter` opacos, sem
+    # `.path`), então iterar `app.routes` não enxerga mais os paths — `app.openapi()` sim.
+    paths = set(app.openapi()["paths"])
     for p in ["/api/v1/form", "/api/v1/injuries", "/api/v1/injuries/taxonomy",
               "/api/v1/injuries/{injury_id}/classify", "/api/v1/auth/login"]:
         assert p in paths, f"rota sumiu: {p}"
