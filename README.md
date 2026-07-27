@@ -10,6 +10,12 @@ biomecânica da passada e devolve um **plano corretivo claro** — o que ajustar
 treinar isso — com **fontes científicas citadas**. Tudo pensado para rodar de forma privada, sem
 depender de nuvem de terceiros. Só uma câmera.
 
+<p align="center">
+  <img src="docs/overlay-demo.jpg" alt="Corredor com o esqueleto e as juntas detectadas pela IA" width="300">
+  <br>
+  <sub>A IA lê a passada quadro a quadro — juntas e ângulos que viram o diagnóstico de forma.</sub>
+</p>
+
 ## Por que existe
 
 A maioria das lesões de corrida é de sobrecarga e se anuncia na forma muito antes de doer. Mas
