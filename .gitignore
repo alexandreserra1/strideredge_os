@@ -46,3 +46,6 @@ data/
 # tooling local de agentes (não versionar)
 .claude/
 .agents/
+
+# venv do preflight (espelha deps declaradas; local)
+.preflight-venv/
