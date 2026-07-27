@@ -136,11 +136,25 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
     finally { setPlanLoading(false) }
   }, [analysis])
 
-  // enquanto processa, consulta a cada 3s
+  // enquanto processa, consulta a cada 3s. Se o GET falhar de forma persistente (ex.: 404 — a
+  // análise não existe/expirou ou o token de convidado se perdeu), NÃO gira pra sempre: para o
+  // polling e mostra um erro acionável. Antes o .catch(()=>{}) engolia o 404 e a tela ficava
+  // "Analisando…" infinitamente mesmo sem nada pra analisar.
   useEffect(() => {
     if (analysis?.status !== 'processing') return
+    let misses = 0
     const t = setInterval(() => {
-      api.form.get(analysis.analysis_id).then(setAnalysis).catch(() => {})
+      api.form.get(analysis.analysis_id)
+        .then(a => { misses = 0; setAnalysis(a) })
+        .catch(err => {
+          misses += 1
+          if (err?.status === 404 || misses >= 3) {
+            clearInterval(t)
+            setError('Essa análise não está mais disponível (expirou ou a sessão foi perdida). '
+                     + 'Envie o vídeo novamente.')
+            setAnalysis(null)
+          }
+        })
     }, 3000)
     return () => clearInterval(t)
   }, [analysis?.status, analysis?.analysis_id])
