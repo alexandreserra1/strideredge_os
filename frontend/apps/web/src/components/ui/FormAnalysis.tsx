@@ -205,8 +205,15 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
   }, [submitFiles, view])
 
   const startNewAnalysis = useCallback(() => {
+    // Zera TODO o estado da análise anterior — senão a tela fica presa mostrando o resultado
+    // antigo (a UI de upload só renderiza com `!analysis`) e o vídeo novo parece "não atualizar".
     setSelectedLateral(null)
     setSelectedFrontal(null)
+    setAnalysis(null)
+    setPlan(null)
+    setProgress(null)
+    setError('')
+    setVideoUrl(old => { if (old) URL.revokeObjectURL(old); return null })
     lateralFileRef.current?.click()
   }, [])
 
