@@ -11,6 +11,7 @@ build-backend = "setuptools.build_meta"
 name = "strideredge-os"
 version = "2.0.0"
 description = "IA de visao computacional para prevencao de lesao na corrida (analise de forma por video)."
+license = "MIT"
 requires-python = ">=3.9"
 dependencies = [
     "duckdb",     # banco embutido (auth, analises de forma, perfil; base RAG em .db separado)

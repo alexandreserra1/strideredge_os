@@ -1,121 +1,51 @@
 # StriderEdge OS
 
 [![CI](https://github.com/alexandreserra1/strideredge_os/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandreserra1/strideredge_os/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**IA de visão computacional para prevenção de lesão na corrida.** O atleta filma a própria
-corrida com o celular; um motor de pose em **Rust** (`stride_vision`) extrai a biomecânica
-(cadência, pisada, ângulos, tempo de contato/voo, assimetria); e um **coach de IA local**
-(Ollama/Qwen) com **RAG citável** traduz os desvios num plano corretivo com exercícios e fontes
-científicas. Autossuficiente: só precisa de uma câmera, 100% no aparelho.
+**IA de visão computacional para prevenção de lesão na corrida.**
 
-> **Pivot (jul/2026):** o projeto começou como ecossistema de biotelemetria `.FIT` (Garmin/Strava)
-> e focou-se só na análise de forma por vídeo — o diferencial que os concorrentes não têm. A stack
-> `.FIT` (ingestão, DuckDB star schema, kernel Rust numérico, coach de treino, dashboards) foi
-> removida; recuperável na tag git `archive/fit-full-app`.
+O atleta filma a própria corrida com o celular. O StriderEdge enxerga o movimento, entende a
+biomecânica da passada e devolve um **plano corretivo claro** — o que ajustar, por quê, e como
+treinar isso — com **fontes científicas citadas**. Tudo pensado para rodar de forma privada, sem
+depender de nuvem de terceiros. Só uma câmera.
 
-## Arquitetura
+## Por que existe
 
-```
-Frontend web (React/Vite)  ──REST──►  API (FastAPI, controllers finos)
-                                          │
-   upload de vídeo ──► fila de jobs (core/jobs.py) ──► worker:
-       ffmpeg (transcode) → stride_vision (BlazePose nativo; YOLO17 shadow temporário) → métricas (JSON)
-                                          │
-   plano corretivo ◄── FormCoach ◄── RAG híbrido (denso+BM25 + contextual retrieval + grounding)
-                                          │
-   Dados: DuckDB (auth, análises, perfil) · base RAG num .db separado (bge-m3)
-```
+A maioria das lesões de corrida é de sobrecarga e se anuncia na forma muito antes de doer. Mas
+análise de corrida boa hoje mora em laboratório: cara, rara e inacessível pra quem corre no fim de
+semana. O StriderEdge nasce pra levar essa leitura pro bolso do atleta — com uma régua importante:
+**é um app de risco de lesão, então o conselho precisa ser correto, honesto e aterrado na
+ciência.** Quando a captura não é boa o bastante, ele diz "não dá pra afirmar" em vez de chutar.
 
-**O que faz:** pose estimation por vídeo → biomecânica (cadência via FFT, contato/voo, ângulos
-articulares no apoio, inclinação de tronco, assimetria, pisada) com guarda de confiabilidade;
-diagnóstico determinístico (medido × ideal personalizado); plano corretivo com exercícios citados
-(RAG híbrido denso+BM25 + contextual retrieval + grounding anti-alucinação, fontes PMC/DOI/PubMed).
+## O que ele faz
 
-## Stack
+- **Vê a passada.** A partir de um vídeo comum, extrai indicadores de forma relevantes pra corrida.
+- **Traduz em causa-raiz.** Cruza o que foi medido com faixas da literatura e aponta os desvios que
+  mais importam — em ordem de risco.
+- **Prescreve, não só descreve.** Entrega um plano corretivo com exercícios e um jeito prático de
+  você medir e acompanhar o próprio progresso.
+- **Cita a fonte.** Cada recomendação vem amarrada a evidência científica real — nada de palpite.
+- **Fala a sua língua.** Explica o "porquê" como um bom treinador faria, não como um artigo.
+- **É honesto sobre o que não sabe.** Sinaliza medições incertas e pede uma refilmagem quando o
+  vídeo não permite uma leitura confiável.
 
-Python · **Rust** (`stride_vision`, motor standalone via ONNX e ponte C++/MediaPipe Tasks) · **DuckDB** ·
-**Ollama** (Qwen 7B + bge-m3) · FastAPI · React/Vite · structlog. Sem custo de token.
+## Estado
 
-O backend principal é **BlazePose GHUM Full** (Apache-2.0), com 33 landmarks e ponte nativa já
-medida. Calcanhar+ponta ancoram contato/voo quando confiáveis; o resultado registra quando precisou
-usar o tornozelo como proxy. **YOLO17** fica como shadow opt-in da mesma captura (a régua da
-avaliação pareada), nunca fallback silencioso. O track **Halpe26/RTMPose foi removido** (pesos sem
-licença comercial confirmada + superado pelo pé do BlazePose). A validação pareada das métricas
-continua pendente; isso não habilita diagnóstico de pronação/dorsiflexão.
-Ver [`ADR 0002`](docs/adr/0002-blazepose-apache-candidate.md).
+Projeto em desenvolvimento ativo. O núcleo — do vídeo ao plano corretivo citado — funciona de ponta
+a ponta. Partes da validação científica e do empacotamento seguem evoluindo.
 
-### Assets do BlazePose (obrigatórios para upload)
+> Este repositório contém o **código-fonte** do projeto. Modelos, pesos e dados de vídeo **não**
+> são versionados aqui.
 
-Os pesos e o runtime não entram no Git. Antes de iniciar a API, coloque o runtime MediaPipe e o
-bundle oficial `pose_landmarker_full.task` numa pasta privada (`chmod 700`), calcule seus SHA-256 e
-crie um manifesto dentro da mesma pasta. O servidor só entrega esses caminhos ao Rust depois de
-validá-los.
+## Licença
 
-```json
-{
-  "schema_version": 1,
-  "backend": "blazepose33",
-  "status": "experimental",
-  "model_version": "pose-landmarker-full-<versao>",
-  "assets": {
-    "runtime": {"file": "libmediapipe.dylib", "sha256": "<sha256-do-runtime>"},
-    "pose_landmarker": {"file": "pose_landmarker_full.task", "sha256": "<sha256-do-task>"}
-  }
-}
-```
+Código sob licença **MIT** — veja [`LICENSE`](LICENSE).
 
-```bash
-export STRIDE_MODEL_ROOT=/caminho/privado/para/assets
-export STRIDE_BLAZEPOSE_ASSET_MANIFEST="$STRIDE_MODEL_ROOT/blazepose-assets.json"
-# Opcional durante a migração: mede YOLO no mesmo vídeo, sem mudar a resposta ao atleta.
-export STRIDE_POSE_SHADOW_BACKEND=yolo17
-```
+Componentes de terceiros (modelos de pose, runtime de inferência, LLM local e bases científicas)
+permanecem sob suas próprias licenças e termos, respeitados separadamente.
 
-Sem esses assets, o upload retorna indisponibilidade explícita; ele nunca troca silenciosamente
-para YOLO.
+---
 
-Com o shadow ligado, o operador pode acompanhar a transição sem acessar vídeos ou identidade de
-atletas:
-
-```bash
-.venv/bin/python tools/pose_calibration/summarize_shadow.py
-```
-
-O relatório só agrega qualidade e deltas Blaze→YOLO por versão de modelo; divergência não é tratada
-como erro clínico nem como mudança de forma do corredor.
-
-## Como rodar
-
-Pré-requisitos: Python 3.9+, [Rust](https://rustup.rs), [Ollama](https://ollama.com), Node, ffmpeg.
-
-```bash
-# 1. ambiente Python
-python -m venv .venv && source .venv/bin/activate
-pip install ".[dev]"
-
-# 2. motor de visão (Rust standalone) + modelos locais
-cargo build --release --manifest-path stride_vision/Cargo.toml
-ollama pull qwen2.5:7b-instruct && ollama pull bge-m3
-ollama serve &                                    # deixa rodando
-python -m rag.knowledge_base                       # indexa o corpus de ciência do esporte
-
-# 3. subir API + frontend
-uvicorn api.main:app --port 8000                   # http://localhost:8000
-cd frontend/apps/web && npm install && npm run dev # http://localhost:5173
-```
-
-## Testes
-
-```bash
-pytest -q -k "not e2e"   # suíte hermética (unit + RAG eval + segurança); Ollama pula sem servidor
-```
-
-Suíte **hermética** (banco temporário) — roda em qualquer máquina e no CI, sem dados pessoais.
-
-## Documentação
-
-- [`CLAUDE.md`](CLAUDE.md) — contexto e comandos (o mais atualizado).
-- [`constitution.md`](constitution.md) — princípios não-negociáveis (critério de desempate).
-- [`plan.md`](plan.md) — arquitetura e roadmap.
-- [`AI-STRATEGY.md`](AI-STRATEGY.md) — roteiro de IA/ML (RAG avançado, evals, visão/risco de lesão).
-- [`frontend-spec.md`](frontend-spec.md) — spec do frontend web.
+<sub>StriderEdge OS é uma ferramenta de educação e prevenção, não um dispositivo médico nem
+substituto de avaliação profissional de saúde.</sub>
