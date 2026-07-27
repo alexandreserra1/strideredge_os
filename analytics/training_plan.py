@@ -38,8 +38,8 @@ def build_plan(risk_factors: list, weeks: int = 6) -> dict:
     exs = for_factors(priority)
     if not exs:
         return {"duration_weeks": weeks, "weeks": [], "priority": [],
-                "caveat": "Nenhum desvio com exercício citado na biblioteca — mantenha o trabalho "
-                          "e reavalie por vídeo conforme evoluir."}
+                "caveat": "Não achei nada pra corrigir com respaldo científico agora — mantenha o "
+                          "bom trabalho e grave um vídeo novo mais pra frente pra reconferir."}
 
     # ordena por prioridade do fator que o exercício ataca (menor índice = mais grave), depois por bloco
     def _prio(e):
@@ -62,17 +62,19 @@ def build_plan(risk_factors: list, weeks: int = 6) -> dict:
         bloco = _BLOCO_LABEL[max(started)] if started else "base"
         plan.append({"n": n, "bloco": bloco, "focus": top_label, "sessions": sessions})
 
-    intro = (f"Seu foco principal agora é {top_label.lower()}. Este plano de {weeks} semanas vai por "
-             "partes: primeiro ATIVA os músculos certos, depois FORTALECE, e no fim TREINA o gesto na "
-             "corrida. Sem pressa — um estímulo por vez, e a gente reavalia por vídeo.")
+    intro = (f"Seu foco principal agora é {top_label.lower()}. Este plano de {weeks} semanas vem em "
+             "três etapas, na ordem certa: primeiro a gente ACORDA os músculos que estavam dormindo, "
+             "depois os DEIXA MAIS FORTES, e no fim TREINA esse gesto correndo pra virar automático. "
+             "Sem pressa — uma coisa de cada vez, e a gente confere de novo pelo vídeo.")
     return {
         "duration_weeks": weeks,
         "priority": [{"metric": f["metric"], "label": f["label"]} for f in risk_factors[:3]],
         "intro": intro,
         "weeks": plan,
-        "caveat": "Plano corretivo GRADUAL: suba o volume ~10% por semana, um estímulo por vez. "
-                  "Reavalie por vídeo a cada 2–3 semanas. Não é prescrição médica — se doer, "
-                  "reduza a carga e procure avaliação.",
+        "caveat": "Vá com calma: aumente o esforço só uns 10% por semana, uma novidade de cada vez — "
+                  "assim o corpo se adapta sem sustos. Grave um vídeo novo a cada 2 ou 3 semanas pra "
+                  "ver a evolução. Isto não substitui um médico: se sentir dor, alivie a carga e "
+                  "procure um profissional.",
     }
 
 
