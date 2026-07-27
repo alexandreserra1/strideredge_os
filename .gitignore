@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+build/          # artefato do setuptools (pip install .) — nunca versionar
 .pytest_cache/
 
 # Rust (artefatos de build)
