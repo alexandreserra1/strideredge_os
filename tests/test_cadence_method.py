@@ -71,3 +71,20 @@ def test_metrica_sem_how_to_measure_nao_e_alterada():
     devs = [{"metric": "sem_metodo", "label": "metrica x", "how_to_measure": ""}]
     original = ["- Faca a acao da metrica x do jeito Y"]
     assert FormCoach._ensure_measure_method(original, devs) == original
+
+
+def test_um_metodo_por_acao_quando_dois_desvios_casam_a_mesma():
+    """Borda: se dois desvios batem na MESMA ação (frase que menciona duas métricas), só um
+    método é anexado — a ação não vira frase corrida com dois 'como medir' emendados."""
+    from analytics.form_coach import FormCoach
+    # uma única ação que menciona cadência E joelho
+    actions = ["Aumente a cadência e aterre o joelho sob o quadril (Fonte: PMC1)"]
+    devs = [
+        {"metric": "cadence_spm", "label": "cadência", "how_to_measure": "conte em 20 segundos e multiplique por 6"},
+        {"metric": "knee_contact_deg", "label": "joelho no apoio", "how_to_measure": "veja onde o pé aterra no vídeo de lado"},
+    ]
+    out = FormCoach._ensure_measure_method(actions, devs)
+    # no máximo UM dos dois métodos foi anexado a essa ação (não os dois emendados)
+    joined = out[0].lower()
+    n = sum(1 for m in ("20 segundos", "onde o pé aterra") if m in joined)
+    assert n <= 1, f"anexou {n} métodos na mesma ação (deveria ser <=1): {out[0]}"

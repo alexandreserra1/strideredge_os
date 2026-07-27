@@ -144,21 +144,28 @@ class FormCoach:
         'como medir sozinho' contenha ESSE método — venha o LLM como vier. Se a ação já traz o
         método (paráfrase), não duplica; senão anexa o texto pronto de biomechanics.MEASURE_HOWTO.
         Genérico p/ toda métrica; a cadência é só o caso mais crítico. Não inventa número nem
-        afrouxa o grounding — só materializa o método que já está no código."""
+        afrouxa o grounding — só materializa o método que já está no código.
+
+        1 método por ação: se dois desvios casarem com a MESMA ação (raro — uma frase que menciona
+        duas métricas), só o primeiro anexa o método; senão a ação viraria uma frase corrida com
+        dois 'como medir' emendados."""
         out = list(actions)
+        used = set()                              # índices de ação que já receberam um método
         for d in devs:
             howto = d.get("how_to_measure")
             if not howto:
                 continue                          # métrica sem método pronto: não mexe
             idx = cls._match_action(out, d)
-            if idx is None:
-                continue                          # LLM não gerou ação p/ este desvio
+            if idx is None or idx in used:
+                continue                          # sem ação p/ o desvio, ou ação já tem 1 método
             if cls._mentions_method(out[idx], howto):
+                used.add(idx)                     # LLM já incluiu: conta como método presente
                 continue                          # já mencionou (não duplica)
             base = out[idx].rstrip()
             if base and base[-1] not in ".!?":
                 base += "."
             out[idx] = f"{base} {howto}"          # anexa o método pronto, de forma natural
+            used.add(idx)
         return out
 
     @staticmethod
