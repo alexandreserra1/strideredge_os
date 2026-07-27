@@ -34,6 +34,10 @@ async def lifespan(_app: FastAPI):
     recover_orphaned_analyses()
     purge_expired_guest_analyses()
     yield
+    # Shutdown LIMPO: CHECKPOINT + fecha o DuckDB pra o WAL nao ficar orfao. WAL orfao corrompe o
+    # replay no proximo boot e a API nao sobe — bug real observado em restarts (inclusive SIGTERM).
+    from core.database import close_connection
+    close_connection()
 
 
 app = FastAPI(title="StriderEdge OS API", version="2.0.0", lifespan=lifespan)

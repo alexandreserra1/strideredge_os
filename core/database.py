@@ -65,9 +65,15 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
 
 
 def close_connection() -> None:
-    """Fecha a conexao-raiz compartilhada (uso em testes/teardown)."""
+    """Fecha a conexao-raiz compartilhada (shutdown da API e testes/teardown). CHECKPOINT antes de
+    fechar FORCA o flush do WAL pro arquivo .db: sem isso, um WAL orfao sobra e o replay dele no
+    proximo boot dispara um erro interno do DuckDB -> a API nao sobe (bug real em restarts)."""
     global _connection, _generation
     if _connection is not None:
+        try:
+            _connection.execute("CHECKPOINT")
+        except Exception:   # noqa: BLE001 — best-effort; conexao ja fechada/read-only nao impede o resto
+            pass
         _connection.close()
         _connection = None
     _generation += 1          # invalida os cursores cacheados de TODAS as threads
