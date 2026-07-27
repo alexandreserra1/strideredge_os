@@ -34,9 +34,16 @@ async def lifespan(_app: FastAPI):
     recover_orphaned_analyses()
     purge_expired_guest_analyses()
     yield
-    # Shutdown LIMPO: CHECKPOINT + fecha o DuckDB pra o WAL nao ficar orfao. WAL orfao corrompe o
-    # replay no proximo boot e a API nao sobe — bug real observado em restarts (inclusive SIGTERM).
+    # Shutdown LIMPO e BOUNDED. Ordem importa: primeiro paramos a fila de jobs (workers largam a
+    # conexao/cursor); so entao o CHECKPOINT — assim ninguem segura a raiz e o checkpoint e rapido.
+    # Se um job estiver preso, stop()/close_connection() tem timeout e NAO penduram o SIGTERM.
     from core.database import close_connection
+    try:
+        get_job_queue().stop()
+    except Exception:  # noqa: BLE001 — teardown best-effort; nunca pode impedir o resto do shutdown
+        pass
+    # CHECKPOINT + fecha o DuckDB pra o WAL nao ficar orfao. WAL orfao corrompe o replay no proximo
+    # boot e a API nao sobe — bug real observado em restarts (inclusive SIGTERM).
     close_connection()
 
 

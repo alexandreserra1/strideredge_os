@@ -64,17 +64,39 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     return _local.cursor
 
 
-def close_connection() -> None:
+def close_connection(timeout: float = 5.0) -> None:
     """Fecha a conexao-raiz compartilhada (shutdown da API e testes/teardown). CHECKPOINT antes de
     fechar FORCA o flush do WAL pro arquivo .db: sem isso, um WAL orfao sobra e o replay dele no
-    proximo boot dispara um erro interno do DuckDB -> a API nao sobe (bug real em restarts)."""
+    proximo boot dispara um erro interno do DuckDB -> a API nao sobe (bug real em restarts).
+
+    BOUNDED: se um job de fundo ainda segura um cursor, o CHECKPOINT/close pode BLOQUEAR
+    indefinidamente e pendurar o SIGTERM. Por isso rodamos o checkpoint+close numa thread e
+    damos join(timeout): se estourar, desistimos gracioso (loga e segue). O pior caso vira
+    "WAL sobra e e recuperado no proximo boot" — ruim, mas MELHOR que travar o encerramento.
+    No caminho feliz (nada segurando a conexao) o checkpoint e rapido e termina bem antes do
+    timeout, preservando o comportamento anti-corrupcao de sempre."""
     global _connection, _generation
-    if _connection is not None:
-        try:
-            _connection.execute("CHECKPOINT")
-        except Exception:   # noqa: BLE001 — best-effort; conexao ja fechada/read-only nao impede o resto
-            pass
-        _connection.close()
+    con = _connection
+    if con is not None:
+        def _checkpoint_and_close():
+            try:
+                con.execute("CHECKPOINT")
+            except Exception:   # noqa: BLE001 — best-effort; conexao ja fechada/read-only nao impede o resto
+                pass
+            try:
+                con.close()
+            except Exception:   # noqa: BLE001
+                pass
+
+        t = threading.Thread(target=_checkpoint_and_close, name="db-checkpoint-close", daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive():
+            # Nao terminou no prazo: algum worker ainda segura a conexao. Nao esperamos mais —
+            # abandonamos a thread (daemon) e seguimos. O WAL fica orfao e sera recuperado no boot.
+            # Import tardio: core.logging importa core.database (evita ciclo no topo do modulo).
+            from core.logging import Logger
+            Logger("database").warning("db_close_timeout", timeout=timeout)
         _connection = None
     _generation += 1          # invalida os cursores cacheados de TODAS as threads
     _local.cursor = None
