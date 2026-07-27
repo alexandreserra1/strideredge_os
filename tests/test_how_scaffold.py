@@ -39,3 +39,22 @@ def test_sessoes_do_plano_carregam_o_como_fazer():
 def test_for_factors_traz_exercicio_com_how_citado():
     exs = for_factors(["pelvic_drop_deg"])
     assert exs and all(e.get("how") and e.get("source") for e in exs)
+
+
+def test_metrica_implausivel_vira_incerta_e_verdict_nao_diz_tudo_ideal():
+    """video_23: oscilação 21.9% (implausível, >20) deve ser ANULADA e sinalizada — o coach NÃO
+    pode dizer 'está tudo ideal' quando não conseguiu avaliar uma métrica (perigoso num app de lesão)."""
+    from analytics.form_coach import FormCoach
+
+    class _FakeLLM:
+        def chat(self, system, prompt): return "- ok (Fonte: PMC1)"
+
+    coach = FormCoach(llm=_FakeLLM(), knowledge=None)
+    # métricas plausíveis EXCETO oscilação (21.9 > teto plausível 20) — as demais dentro do ideal
+    metrics = {"cadence_spm": 175.0, "vertical_oscillation_pct": 21.9, "trunk_lean_deg": 8.0,
+               "reliable": True}
+    out = coach.plan(metrics)
+    uncertain = {u["metric"] for u in out.get("uncertain_metrics", [])}
+    assert "vertical_oscillation_pct" in uncertain, "oscilação implausível deveria virar incerta"
+    assert "ideais" not in out["verdict"] or "não consegui" in out["verdict"].lower() \
+        or "avaliar" in out["verdict"].lower(), "verdict não pode afirmar 'tudo ideal' com métrica não avaliada"

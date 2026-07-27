@@ -91,6 +91,12 @@ export interface InjuryRisk {
   caveat: string
 }
 
+export interface UncertainMetric {
+  metric: string       // mesma chave de FormMetrics
+  label: string
+  reason?: string      // por que não deu pra avaliar (baixa confiança | valor implausível)
+}
+
 export interface FormPlan {
   analysis_id: string
   verdict: string
@@ -98,9 +104,9 @@ export interface FormPlan {
   citations: string[]
   deviations: FormDeviation[]   // o que corrigir — determinístico (medido × ideal)
   risk?: InjuryRisk        // faixa de risco relativa (aterrada, citada)
-  // nomes de métrica (mesma chave de FormMetrics) medidos mas confiabilidade insuficiente
-  // pro coach diagnosticar — a métrica CONTINUA aparecendo na tela, só ganha um selo
-  uncertain_metrics?: string[]
+  // métricas que o coach NÃO pôde avaliar com confiança (baixa confiabilidade OU valor
+  // implausível anulado). A métrica CONTINUA aparecendo na tela, só ganha um selo com o motivo.
+  uncertain_metrics?: UncertainMetric[]
 }
 
 // Plano corretivo multi-semana (analytics/training_plan.py) — faseado e citado

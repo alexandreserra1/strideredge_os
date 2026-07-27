@@ -106,6 +106,27 @@ class FormCoach:
         return out
 
     @staticmethod
+    def _uncertain_entries(targets: dict, low_quality: list, nulled: list) -> list:
+        """Unifica as métricas 'não avaliáveis' num formato único pro frontend: baixa confiança de
+        medição + valor implausível anulado. Cada uma: {metric, label, reason}. Sem duplicar."""
+        out, seen = [], set()
+        for lq in low_quality:
+            m = lq["metric"]
+            if m in seen:
+                continue
+            seen.add(m)
+            out.append({"metric": m, "label": lq.get("label", m),
+                        "reason": "medição pouco confiável nesta captura"})
+        for m in nulled:
+            if m in seen:
+                continue
+            seen.add(m)
+            label = targets.get(m, {}).get("label", m)
+            out.append({"metric": m, "label": label,
+                        "reason": "valor implausível — provável artefato de captura"})
+        return out
+
+    @staticmethod
     def _predisposed(by_injury: list) -> Optional[dict]:
         """Lesão mais predisposta AVALIÁVEL com risco real (score > 0). Serve pro coach citá-la
         pelo nome + fonte da taxonomia — sem inventar (as não avaliáveis nunca viram alerta)."""
@@ -166,21 +187,32 @@ class FormCoach:
                 "unreliable": True, "uncertain_metrics": [],
             }
 
-        # Defesa em profundidade: nulifica métrica impossível do motor (ex.: gct 2000ms) antes de
-        # virar desvio/risco — não depende só do flag reliable. §7 (dado validado) no caminho vivo.
-        metrics, _nulled = sanitize_metrics(metrics)
+        # Defesa em profundidade: nulifica métrica impossível do motor (ex.: gct 2000ms, oscilação
+        # 22%) antes de virar desvio/risco — não depende só do flag reliable. §7 (dado validado).
+        metrics, nulled = sanitize_metrics(metrics)
 
         devs = diagnose(metrics, targets)
-        # Métricas que bateriam a faixa de desvio mas foram suprimidas por baixa confiabilidade
-        # de medição (ver Deviations.low_quality_metrics em biomechanics.py). Não vira alegação
-        # do LLM — só um sinal pro frontend mostrar selo de "medição incerta" (§7).
-        uncertain = getattr(devs, "low_quality_metrics", [])
+        # Métricas que a gente NÃO pôde avaliar com confiança nesta captura, por dois motivos:
+        # (a) baixa confiabilidade de medição (keypoints ruins/ruído entre passadas) e (b) valor
+        # FISIOLOGICAMENTE IMPLAUSÍVEL, anulado pelo saneamento (provável artefato de câmera). Nos
+        # dois casos NÃO viram desvio nem alegação do LLM — mas o atleta PRECISA saber que não deu
+        # pra avaliar (num app de lesão, "não medido" != "está ótimo"). Vira selo na UI.
+        uncertain = self._uncertain_entries(targets, getattr(devs, "low_quality_metrics", []), nulled)
         risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)
 
         if not devs:
+            # Sem desvio NAS MÉTRICAS AVALIÁVEIS. Se algo ficou sem avaliar, o veredito NÃO pode
+            # dizer "está tudo ideal" — seria enganoso (e perigoso num app de lesão).
+            if uncertain:
+                nomes = ", ".join(u["label"] for u in uncertain)
+                verdict = (f"As métricas que deram pra avaliar com confiança estão dentro das faixas "
+                           f"ideais. Mas não consegui avaliar com segurança: {nomes} — a captura não "
+                           f"permitiu. Vale refilmar de lado, corpo inteiro no quadro, pra eu conferir.")
+            else:
+                verdict = ("Sua forma esta dentro das faixas ideais nas metricas medidas. "
+                           "Mantenha o trabalho e refaca a analise conforme evoluir.")
             return {
-                "verdict": "Sua forma esta dentro das faixas ideais nas metricas medidas. "
-                           "Mantenha o trabalho e refaca a analise conforme evoluir.",
+                "verdict": verdict,
                 "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
                 "uncertain_metrics": uncertain,
             }

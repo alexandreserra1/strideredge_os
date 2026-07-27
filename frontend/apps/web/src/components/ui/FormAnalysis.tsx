@@ -341,7 +341,9 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
               const v = analysis.metrics![def.key]
               if (v == null) return null
               const lv = def.level(v)
-              const uncertain = !!plan?.uncertain_metrics?.includes(def.key)
+              // uncertain_metrics é lista de objetos {metric,label,reason} — casa por .metric
+              // (antes comparava string com objeto e o selo NUNCA aparecia).
+              const uncertainEntry = plan?.uncertain_metrics?.find(u => u.metric === def.key)
               return (
                 <div key={def.key}
                   className="flex items-center gap-2 rounded-full bg-surface-200 border border-border-light pl-3 pr-2.5 py-1.5">
@@ -350,10 +352,10 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                   <span className="text-xs font-bold tabular-nums" style={{ color: LEVEL_COLOR[lv] }}>
                     {Math.round(v * 10) / 10}<span className="text-[9px] font-medium ml-0.5">{def.unit}</span>
                   </span>
-                  {uncertain && (
+                  {uncertainEntry && (
                     <span className="flex items-center gap-0.5 text-[9px] font-semibold whitespace-nowrap"
                       style={{ color: '#FBBF24' }}
-                      title="Medida capturada, mas a confiabilidade não bastou pro coach usar esse número no diagnóstico.">
+                      title={`Não usei esse número no diagnóstico: ${uncertainEntry.reason ?? 'medição incerta nesta captura'}.`}>
                       <AlertTriangle size={10} /> incerta
                     </span>
                   )}
