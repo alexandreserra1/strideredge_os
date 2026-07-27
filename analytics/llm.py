@@ -11,11 +11,17 @@ Teto de tokens (`num_predict`) e keep_alive já cortam a latência da parte que 
 """
 
 import json
-from typing import Iterator
+import os
+from typing import Iterator, Optional
 
 import httpx
 
 from core.framework.interfaces import BaseLLMClient
+
+# Modelo do coach: trocável por env (STRIDE_LLM_MODEL) SEM tocar em código — é o ponto do contrato
+# BaseLLMClient. Qualquer modelo servido pelo Ollama local vale (inclusive um GGUF importado do
+# Hugging Face via `ollama create`). Default = o validado hoje.
+_DEFAULT_LLM_MODEL = "qwen2.5:7b-instruct"
 
 # Client HTTP reusado entre chamadas: evita reabrir conexao TCP a cada request ao Ollama
 # (handshake tem custo perceptivel quando a chamada em si dura poucos segundos, como no rerank).
@@ -25,10 +31,11 @@ _HTTP = httpx.Client(timeout=120.0)
 class OllamaClient(BaseLLMClient):
     """Cliente do LLM local servido pelo Ollama (implementa BaseLLMClient)."""
 
-    def __init__(self, model: str = "qwen2.5:7b-instruct",
+    def __init__(self, model: Optional[str] = None,
                  url: str = "http://localhost:11434/api/chat", temperature: float = 0.2,
                  num_predict: int = -1, keep_alive: str = "30m"):
-        self.model = model
+        # sem argumento explícito, usa STRIDE_LLM_MODEL do ambiente; senão, o default validado.
+        self.model = model or os.getenv("STRIDE_LLM_MODEL", _DEFAULT_LLM_MODEL)
         self.url = url
         self.temperature = temperature   # baixa = mais factual; 0 = deterministico (eval)
         self.num_predict = num_predict   # teto de tokens de saida (-1 = sem teto)
