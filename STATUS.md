@@ -10,8 +10,11 @@ devolve um plano corretivo prescritivo com fontes científicas. 100% no aparelho
 
 ## ✅ PRONTO (verificado ponta-a-ponta)
 O fluxo real roda: **registrar → login → upload de vídeo → processa em background → métricas +
-plano corretivo citado**. Rodado E2E via API real (26/jul), coach respondeu em ~24s com 3 ações
-prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
+plano corretivo citado**. Rodado E2E via API real (26–27/jul), coach responde em ~24s com ações
+prescritas + fontes PMC + faixa de risco + perfil de lesão. A 2ª tela (**Minhas Lesões**) também foi
+testada E2E (27/jul): taxonomia, registro OSTRC c/ severity, listagem, e classificação texto→
+diagnóstico (LLM) — todos OK, contrato frontend↔API batendo. **Robustez:** o DuckDB faz CHECKPOINT
+no shutdown (WAL não corrompe mais o boot em restart) e um hook pre-push replica o CI em venv limpo.
 
 - **Motor de pose (Rust `stride_vision`)** — **2 motores:** BlazePose GHUM (Apache, default de
   produto, pés+3D) + YOLO11 (régua da avaliação pareada). RTMPose/Halpe26 foi **removido** (pesos
