@@ -8,6 +8,7 @@ COM fonte. Reusa a mesma disciplina do veredito: `GroundingGuard` (sem número i
 """
 
 import re
+import unicodedata
 from typing import Callable, Optional
 
 from core.framework.interfaces import BaseLLMClient, BaseRetriever
@@ -103,6 +104,61 @@ class FormCoach:
             s = cls._FONTE_RE.sub("", s).strip()   # tira "(Fonte: PMCxxxx)" do fim
             if s:
                 out.append(s)
+        return out
+
+    @staticmethod
+    def _norm(text: str) -> str:
+        """Minúsculas + sem acento — pra casar 'cadência' com 'cadencia' de forma robusta."""
+        nfkd = unicodedata.normalize("NFKD", text or "")
+        return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+    @classmethod
+    def _match_action(cls, actions: list, dev: dict) -> Optional[int]:
+        """Índice da ação que fala DESTE desvio. Casa pelas palavras distintivas do rótulo
+        (ex.: 'cadência' -> a ação que diz 'cadencia'). Escolhe a de maior sobreposição."""
+        kws = [w for w in cls._norm(dev.get("label", "")).split() if len(w) >= 4]
+        if not kws:
+            return None
+        best, best_hits = None, 0
+        for i, a in enumerate(actions):
+            na = cls._norm(a)
+            hits = sum(1 for w in kws if w in na)
+            if hits > best_hits:
+                best, best_hits = i, hits
+        return best
+
+    @classmethod
+    def _mentions_method(cls, action: str, howto: str) -> bool:
+        """A ação já contém o método de medir? Mede a sobreposição das palavras significativas
+        do how_to_measure — sem exigir a frase literal (o LLM parafraseia). Âncora >= 35%."""
+        na = cls._norm(action)
+        sig = [w for w in cls._norm(howto).split() if len(w) > 3]
+        if not sig:
+            return True
+        hits = sum(1 for w in sig if w in na)
+        return hits / len(sig) >= 0.35
+
+    @classmethod
+    def _ensure_measure_method(cls, actions: list, devs: list) -> list:
+        """PÓS-PROCESSAMENTO determinístico (§11/§12): garante que toda ação de um desvio com
+        'como medir sozinho' contenha ESSE método — venha o LLM como vier. Se a ação já traz o
+        método (paráfrase), não duplica; senão anexa o texto pronto de biomechanics.MEASURE_HOWTO.
+        Genérico p/ toda métrica; a cadência é só o caso mais crítico. Não inventa número nem
+        afrouxa o grounding — só materializa o método que já está no código."""
+        out = list(actions)
+        for d in devs:
+            howto = d.get("how_to_measure")
+            if not howto:
+                continue                          # métrica sem método pronto: não mexe
+            idx = cls._match_action(out, d)
+            if idx is None:
+                continue                          # LLM não gerou ação p/ este desvio
+            if cls._mentions_method(out[idx], howto):
+                continue                          # já mencionou (não duplica)
+            base = out[idx].rstrip()
+            if base and base[-1] not in ".!?":
+                base += "."
+            out[idx] = f"{base} {howto}"          # anexa o método pronto, de forma natural
         return out
 
     @staticmethod
@@ -234,7 +290,7 @@ class FormCoach:
 
         return {
             "verdict": text,
-            "actions": self._drills(text),
+            "actions": self._ensure_measure_method(self._drills(text), devs),
             "citations": self._cited(text, hits, lib),
             "targets": targets,
             "deviations": devs,
