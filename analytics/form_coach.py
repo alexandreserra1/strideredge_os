@@ -35,18 +35,41 @@ FACTOR_DOMAINS = {
 # O QUE corrigir (os desvios) ja vem estruturado do biomechanics.py — deterministico.
 # O LLM faz SO uma coisa: propor os EXERCICIOS que corrigem, aterrado nas evidencias.
 SYSTEM = (
-    "Voce e um treinador de corrida que fala com o ATLETA de forma HUMANA, calorosa e didatica — "
-    "nada de jargao seco. Recebe desvios biomecanicos ja medidos + EVIDENCIAS cientificas. Para "
-    "CADA desvio listado, escreva UMA recomendacao, UMA POR LINHA comecando com '- ', e cada linha "
-    "tem TRES partes numa frase natural e fluida: (1) O QUE fazer (acao concreta e simples); "
-    "(2) POR QUE ajuda VOCE (explique o beneficio no seu corpo/corrida em lingua de gente — ex.: "
-    "'passos mais curtos fazem o pe cair embaixo do corpo e amortecer melhor o impacto'); (3) COMO "
-    "na pratica (dica de execucao: quando, quantas vezes, como comecar — ex.: 'comece 1x na semana "
-    "numa corrida leve, com um app de metronomo'). Termine a linha com a fonte entre parenteses "
-    "(Fonte: PMCxxxx). Regras: fale 'voce', tom encorajador; cada linha ataca UM desvio LISTADO; se "
-    "a evidencia citar metrica que NAO esta na lista, IGNORE; NAO use markdown nem cabecalhos; use "
-    "SOMENTE numeros que aparecem nos dados (nao invente numero); recomende SO o que a evidencia "
-    "ampara e cite a FONTE. Sem evidencia p/ um desvio, nao invente exercicio."
+    "Voce e um treinador de corrida conversando com um CORREDOR AMADOR — alguem que corre pra ficar "
+    "bem, nao um cientista do esporte. Fale como um bom treinador que te conhece: caloroso, "
+    "encorajador, claro e direto. NADA de linguagem de artigo cientifico. Recebe desvios "
+    "biomecanicos ja medidos + EVIDENCIAS cientificas. Para CADA desvio listado, escreva UMA "
+    "recomendacao, UMA POR LINHA comecando com '- ', numa frase natural e fluida com TRES partes: "
+    "(1) O QUE fazer (acao concreta e simples, em palavras do dia a dia); (2) POR QUE isso ajuda "
+    "VOCE (o beneficio no seu corpo e na sua corrida, em lingua de gente — ex.: 'dar passos mais "
+    "curtos e rapidos faz o pe cair embaixo do corpo e absorver melhor o tranco'); (3) COMO por em "
+    "pratica de um jeito que a pessoa consiga FAZER e MEDIR SOZINHA, SEM equipamento de laboratorio "
+    "— sempre de um metodo pratico de medir/conferir o proprio progresso com o corpo ou o celular. "
+    "Ex. p/ cadencia: 'conte quantas vezes UM pe toca o chao em 20 segundos e multiplique por 6 — "
+    "mire perto de X; se estiver baixo, abra um app de metronomo em X batidas e faca cada pisada "
+    "bater junto com o bip, 1x na semana numa corrida leve'. Ex. p/ tempo de contato ou pisada: "
+    "de uma referencia sensorial ('sinta o pe passando raspando o chao, nao socando'). Nunca mande "
+    "so 'atinja o valor X' sem dizer COMO chegar e COMO saber que chegou. "
+    "TRADUZA TODO termo tecnico: se precisar usar uma palavra do vocabulario de biomecanica "
+    "(cadencia, oscilacao vertical, dorsiflexao, tempo de contato, queda pelvica, valgo, "
+    "assimetria, economia de corrida, etc.), explique-a ali mesmo em 3-5 palavras entre parenteses, "
+    "OU reformule sem o termo. Exemplos: 'sua cadencia (quantos passos voce da por minuto)', "
+    "'oscilacao vertical (o quanto voce sobe e desce a cada passada)', 'economia de corrida (gastar "
+    "menos energia pra manter o mesmo ritmo)'. Nunca deixe um jargao cru, sem traducao. "
+    "Termine SEMPRE a linha com a fonte entre parenteses (Fonte: PMCxxxx) — isso e OBRIGATORIO em "
+    "toda recomendacao, nunca omita. Quando o desvio vier com 'COMO O ATLETA MEDE ISSO SOZINHO' ou "
+    "um exercicio vier com 'COMO FAZER', REAPROVEITE esse metodo pronto na sua frase (nao invente "
+    "outro jeito de medir/fazer) — o atleta precisa saber como conferir sozinho. "
+    "EXEMPLO de uma recomendacao boa (siga este formato): '- Aumente sua cadencia (quantos passos "
+    "voce da por minuto). Pra saber a sua agora, conte quantas vezes um pe toca o chao em 20 "
+    "segundos e multiplique por 6; se der menos de 170, abra um app de metronomo nesse numero e "
+    "faca a pisada bater junto com o bip, 1x na semana numa corrida leve. Passos mais curtos fazem "
+    "o pe cair embaixo do corpo e absorver melhor o tranco (Fonte: PMC10761631).' "
+    "Regras: fale 'voce', tom de treinador que torce por voce; cada "
+    "linha ataca UM desvio LISTADO; se a evidencia citar metrica que NAO esta na lista, IGNORE; NAO "
+    "use markdown nem cabecalhos; use SOMENTE numeros que aparecem nos dados (nao invente numero nem "
+    "causa); recomende SO o que a evidencia ampara e cite a FONTE. Sem evidencia p/ um desvio, nao "
+    "invente exercicio."
 )
 
 
@@ -83,6 +106,27 @@ class FormCoach:
         return out
 
     @staticmethod
+    def _uncertain_entries(targets: dict, low_quality: list, nulled: list) -> list:
+        """Unifica as métricas 'não avaliáveis' num formato único pro frontend: baixa confiança de
+        medição + valor implausível anulado. Cada uma: {metric, label, reason}. Sem duplicar."""
+        out, seen = [], set()
+        for lq in low_quality:
+            m = lq["metric"]
+            if m in seen:
+                continue
+            seen.add(m)
+            out.append({"metric": m, "label": lq.get("label", m),
+                        "reason": "medição pouco confiável nesta captura"})
+        for m in nulled:
+            if m in seen:
+                continue
+            seen.add(m)
+            label = targets.get(m, {}).get("label", m)
+            out.append({"metric": m, "label": label,
+                        "reason": "valor implausível — provável artefato de captura"})
+        return out
+
+    @staticmethod
     def _predisposed(by_injury: list) -> Optional[dict]:
         """Lesão mais predisposta AVALIÁVEL com risco real (score > 0). Serve pro coach citá-la
         pelo nome + fonte da taxonomia — sem inventar (as não avaliáveis nunca viram alerta)."""
@@ -98,12 +142,18 @@ class FormCoach:
             faixa = f"<= {d['hi']:g}" if d["side"] == "alto" else f">= {d['lo']:g}"
             linhas.append(f"- {d['label']}: medido {d['value']:g}{d['unit']} "
                           f"(ideal {faixa}{d['unit']}) [FONTE: {d['source']}]")
+            # COMO MEDIR pronto (determinístico) — o LLM DEVE usar este método, não inventar outro.
+            if d.get("how_to_measure"):
+                linhas.append(f"    COMO O ATLETA MEDE ISSO SOZINHO (use exatamente): {d['how_to_measure']}")
         # Biblioteca DETERMINÍSTICA de exercícios (fonte de verdade citada): o LLM PERSONALIZA a
-        # entrega destes, não inventa exercício. Reusa analytics.exercises.for_factors.
+        # entrega destes, não inventa exercício. Reusa analytics.exercises.for_factors. Cada um traz
+        # o COMO FAZER pronto — o LLM deve reaproveitar o método, não improvisar execução.
         if lib:
             linhas.append("\nBiblioteca de exercicios recomendados (baseie-se NESTES, cada um com sua FONTE):")
             for e in lib:
                 linhas.append(f"- {e['name']} [FONTE: {e['source']}]")
+                if e.get("how"):
+                    linhas.append(f"    COMO FAZER (use este metodo): {e['how']}")
         if hits:
             linhas.append("\nEvidencias de apoio (cite a FONTE ao explicar o porque):")
             for i, h in enumerate(hits, 1):
@@ -134,21 +184,37 @@ class FormCoach:
                 "verdict": f"Ainda nao da pra analisar sua forma com confianca: {nota} "
                            "Refaca a filmagem e envie de novo — assim o plano sai certo.",
                 "actions": [], "citations": [], "targets": targets, "deviations": [],
-                "unreliable": True,
+                "unreliable": True, "uncertain_metrics": [],
             }
 
-        # Defesa em profundidade: nulifica métrica impossível do motor (ex.: gct 2000ms) antes de
-        # virar desvio/risco — não depende só do flag reliable. §7 (dado validado) no caminho vivo.
-        metrics, _nulled = sanitize_metrics(metrics)
+        # Defesa em profundidade: nulifica métrica impossível do motor (ex.: gct 2000ms, oscilação
+        # 22%) antes de virar desvio/risco — não depende só do flag reliable. §7 (dado validado).
+        metrics, nulled = sanitize_metrics(metrics)
 
         devs = diagnose(metrics, targets)
+        # Métricas que a gente NÃO pôde avaliar com confiança nesta captura, por dois motivos:
+        # (a) baixa confiabilidade de medição (keypoints ruins/ruído entre passadas) e (b) valor
+        # FISIOLOGICAMENTE IMPLAUSÍVEL, anulado pelo saneamento (provável artefato de câmera). Nos
+        # dois casos NÃO viram desvio nem alegação do LLM — mas o atleta PRECISA saber que não deu
+        # pra avaliar (num app de lesão, "não medido" != "está ótimo"). Vira selo na UI.
+        uncertain = self._uncertain_entries(targets, getattr(devs, "low_quality_metrics", []), nulled)
         risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)
 
         if not devs:
+            # Sem desvio NAS MÉTRICAS AVALIÁVEIS. Se algo ficou sem avaliar, o veredito NÃO pode
+            # dizer "está tudo ideal" — seria enganoso (e perigoso num app de lesão).
+            if uncertain:
+                nomes = ", ".join(u["label"] for u in uncertain)
+                verdict = (f"As métricas que deram pra avaliar com confiança estão dentro das faixas "
+                           f"ideais. Mas não consegui avaliar com segurança: {nomes} — a captura não "
+                           f"permitiu. Vale refilmar de lado, corpo inteiro no quadro, pra eu conferir.")
+            else:
+                verdict = ("Sua forma esta dentro das faixas ideais nas metricas medidas. "
+                           "Mantenha o trabalho e refaca a analise conforme evoluir.")
             return {
-                "verdict": "Sua forma esta dentro das faixas ideais nas metricas medidas. "
-                           "Mantenha o trabalho e refaca a analise conforme evoluir.",
+                "verdict": verdict,
                 "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
+                "uncertain_metrics": uncertain,
             }
 
         # Roteamento: consulta só os domínios relevantes aos desvios (evita bleed) + biblioteca
@@ -174,6 +240,7 @@ class FormCoach:
             "deviations": devs,
             "risk": risk,
             "injury_profile": risk.get("by_injury", []),   # risco decomposto POR LESAO (aditivo)
+            "uncertain_metrics": uncertain,   # suprimidas por baixa confiabilidade — selo na UI
         }
 
     @staticmethod

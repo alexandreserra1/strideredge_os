@@ -44,3 +44,9 @@ def test_start_idempotente():
     q.start()
     q.start()  # segunda chamada não cria mais workers nem quebra
     assert len(q._threads) == 2
+
+
+def test_fila_limitada_recusa_sem_bloquear():
+    q = LocalJobQueue(workers=1, max_pending=1)
+    assert q.enqueue(lambda: None)
+    assert not q.enqueue(lambda: None)

@@ -130,13 +130,18 @@ def test_endpoint_shoe_sanitiza_metrica_impossivel():
 
     client = TestClient(app)
     aid = str(uuid.uuid4())
+    email = f"shoe-{aid}@id.test"
+    account = client.post("/api/v1/auth/register", json={
+        "name": "Corredor de teste", "email": email, "password": "corrida123"}).json()
+    headers = {"Authorization": f"Bearer {account['token']}"}
     metrics = {"foot_strike": "antepé", "vertical_oscillation_pct": 24.7, "reliable": True}
     con = get_connection()
-    con.execute("INSERT INTO form_analyses (analysis_id, status, modality, metrics) "
-                "VALUES (?, 'done', 'run', ?)", [aid, json.dumps(metrics)])
+    con.execute("INSERT INTO form_analyses (analysis_id, status, modality, metrics, user_id) "
+                "VALUES (?, 'done', 'run', ?, ?)",
+                [aid, json.dumps(metrics), account["user"]["user_id"]])
     app.dependency_overrides[get_shoe_recommender] = lambda: ShoeRecommender()  # sem LLM/RAG (hermético)
     try:
-        r = client.post(f"/api/v1/form/{aid}/shoe")
+        r = client.post(f"/api/v1/form/{aid}/shoe", headers=headers)
         assert r.status_code == 200
         body = r.json()
         assert not any("oscila" in t.lower() for t in body["tips"])   # artefato foi sanitizado
@@ -144,3 +149,4 @@ def test_endpoint_shoe_sanitiza_metrica_impossivel():
     finally:
         app.dependency_overrides.clear()
         con.execute("DELETE FROM form_analyses WHERE analysis_id=?", [aid])
+        con.execute("DELETE FROM auth_users WHERE email=?", [email])

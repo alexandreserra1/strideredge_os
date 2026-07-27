@@ -23,7 +23,7 @@ from typing import Optional
 
 import httpx
 
-from core.database import get_connection, PROJECT_ROOT
+from core.database import get_connection, PROJECT_ROOT, restrict_permissions
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _SECRET_PATH = PROJECT_ROOT / "storage" / ".auth_secret"
@@ -52,6 +52,9 @@ class PasswordHasher:
 
     def verify(self, password: str, stored: Optional[str]) -> bool:
         if not stored:
+            # Mantém o custo do ramo "conta inexistente" equivalente ao de uma senha errada.
+            # Sem isso, 600k iterações contra conta existente viram um oráculo temporal de e-mail.
+            hashlib.pbkdf2_hmac("sha256", (password or "").encode(), b"\0" * 16, self.ITERATIONS)
             return False
         try:
             _, iters, s64, k64 = stored.split("$")
@@ -69,17 +72,20 @@ class TokenSigner:
     tokens sobrevivem a restart sem env var manual.
     """
 
-    def __init__(self, secret: Optional[bytes] = None, ttl_s: int = 7 * 24 * 3600):
+    def __init__(self, secret: Optional[bytes] = None, ttl_s: int = 24 * 3600):
         self.secret = secret or self._load_secret()
         self.ttl_s = ttl_s
 
     @staticmethod
     def _load_secret() -> bytes:
+        _SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+        restrict_permissions(_SECRET_PATH.parent, 0o700)
         if _SECRET_PATH.exists():
+            restrict_permissions(_SECRET_PATH, 0o600)
             return _SECRET_PATH.read_bytes()
         secret = os.urandom(32)
-        _SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
         _SECRET_PATH.write_bytes(secret)
+        restrict_permissions(_SECRET_PATH, 0o600)
         return secret
 
     def sign(self, payload: dict) -> str:

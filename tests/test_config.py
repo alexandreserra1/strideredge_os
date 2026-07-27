@@ -28,3 +28,8 @@ def test_producao_marca_is_prod(monkeypatch):
 def test_ambiente_padrao_e_development(monkeypatch):
     c = _reload(monkeypatch)   # sem STRIDE_ENV
     assert c.IS_PROD is False
+
+
+def test_blazepose_e_o_backend_padrao_de_produto(monkeypatch):
+    monkeypatch.delenv("STRIDE_POSE_BACKEND", raising=False)
+    assert core.config.pose_backend() == "blazepose33"

@@ -27,8 +27,11 @@ def _fake_run(fail_times: int):
         if "ffmpeg" in str(cmd[0]):
             Path(cmd[-1]).write_bytes(b"x")                       # normalized.mp4
             return SimpleNamespace(returncode=0, stderr="", stdout="")
-        calls["engine"] += 1
         overlay = Path(cmd[2])
+        if "--no-overlay" not in cmd:                            # passada de overlay (cosmética): não conta nem falha
+            (overlay.parent / "overlay.metrics.json").write_text(json.dumps(_METRICS))
+            return SimpleNamespace(returncode=0, stderr="", stdout="")
+        calls["engine"] += 1                                     # passada de ANÁLISE (métricas) — é a que retenta
         if calls["engine"] <= fail_times:
             return SimpleNamespace(returncode=1, stderr="boom transitório", stdout="")
         (overlay.parent / "overlay.metrics.json").write_text(json.dumps(_METRICS))
@@ -53,8 +56,8 @@ def _status(aid: str) -> str:
 
 def test_retry_recupera_de_falha_transitoria(tmp_path, monkeypatch):
     run, calls = _fake_run(fail_times=1)                          # falha 1x, vence na 2ª
-    monkeypatch.setattr("api.form.subprocess.run", run)
-    svc = FormService(queue=InlineQueue())
+    monkeypatch.setattr("api.form_processing.subprocess.run", run)
+    svc = FormService(queue=InlineQueue(), backend="yolo17")
     aid, original = _new_analysis(tmp_path)
     svc._process(aid, original, "lateral")
     assert _status(aid) == "done"                                 # recuperou
@@ -63,8 +66,8 @@ def test_retry_recupera_de_falha_transitoria(tmp_path, monkeypatch):
 
 def test_falha_persistente_esgota_tentativas_e_falha(tmp_path, monkeypatch):
     run, calls = _fake_run(fail_times=99)                         # sempre falha
-    monkeypatch.setattr("api.form.subprocess.run", run)
-    svc = FormService(queue=InlineQueue())
+    monkeypatch.setattr("api.form_processing.subprocess.run", run)
+    svc = FormService(queue=InlineQueue(), backend="yolo17")
     aid, original = _new_analysis(tmp_path)
     svc._process(aid, original, "lateral")
     assert _status(aid) == "failed"                               # esgotou → falhou honesto
@@ -73,8 +76,17 @@ def test_falha_persistente_esgota_tentativas_e_falha(tmp_path, monkeypatch):
 
 def test_sucesso_de_primeira_nao_retenta(tmp_path, monkeypatch):
     run, calls = _fake_run(fail_times=0)
-    monkeypatch.setattr("api.form.subprocess.run", run)
-    svc = FormService(queue=InlineQueue())
+    monkeypatch.setattr("api.form_processing.subprocess.run", run)
+    svc = FormService(queue=InlineQueue(), backend="yolo17")
     aid, original = _new_analysis(tmp_path)
     svc._process(aid, original, "lateral")
     assert _status(aid) == "done" and calls["engine"] == 1        # sem retry desnecessário
+    raw = get_connection().execute(
+        "SELECT processing_report FROM form_analyses WHERE analysis_id=?", [aid]
+    ).fetchone()[0]
+    report = json.loads(raw)
+    # Implementação real mede ffmpeg e o binário separadamente; o fake está apenas no subprocesso.
+    for stage in ("metrics", "overlay"):
+        assert report["stages"][stage]["status"] == "completed"
+        assert report["stages"][stage]["normalize_ms"] >= 0
+        assert report["stages"][stage]["engine_ms"] >= 0

@@ -28,7 +28,7 @@ def test_dado_sintetico_nao_ativa_o_treinado():
 def test_dado_real_suficiente_ativa_o_treinado():
     con = get_connection()
     clear_synthetic(con)
-    seed(con, n=MIN_REAL_CASES * 4, seed_val=2, prefix="realuser-")  # simula usuários reais
+    seed(con, n=MIN_REAL_CASES * 4, seed_val=2, prefix="realuser-", training_approved=True)
     try:
         out = current_assessor()(_METRICS)
         assert out["model"] == "treinado"          # virou pro RF

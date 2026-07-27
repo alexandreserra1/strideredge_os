@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 import duckdb
 import httpx
 
-from core.database import PROJECT_ROOT
+from core.database import PROJECT_ROOT, restrict_permissions
 from core.framework.interfaces import BaseEmbedder, BaseRetriever
 from rag.contextualize import ContextGenerator
 
@@ -58,6 +58,8 @@ class KnowledgeBase(BaseRetriever):
         self.embedder = embedder
         self.db_path = str(db_path)
         self.min_similarity = min_similarity
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        restrict_permissions(Path(self.db_path).parent, 0o700)
         con = duckdb.connect(self.db_path)
         con.execute(
             f"""CREATE TABLE IF NOT EXISTS knowledge_chunks (
@@ -66,6 +68,8 @@ class KnowledgeBase(BaseRetriever):
                 )"""
         )
         con.close()
+        restrict_permissions(Path(self.db_path), 0o600)
+        restrict_permissions(Path(f"{self.db_path}.wal"), 0o600)
 
     def index(self, chunks: List[Tuple], context_gen: ContextGenerator = None) -> int:
         """(Re)indexa do zero: embeda cada chunk, grava texto+fonte+vetor e cria o

@@ -14,11 +14,12 @@ def _seed_analysis(con, user_id, created_date, metrics):
         [str(uuid.uuid4()), json.dumps(metrics), created_date, user_id])
 
 
-def _seed_injury(con, user_id, dx, onset):
+def _seed_injury(con, user_id, dx, onset, approved=True):
     con.execute(
-        "INSERT INTO injury_reports (id, user_id, diagnosis, region, onset_date, q_pain) "
-        "VALUES (?, ?, ?, ?, ?, 3)",
-        [str(uuid.uuid4()), user_id, dx, "joelho_frente", onset])
+        "INSERT INTO injury_reports "
+        "(id, user_id, diagnosis, region, onset_date, q_pain, training_approved) "
+        "VALUES (?, ?, ?, ?, ?, 3, ?)",
+        [str(uuid.uuid4()), user_id, dx, "joelho_frente", onset, approved])
 
 
 def test_build_dataset_liga_lesao_a_analise_na_janela():
@@ -46,6 +47,18 @@ def test_analise_fora_da_janela_nao_entra():
         _seed_injury(con, uid, "pfp", "2026-07-01")
         ds = [e for e in build_dataset(window_weeks=8) if e["user_id"] == uid]
         assert ds == []   # nenhuma análise na janela -> sem exemplo
+    finally:
+        con.execute("DELETE FROM form_analyses WHERE user_id = ?", [uid])
+        con.execute("DELETE FROM injury_reports WHERE user_id = ?", [uid])
+
+
+def test_relato_pendente_nao_entra_no_dataset_de_treino():
+    con = get_connection()
+    uid = str(uuid.uuid4())
+    try:
+        _seed_analysis(con, uid, "2026-06-17", {"pelvic_drop_deg": 20.0})
+        _seed_injury(con, uid, "pfp", "2026-07-01", approved=False)
+        assert [e for e in build_dataset(window_weeks=8) if e["user_id"] == uid] == []
     finally:
         con.execute("DELETE FROM form_analyses WHERE user_id = ?", [uid])
         con.execute("DELETE FROM injury_reports WHERE user_id = ?", [uid])

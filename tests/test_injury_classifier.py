@@ -50,7 +50,22 @@ def test_classify_persiste_no_service():
                             "symptom_text": "arde na canela ao correr", "q_pain": 2})
         assert rep["diagnosis"] is None                       # sem diagnóstico ainda
         clf = DiagnosisClassifier(_FakeLLM('{"diagnosis": "mtss", "confidence": "alta"}'))
-        out = svc.classify(rep["id"], clf)
+        out = svc.classify(rep["id"], uid, clf)
         assert out["diagnosis"] == "mtss"                     # canela → mtss é candidato válido
     finally:
         get_connection().execute("DELETE FROM injury_reports WHERE user_id = ?", [uid])
+
+
+def test_classify_nao_atravessa_contas():
+    """Um UUID conhecido não concede leitura nem escrita da lesão de outro atleta."""
+    svc = InjuryService()
+    owner, attacker = str(uuid.uuid4()), str(uuid.uuid4())
+    try:
+        rep = svc.log(owner, {"region": "canela", "onset_date": "2026-07-01",
+                              "symptom_text": "arde ao correr", "q_pain": 2})
+        clf = DiagnosisClassifier(_FakeLLM('{"diagnosis": "mtss", "confidence": "alta"}'))
+        assert svc.classify(rep["id"], attacker, clf) is None
+        assert svc.get(rep["id"])["diagnosis"] is None
+    finally:
+        get_connection().execute("DELETE FROM injury_reports WHERE user_id IN (?, ?)",
+                                 [owner, attacker])

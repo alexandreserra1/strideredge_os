@@ -11,9 +11,13 @@ export interface FormMetrics {
   vertical_oscillation_pct: number | null
   knee_contact_deg: number | null
   hip_contact_deg: number | null
+  // Proveniência: ângulos produtivos vêm da imagem 2D; world-3D só existe em dumps diagnósticos.
+  joint_angle_space?: 'image_2d'
   trunk_lean_deg: number | null
   ground_contact_ms: number | null
   flight_ms: number | null
+  ground_contact_source?: 'heel_toe_landmarks' | 'heel_toe_with_ankle_fallback' | 'ankle_proxy' | null
+  foot_landmark_coverage_pct?: number | null
   foot_strike: string | null
   // plano frontal (vista frontal)
   pelvic_drop_deg?: number | null
@@ -27,11 +31,30 @@ export interface FormAnalysis {
   analysis_id: string
   activity_id: string | null
   status: 'processing' | 'done' | 'failed'
-  video_path: string | null
   metrics: FormMetrics | null
   error: string | null
   created_at: string
   modality?: string
+}
+
+export interface FormMetricProgress {
+  metric: string
+  label: string
+  unit: string
+  baseline: number
+  current: number
+  delta: number
+  baseline_samples: number
+  current_samples: number
+}
+
+export interface FormProgress {
+  status: 'ok' | 'insufficient_history'
+  comparable_analyses: number
+  excluded_incompatible: number
+  signature: { view: string; backend: string; model_version: string; joint_angle_space: string } | null
+  metrics: FormMetricProgress[]
+  caveat: string
 }
 
 // Algoritmo corretivo: desvios (medido × ideal) + plano com exercícios citados
@@ -45,6 +68,7 @@ export interface FormDeviation {
   side: 'baixo' | 'alto'
   source: string
   plain: string        // explicação em linguagem simples do que o desvio significa
+  how_to_measure?: string   // como o atleta confere isso sozinho (determinístico)
 }
 
 // Risco de lesão — score RELATIVO aterrado na literatura (não é probabilidade)
@@ -67,6 +91,12 @@ export interface InjuryRisk {
   caveat: string
 }
 
+export interface UncertainMetric {
+  metric: string       // mesma chave de FormMetrics
+  label: string
+  reason?: string      // por que não deu pra avaliar (baixa confiança | valor implausível)
+}
+
 export interface FormPlan {
   analysis_id: string
   verdict: string
@@ -74,6 +104,9 @@ export interface FormPlan {
   citations: string[]
   deviations: FormDeviation[]   // o que corrigir — determinístico (medido × ideal)
   risk?: InjuryRisk        // faixa de risco relativa (aterrada, citada)
+  // métricas que o coach NÃO pôde avaliar com confiança (baixa confiabilidade OU valor
+  // implausível anulado). A métrica CONTINUA aparecendo na tela, só ganha um selo com o motivo.
+  uncertain_metrics?: UncertainMetric[]
 }
 
 // Plano corretivo multi-semana (analytics/training_plan.py) — faseado e citado
@@ -82,6 +115,7 @@ export interface PlanSession {
   phase: string          // 'ativacao' | 'mobilidade' | 'forca' | 'drill'
   dose: string
   source: string
+  how?: string           // como executar + se auto-conferir (plano explicativo)
 }
 
 export interface PlanWeek {

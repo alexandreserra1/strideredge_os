@@ -102,10 +102,10 @@ export default function CorrectivePlan({ analysisId }: { analysisId: string }) {
           )}
 
           {/* Prioridades — o que o plano ataca primeiro */}
-          {plan.priority.length > 0 && (
+          {(plan.priority?.length ?? 0) > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] text-text-muted">Foco, do mais urgente:</span>
-              {plan.priority.map((p, i) => (
+              {(plan.priority ?? []).map((p, i) => (
                 <span key={p.metric}
                   className="text-[10px] text-brand bg-brand/10 border border-brand/20 px-2 py-0.5 rounded-full">
                   {i + 1}. {p.label}
@@ -114,14 +114,14 @@ export default function CorrectivePlan({ analysisId }: { analysisId: string }) {
             </div>
           )}
 
-          {plan.weeks.length === 0 && (
+          {(plan.weeks?.length ?? 0) === 0 && (
             <p className="text-sm text-text-secondary leading-relaxed">{plan.caveat}</p>
           )}
 
-          {plan.weeks.map(w => <WeekCard key={w.n} week={w} />)}
+          {(plan.weeks ?? []).map(w => <WeekCard key={w.n} week={w} />)}
 
           {/* Caveat de honestidade em destaque */}
-          {plan.weeks.length > 0 && (
+          {(plan.weeks?.length ?? 0) > 0 && (
             <div className="rounded-xl bg-accent-yellow/10 border border-accent-yellow/25 p-3">
               <p className="text-[11px] text-text-secondary leading-snug flex items-start gap-1.5">
                 <Info size={13} className="text-accent-yellow shrink-0 mt-0.5" />
@@ -151,7 +151,7 @@ function WeekCard({ week }: { week: PlanWeek }) {
       </div>
       <p className="text-[10px] text-text-muted mb-2">Foco: {week.focus}</p>
       <ul className="space-y-2">
-        {week.sessions.map((s, i) => (
+        {(week.sessions ?? []).map((s, i) => (
           <li key={i} className="flex items-start gap-2">
             <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
               style={{ background: PHASE_COLOR[s.phase] ?? '#94A3B8' }} />
@@ -160,6 +160,11 @@ function WeekCard({ week }: { week: PlanWeek }) {
                 <span className="font-semibold">{s.exercise}</span>
                 <span className="text-text-secondary"> — {s.dose}</span>
               </p>
+              {s.how && (
+                <p className="text-[11px] text-text-secondary mt-1 leading-snug">
+                  <span className="font-medium text-brand">Como fazer:</span> {s.how}
+                </p>
+              )}
               <p className="text-[10px] text-text-muted mt-0.5">
                 {PHASE_LABEL[s.phase] ?? s.phase}
                 {s.source && <span title={s.source}> · 📚 {s.source}</span>}

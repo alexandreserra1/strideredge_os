@@ -23,6 +23,18 @@ def test_hasher_nunca_guarda_senha_em_claro():
     assert not h.verify("qualquer", None)          # conta só-Google não tem senha
 
 
+def test_email_inexistente_tambem_paga_pbkdf(monkeypatch):
+    calls = []
+
+    def fake_pbkdf(*args):
+        calls.append(args)
+        return b"x" * 32
+
+    monkeypatch.setattr("api.auth.hashlib.pbkdf2_hmac", fake_pbkdf)
+    assert not PasswordHasher().verify("qualquer", None)
+    assert len(calls) == 1 and calls[0][3] == PasswordHasher.ITERATIONS
+
+
 def test_hash_com_salt_diferente_a_cada_vez():
     h = PasswordHasher()
     assert h.hash("mesma") != h.hash("mesma")      # salt aleatório
@@ -35,6 +47,24 @@ def test_token_assina_e_expira():
     assert s.verify(tok + "corrompido") is None
     expirado = TokenSigner(secret=b"x" * 32, ttl_s=-1).sign({"sub": "abc"})
     assert TokenSigner(secret=b"x" * 32).verify(expirado) is None
+
+
+def test_ttl_padrao_de_sessao_e_um_dia():
+    assert TokenSigner(secret=b"x" * 32).ttl_s == 24 * 3600
+
+
+def test_segredo_de_sessao_recebe_permissao_privada(monkeypatch, tmp_path):
+    import api.auth as auth_module
+
+    secret_path = tmp_path / "storage" / ".auth_secret"
+    secret_path.parent.mkdir()
+    secret_path.parent.chmod(0o755)
+    secret_path.write_bytes(b"x" * 32)
+    secret_path.chmod(0o644)
+    monkeypatch.setattr(auth_module, "_SECRET_PATH", secret_path)
+    TokenSigner()
+    assert secret_path.parent.stat().st_mode & 0o777 == 0o700
+    assert secret_path.stat().st_mode & 0o777 == 0o600
 
 
 # ---------- serviço / API ----------

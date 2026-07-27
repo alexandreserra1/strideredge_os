@@ -14,3 +14,11 @@ packages/core/src/**/*.d.ts
 packages/core/src/**/*.d.ts.map
 test-results/
 playwright-report/
+
+# Artefatos compilados NUNCA devem viver dentro de src/ — o Vite resolve .js antes de .ts
+# e passa a servir uma versão velha do módulo (bug real: cliente de API stale). tsc emite p/ dist.
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+**/src/**/*.d.ts
+**/src/**/*.d.ts.map
+!**/src/**/vite-env.d.ts

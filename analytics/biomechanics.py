@@ -69,6 +69,30 @@ PLAIN = {
 }
 
 
+# COMO MEDIR/CONFERIR cada métrica SOZINHO, sem equipamento — por métrica (o método independe do
+# lado do desvio). É FATO determinístico (aritmética/observação, não alegação clínica): garante que
+# toda recomendação diga "como você sabe se chegou lá", sem depender do LLM lembrar. Constituição
+# §11 (o código conclui, o LLM só redige) e §12 (prescrever o COMO, não só descrever).
+MEASURE_HOWTO = {
+    "cadence_spm": "Pra medir a sua agora: conte quantas vezes UM pé toca o chão em 20 segundos e "
+                   "multiplique por 6 — esse é o seu número de passos por minuto.",
+    "ground_contact_ms": "Não dá pra cronometrar a olho, mas dá pra sentir: pé 'raspando' o chão e "
+                         "saindo rápido é bom; pé 'socando' e demorando pra sair é o que evitar.",
+    "vertical_oscillation_pct": "Filme-se de lado e olhe a cabeça: se ela sobe e desce muito a cada "
+                                "passo, você está gastando energia pra cima. Quanto mais estável, melhor.",
+    "knee_contact_deg": "No vídeo de lado, veja ONDE o pé aterra: se cai bem à frente do corpo, a "
+                        "passada está longa demais. O alvo é o pé cair quase embaixo do quadril.",
+    "trunk_lean_deg": "De lado, compare seu tronco com uma linha reta pra cima: o ideal é uma leve "
+                      "inclinação pra frente (poucos graus), nem totalmente ereto nem curvado.",
+    "asymmetry_pct": "Difícil medir sozinho no número, mas no vídeo dá pra ver se um lado parece "
+                     "'mancar' ou trabalhar mais que o outro.",
+    "pelvic_drop_deg": "Filme-se de FRENTE: repare se a bacia cai pro lado da perna que está no ar "
+                       "a cada passo — quanto menos cai, mais firme está o quadril.",
+    "knee_valgus_deg": "Filme-se de FRENTE: repare se o joelho 'cai pra dentro' no instante em que "
+                       "o pé apoia. Ele deve apontar pra frente, alinhado com o pé.",
+}
+
+
 # tema de busca no corpus p/ cada (metrica, LADO do desvio) — a DIRECAO importa: numa metrica
 # que erra pros dois lados (trunk_lean e `range`), "alto" e "baixo" pedem evidencia OPOSTA. Se a
 # busca fosse so por metrica, o RAG traria a evidencia de UM lado e o LLM, fiel a ela, recomendaria
@@ -86,6 +110,41 @@ CORRECTIVE_QUERY = {
 }
 
 
+def metric_quality(metrics: dict, key: str) -> Optional[float]:
+    """Confiabilidade [0,1] de UMA métrica medida, combinando confiança dos keypoints
+    (fração de frames confiáveis) e variabilidade entre passadas (coeficiente de variação).
+
+    Contrato (ver stride_vision/metrics.rs): `metrics["metric_confidence"]` e
+    `metrics["metric_cv"]` são dicts opcionais chave=nome-da-métrica. Ausência de
+    `metric_confidence` = "sem informação de qualidade" (dumps antigos/testes) -> None,
+    e quem chama deve se comportar EXATAMENTE como antes (sem essa noção). Se a chave não
+    estiver em `metric_confidence`, também é None (sem info pra ESSA métrica específica).
+    Com confiança presente: `quality = confidence * (1 - min(cv, 1.0))` quando há CV pra
+    essa chave (métricas de amostra única, tipo cadência, não têm CV entre passadas);
+    senão `quality = confidence`."""
+    confidence = metrics.get("metric_confidence")
+    if confidence is None:
+        return None
+    conf = confidence.get(key)
+    if conf is None:
+        return None
+    cv = (metrics.get("metric_cv") or {}).get(key)
+    if cv is None:
+        return conf
+    return conf * (1 - min(cv, 1.0))
+
+
+class Deviations(list):
+    """Lista de desvios (mesmo shape de sempre) + canal lateral opcional com as métricas
+    que baterim faixa mas foram SUPRIMIDAS por baixa confiabilidade de medição. `list`
+    puro por fora (compara/itera igual, não quebra call-sites nem testes existentes) —
+    quem quiser o detalhe lê `.low_quality_metrics` (lista de dicts: metric/label/value/
+    quality/side). Vazio quando não há supressão (comportamento de hoje)."""
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.low_quality_metrics: list = []
+
+
 def diagnose(metrics: dict, targets: dict) -> list:
     """Compara o medido × alvo. Devolve desvios (fora da faixa) ordenados do pior pro
     melhor. `severity` = quão longe da faixa, normalizado pela largura (comparável entre
@@ -96,8 +155,17 @@ def diagnose(metrics: dict, targets: dict) -> list:
         (cadência alta protege contra impacto); tratar o topo como teto rígido geraria conselho
         invertido ('reduza a cadência') num app de prevenção de lesão.
       - lower_better (contato, oscilação, joelho, assimetria): só incomoda passar do teto.
-      - range (inclinação de tronco): fora da faixa nos dois lados."""
-    out = []
+      - range (inclinação de tronco): fora da faixa nos dois lados.
+
+    CONFIABILIDADE DA MEDIÇÃO (ex.: ângulo de joelho por pose tem MAE de 24-29° vs mocap —
+    ver tools/pose_calibration/CALIBRATION_FINDINGS.md): uma métrica que bateria a faixa de
+    desvio mas tem `metric_quality(metrics, key) < 0.6` NÃO entra nos desvios — o erro de
+    medição pode ser maior que a margem de decisão clínica, e cravar o desvio seria alegação
+    não aterrada (constituição §7). Ela some da lista mas fica visível em
+    `out.low_quality_metrics` pro chamador sinalizar "medição incerta" (não é feedback
+    silencioso). Sem `metric_confidence` no dict (dumps antigos/testes) -> `metric_quality`
+    é None -> comportamento IDÊNTICO ao de antes desta mudança."""
+    out = Deviations()
     for key, t in targets.items():
         v = metrics.get(key)
         if v is None:
@@ -118,6 +186,15 @@ def diagnose(metrics: dict, targets: dict) -> list:
                 side, gap = "alto", v - hi
             else:
                 continue
+
+        quality = metric_quality(metrics, key)
+        if quality is not None and quality < 0.6:
+            out.low_quality_metrics.append({
+                "metric": key, "label": t["label"], "value": v, "side": side,
+                "quality": round(quality, 3),
+            })
+            continue
+
         width = max(hi - lo, 1e-6)
         out.append({
             "metric": key, "label": t["label"], "value": v, "lo": lo, "hi": hi,
@@ -125,6 +202,7 @@ def diagnose(metrics: dict, targets: dict) -> list:
             "severity": round(gap / width, 3),
             "query": CORRECTIVE_QUERY.get((key, side), t["label"]),
             "plain": PLAIN.get((key, side), ""),   # explicação em linguagem de gente
+            "how_to_measure": MEASURE_HOWTO.get(key, ""),  # como o atleta confere sozinho (§11/§12)
         })
     out.sort(key=lambda d: d["severity"], reverse=True)
     return out

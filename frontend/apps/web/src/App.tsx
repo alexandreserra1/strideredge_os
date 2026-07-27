@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ThemeProvider } from './components/layout/ThemeProvider'
 import Layout from './components/layout/Layout'
+import ErrorBoundary from './components/layout/ErrorBoundary'
 import Landing from './pages/Landing'
 import MovementAnalysis from './pages/MovementAnalysis'
 import MyInjuries from './pages/MyInjuries'
@@ -99,6 +100,8 @@ export default function App() {
   const isLanding = route === 'landing'
   if (route === 'login') return <ThemeProvider><Login onAuthed={onAuthed} onBack={() => setRoute('landing')} /></ThemeProvider>
 
+  // `key={route}` reseta o boundary ao trocar de tela: um erro numa rota não trava as outras.
+
   return (
     <ThemeProvider>
       <Tooltip.Provider delayDuration={150} skipDelayDuration={400}>
@@ -127,7 +130,9 @@ export default function App() {
         </div>
       ) : (
         <Layout currentRoute={route} onNavigate={navigate} onLogout={onLogout}>
-          {renderPage()}
+          <ErrorBoundary key={route} label={route}>
+            {renderPage()}
+          </ErrorBoundary>
         </Layout>
       )}
       </Tooltip.Provider>
