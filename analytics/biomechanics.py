@@ -69,6 +69,30 @@ PLAIN = {
 }
 
 
+# COMO MEDIR/CONFERIR cada métrica SOZINHO, sem equipamento — por métrica (o método independe do
+# lado do desvio). É FATO determinístico (aritmética/observação, não alegação clínica): garante que
+# toda recomendação diga "como você sabe se chegou lá", sem depender do LLM lembrar. Constituição
+# §11 (o código conclui, o LLM só redige) e §12 (prescrever o COMO, não só descrever).
+MEASURE_HOWTO = {
+    "cadence_spm": "Pra medir a sua agora: conte quantas vezes UM pé toca o chão em 20 segundos e "
+                   "multiplique por 6 — esse é o seu número de passos por minuto.",
+    "ground_contact_ms": "Não dá pra cronometrar a olho, mas dá pra sentir: pé 'raspando' o chão e "
+                         "saindo rápido é bom; pé 'socando' e demorando pra sair é o que evitar.",
+    "vertical_oscillation_pct": "Filme-se de lado e olhe a cabeça: se ela sobe e desce muito a cada "
+                                "passo, você está gastando energia pra cima. Quanto mais estável, melhor.",
+    "knee_contact_deg": "No vídeo de lado, veja ONDE o pé aterra: se cai bem à frente do corpo, a "
+                        "passada está longa demais. O alvo é o pé cair quase embaixo do quadril.",
+    "trunk_lean_deg": "De lado, compare seu tronco com uma linha reta pra cima: o ideal é uma leve "
+                      "inclinação pra frente (poucos graus), nem totalmente ereto nem curvado.",
+    "asymmetry_pct": "Difícil medir sozinho no número, mas no vídeo dá pra ver se um lado parece "
+                     "'mancar' ou trabalhar mais que o outro.",
+    "pelvic_drop_deg": "Filme-se de FRENTE: repare se a bacia cai pro lado da perna que está no ar "
+                       "a cada passo — quanto menos cai, mais firme está o quadril.",
+    "knee_valgus_deg": "Filme-se de FRENTE: repare se o joelho 'cai pra dentro' no instante em que "
+                       "o pé apoia. Ele deve apontar pra frente, alinhado com o pé.",
+}
+
+
 # tema de busca no corpus p/ cada (metrica, LADO do desvio) — a DIRECAO importa: numa metrica
 # que erra pros dois lados (trunk_lean e `range`), "alto" e "baixo" pedem evidencia OPOSTA. Se a
 # busca fosse so por metrica, o RAG traria a evidencia de UM lado e o LLM, fiel a ela, recomendaria
@@ -178,6 +202,7 @@ def diagnose(metrics: dict, targets: dict) -> list:
             "severity": round(gap / width, 3),
             "query": CORRECTIVE_QUERY.get((key, side), t["label"]),
             "plain": PLAIN.get((key, side), ""),   # explicação em linguagem de gente
+            "how_to_measure": MEASURE_HOWTO.get(key, ""),  # como o atleta confere sozinho (§11/§12)
         })
     out.sort(key=lambda d: d["severity"], reverse=True)
     return out

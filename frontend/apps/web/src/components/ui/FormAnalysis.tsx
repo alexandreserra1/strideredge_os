@@ -465,6 +465,11 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                           <span className="text-accent-orange mt-0.5 shrink-0">!</span>
                           <div>
                             <p className="text-xs text-text-primary leading-snug">{d.plain || d.label}</p>
+                            {d.how_to_measure && (
+                              <p className="text-[11px] text-text-secondary mt-1 leading-snug">
+                                <span className="font-medium text-brand">Como conferir:</span> {d.how_to_measure}
+                              </p>
+                            )}
                             <p className="text-[10px] text-text-muted mt-0.5">
                               {d.label}: {Math.round(d.value * 10) / 10}{d.unit} · ideal {d.side === 'alto' ? '≤ ' + d.hi : '≥ ' + d.lo}{d.unit}
                             </p>

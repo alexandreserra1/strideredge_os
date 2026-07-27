@@ -160,6 +160,11 @@ function WeekCard({ week }: { week: PlanWeek }) {
                 <span className="font-semibold">{s.exercise}</span>
                 <span className="text-text-secondary"> — {s.dose}</span>
               </p>
+              {s.how && (
+                <p className="text-[11px] text-text-secondary mt-1 leading-snug">
+                  <span className="font-medium text-brand">Como fazer:</span> {s.how}
+                </p>
+              )}
               <p className="text-[10px] text-text-muted mt-0.5">
                 {PHASE_LABEL[s.phase] ?? s.phase}
                 {s.source && <span title={s.source}> · 📚 {s.source}</span>}

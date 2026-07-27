@@ -55,7 +55,7 @@ def build_plan(risk_factors: list, weeks: int = 6) -> dict:
     for n in range(1, weeks + 1):
         sessions = [
             {"exercise": e["name"], "phase": e["phase"], "dose": _DOSE.get(e["phase"], ""),
-             "source": e["source"]}
+             "source": e["source"], "how": e.get("how", "")}   # COMO fazer — plano explicativo
             for e in exs if starts[_BLOCK.get(e["phase"], 0)] <= n
         ]
         started = [b for b in starts if starts[b] <= n]   # bloco mais avançado já iniciado

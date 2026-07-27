@@ -57,7 +57,15 @@ SYSTEM = (
     "'oscilacao vertical (o quanto voce sobe e desce a cada passada)', 'economia de corrida (gastar "
     "menos energia pra manter o mesmo ritmo)'. Nunca deixe um jargao cru, sem traducao. "
     "Termine SEMPRE a linha com a fonte entre parenteses (Fonte: PMCxxxx) — isso e OBRIGATORIO em "
-    "toda recomendacao, nunca omita. Regras: fale 'voce', tom de treinador que torce por voce; cada "
+    "toda recomendacao, nunca omita. Quando o desvio vier com 'COMO O ATLETA MEDE ISSO SOZINHO' ou "
+    "um exercicio vier com 'COMO FAZER', REAPROVEITE esse metodo pronto na sua frase (nao invente "
+    "outro jeito de medir/fazer) — o atleta precisa saber como conferir sozinho. "
+    "EXEMPLO de uma recomendacao boa (siga este formato): '- Aumente sua cadencia (quantos passos "
+    "voce da por minuto). Pra saber a sua agora, conte quantas vezes um pe toca o chao em 20 "
+    "segundos e multiplique por 6; se der menos de 170, abra um app de metronomo nesse numero e "
+    "faca a pisada bater junto com o bip, 1x na semana numa corrida leve. Passos mais curtos fazem "
+    "o pe cair embaixo do corpo e absorver melhor o tranco (Fonte: PMC10761631).' "
+    "Regras: fale 'voce', tom de treinador que torce por voce; cada "
     "linha ataca UM desvio LISTADO; se a evidencia citar metrica que NAO esta na lista, IGNORE; NAO "
     "use markdown nem cabecalhos; use SOMENTE numeros que aparecem nos dados (nao invente numero nem "
     "causa); recomende SO o que a evidencia ampara e cite a FONTE. Sem evidencia p/ um desvio, nao "
@@ -113,12 +121,18 @@ class FormCoach:
             faixa = f"<= {d['hi']:g}" if d["side"] == "alto" else f">= {d['lo']:g}"
             linhas.append(f"- {d['label']}: medido {d['value']:g}{d['unit']} "
                           f"(ideal {faixa}{d['unit']}) [FONTE: {d['source']}]")
+            # COMO MEDIR pronto (determinístico) — o LLM DEVE usar este método, não inventar outro.
+            if d.get("how_to_measure"):
+                linhas.append(f"    COMO O ATLETA MEDE ISSO SOZINHO (use exatamente): {d['how_to_measure']}")
         # Biblioteca DETERMINÍSTICA de exercícios (fonte de verdade citada): o LLM PERSONALIZA a
-        # entrega destes, não inventa exercício. Reusa analytics.exercises.for_factors.
+        # entrega destes, não inventa exercício. Reusa analytics.exercises.for_factors. Cada um traz
+        # o COMO FAZER pronto — o LLM deve reaproveitar o método, não improvisar execução.
         if lib:
             linhas.append("\nBiblioteca de exercicios recomendados (baseie-se NESTES, cada um com sua FONTE):")
             for e in lib:
                 linhas.append(f"- {e['name']} [FONTE: {e['source']}]")
+                if e.get("how"):
+                    linhas.append(f"    COMO FAZER (use este metodo): {e['how']}")
         if hits:
             linhas.append("\nEvidencias de apoio (cite a FONTE ao explicar o porque):")
             for i, h in enumerate(hits, 1):

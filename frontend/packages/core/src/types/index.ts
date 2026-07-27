@@ -68,6 +68,7 @@ export interface FormDeviation {
   side: 'baixo' | 'alto'
   source: string
   plain: string        // explicação em linguagem simples do que o desvio significa
+  how_to_measure?: string   // como o atleta confere isso sozinho (determinístico)
 }
 
 // Risco de lesão — score RELATIVO aterrado na literatura (não é probabilidade)
@@ -108,6 +109,7 @@ export interface PlanSession {
   phase: string          // 'ativacao' | 'mobilidade' | 'forca' | 'drill'
   dose: string
   source: string
+  how?: string           // como executar + se auto-conferir (plano explicativo)
 }
 
 export interface PlanWeek {
