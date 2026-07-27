@@ -118,14 +118,29 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
     })
   }, [])
 
+  // O overlay (MP4 com o esqueleto) é renderizado por um job de FUNDO que termina alguns segundos
+  // DEPOIS de as métricas ficarem prontas (design "métricas primeiro, overlay depois"). Então o
+  // /video dá 404 por um instante mesmo com a análise 'done' — precisamos RE-TENTAR até ele existir,
+  // senão o vídeo nunca aparece (só as métricas). Antes buscava 1x e desistia no 1º 404.
   useEffect(() => {
     if (analysis?.status !== 'done') return
     let active = true
-    api.form.video(analysis.analysis_id).then(url => {
-      if (active) setVideoUrl(url)
-      else URL.revokeObjectURL(url)
-    }).catch(() => setVideoUrl(null))
-    return () => { active = false; setVideoUrl(old => { if (old) URL.revokeObjectURL(old); return null }) }
+    let tries = 0
+    let timer: ReturnType<typeof setTimeout>
+    const fetchVideo = () => {
+      api.form.video(analysis.analysis_id).then(url => {
+        if (active) setVideoUrl(url); else URL.revokeObjectURL(url)
+      }).catch(() => {
+        tries += 1
+        if (active && tries < 15) timer = setTimeout(fetchVideo, 3000)  // overlay ainda renderizando
+      })
+    }
+    fetchVideo()
+    return () => {
+      active = false
+      clearTimeout(timer)
+      setVideoUrl(old => { if (old) URL.revokeObjectURL(old); return null })
+    }
   }, [analysis?.analysis_id, analysis?.status])
 
   const genPlan = useCallback(async () => {
