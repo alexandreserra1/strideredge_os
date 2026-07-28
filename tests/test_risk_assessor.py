@@ -37,3 +37,31 @@ def test_dado_real_suficiente_ativa_o_treinado():
     finally:
         con.execute("DELETE FROM injury_reports WHERE user_id LIKE 'realuser-%'")
         con.execute("DELETE FROM form_analyses WHERE user_id LIKE 'realuser-%'")
+
+
+def _reset_cache():
+    from analytics import risk_assessor as ra
+    ra._cache.update({"model": None, "n": None, "bayes": None, "bayes_n": None, "report": None})
+
+
+def test_risk_regime_reporta_prior_sem_dado_real():
+    from analytics.risk_assessor import risk_regime
+    con = get_connection(); clear_synthetic(con); _reset_cache()
+    r = risk_regime()
+    assert r["regime"] == "prior" and r["real_cases"] == 0 and r["real_positives"] == 0
+
+
+def test_risk_regime_treinado_expõe_o_boletim():
+    """Com dado real suficiente, o regime vira 'trained' e traz o boletim (PR-AUC + validação) —
+    transparência do ciclo que se auto-fecha."""
+    from analytics.risk_assessor import risk_regime, MIN_REAL_CASES as MC
+    con = get_connection(); clear_synthetic(con); _reset_cache()
+    seed(con, n=MC * 4, seed_val=7, prefix="realuser-", training_approved=True)
+    try:
+        r = risk_regime()
+        assert r["regime"] == "trained" and r["real_cases"] >= MC
+        assert r["model_report"] and "pr_auc" in r["model_report"] and "validation" in r["model_report"]
+    finally:
+        con.execute("DELETE FROM injury_reports WHERE user_id LIKE 'realuser-%'")
+        con.execute("DELETE FROM form_analyses WHERE user_id LIKE 'realuser-%'")
+        _reset_cache()
