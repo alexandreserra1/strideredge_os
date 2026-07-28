@@ -97,6 +97,14 @@ export interface UncertainMetric {
   reason?: string      // por que não deu pra avaliar (baixa confiança | valor implausível)
 }
 
+// Prevenção de recaída: lesão que o atleta JÁ teve cujo fator ainda aparece na forma atual.
+export interface RecurrenceWatch {
+  diagnosis: string
+  label: string
+  source: string
+  factors: string[]      // rótulos dos fatores ainda desviados ligados a essa lesão
+}
+
 export interface FormPlan {
   analysis_id: string
   verdict: string
@@ -107,6 +115,7 @@ export interface FormPlan {
   // métricas que o coach NÃO pôde avaliar com confiança (baixa confiabilidade OU valor
   // implausível anulado). A métrica CONTINUA aparecendo na tela, só ganha um selo com o motivo.
   uncertain_metrics?: UncertainMetric[]
+  recurrence_watch?: RecurrenceWatch[]   // lesão prévia cujo fator ainda aparece — prevenir recaída
 }
 
 // Plano corretivo faseado (analytics/training_plan.py) — POR FASE, não por semana (explicativo, sem

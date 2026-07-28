@@ -1,5 +1,13 @@
 # StriderEdge — Especificação do App Mobile (Fase C)
 
+> ⚠️ **OBSOLETO pós-pivot (jul/2026) — NÃO é o próximo passo.** Este doc foi escrito para o
+> ecossistema `.FIT` (Garmin/Strava) que foi **REMOVIDO no pivot pro vídeo**. As "costuras já
+> prontas" que ele reusa **não existem mais**: `RealtimeCoach`, `BaseAnnouncer`,
+> `BaseTelemetryParser`, `analytics/realtime.py`, e os endpoints `/activities`, `/fitness`,
+> `/training-load`. O **momento 2** (voz em tempo real por GPS+BLE) era do produto `.FIT`. Construir
+> o app hoje NÃO é "plugar num contrato existente" — exigiria reconstruir esse stack. Mantido só
+> como registro histórico da visão mobile. O produto atual é web (ver `frontend-spec.md`).
+
 > Design do app de celular: **momento 1** (resumo pós-corrida, cliente da API) + **momento 2**
 > (coaching de voz em tempo real, on-device). É a fase C do roadmap (`plan.md §10`). NÃO se
 > constrói agora — este doc deixa a fase "já desenhada" pra não exigir retrabalho. As costuras

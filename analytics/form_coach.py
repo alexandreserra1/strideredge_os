@@ -17,6 +17,7 @@ from analytics.biomechanics import ideal_targets, diagnose
 from analytics.injury_risk import assess as assess_risk
 from analytics.injury_quality import sanitize_metrics
 from analytics.exercises import for_factors
+from analytics.injury_taxonomy import DIAGNOSES
 
 # Cada fator desviado -> domínios do RAG a consultar (roteamento; evita bleed de calçado/nutrição
 # numa query de cadência). Corretivo puxa biomecânica (o fato) + força/treino (a correção). Reusa
@@ -190,6 +191,28 @@ class FormCoach:
         return out
 
     @staticmethod
+    def _recurrence_watch(devs: list, history: Optional[dict]) -> list:
+        """PREVENÇÃO DE RECAÍDA (loop pra frente): pra cada lesão que o atleta JÁ TEVE, se a forma
+        ATUAL ainda mostra um fator que a literatura liga a ela, alerta pra priorizar. É a
+        contraparte do retrospecto (que olha o passado): usa o histórico de lesão — 'preditor #1' —
+        pra ligar o desvio de hoje ao que já machucou. Honesto: associação citada, não recidiva
+        garantida. Vazio sem histórico (convidado) ou sem desvio coincidente."""
+        diagnoses = (history or {}).get("diagnoses", [])
+        if not diagnoses:
+            return []
+        deviated = {d["metric"]: d["label"] for d in devs}
+        watch = []
+        for dx in diagnoses:
+            info = DIAGNOSES.get(dx)
+            if not info or not info.get("source"):
+                continue                       # só lesão mapeada à literatura
+            hits = [deviated[f] for f in info["factors"] if f in deviated]
+            if hits:
+                watch.append({"diagnosis": dx, "label": info["label"],
+                              "source": info["source"], "factors": hits})
+        return watch
+
+    @staticmethod
     def _predisposed(by_injury: list) -> Optional[dict]:
         """Lesão mais predisposta AVALIÁVEL com risco real (score > 0). Serve pro coach citá-la
         pelo nome + fonte da taxonomia — sem inventar (as não avaliáveis nunca viram alerta)."""
@@ -262,6 +285,8 @@ class FormCoach:
         # pra avaliar (num app de lesão, "não medido" != "está ótimo"). Vira selo na UI.
         uncertain = self._uncertain_entries(targets, getattr(devs, "low_quality_metrics", []), nulled)
         risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)
+        # Prevenção de recaída: desvio de hoje que coincide com lesão que o atleta já teve (loop pra frente).
+        recurrence = self._recurrence_watch(devs, history)
 
         if not devs:
             # Sem desvio NAS MÉTRICAS AVALIÁVEIS. Se algo ficou sem avaliar, o veredito NÃO pode
@@ -277,7 +302,7 @@ class FormCoach:
             return {
                 "verdict": verdict,
                 "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
-                "uncertain_metrics": uncertain,
+                "uncertain_metrics": uncertain, "recurrence_watch": [],
             }
 
         # Roteamento: consulta só os domínios relevantes aos desvios (evita bleed) + biblioteca
@@ -304,6 +329,7 @@ class FormCoach:
             "risk": risk,
             "injury_profile": risk.get("by_injury", []),   # risco decomposto POR LESAO (aditivo)
             "uncertain_metrics": uncertain,   # suprimidas por baixa confiabilidade — selo na UI
+            "recurrence_watch": recurrence,   # lesão prévia cujo fator ainda aparece — prevenir recaída
         }
 
     @staticmethod
