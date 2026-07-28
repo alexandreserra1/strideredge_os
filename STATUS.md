@@ -31,6 +31,9 @@ no shutdown (WAL não corrompe mais o boot em restart) e um hook pre-push replic
   anti-alucinação, fontes citáveis (PMC/DOI). Eval estilo RAGAS. Streaming SSE.
 - **Risco de lesão** — score v1 aterrado na literatura (faixa relativa, nunca "X%") + perfil por
   diagnóstico (fratura de estresse, fascite, canelite, Aquiles, patelofemoral, banda IT).
+- **Retrospecto de lesão** — na tela de Lesões, cruza a lesão com os SINAIS biomecânicos que a
+  literatura liga a ela, nas análises de forma ANTES do onset (face-validity, associação citada,
+  não prova de causa). É o ciclo do produto fechando: forma medida ↔ outcome real.
 - **Taxonomia + log de lesão** — vocabulário controlado + log OSTRC append-only (backend + frontend).
 - **Frontend web** — 2 telas (Análise de Forma, Minhas Lesões) + Landing + Login; consome a API.
 - **Auth** — registrar/login/sessão + convidado anônimo por capability.
