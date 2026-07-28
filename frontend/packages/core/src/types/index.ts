@@ -197,6 +197,28 @@ export interface OstrcAnswers {
   q_pain?: number | null
 }
 
+// Retrospecto: os sinais biomecânicos que a literatura liga a este diagnóstico, cruzados com as
+// análises de forma do atleta ANTES do onset. Associação citada, não prova de causa.
+export interface RetrospectiveSignal {
+  metric: string
+  label: string
+  present: boolean | null   // true = sinal apareceu antes; false = não; null = não medido
+  value?: number
+  unit?: string
+  ideal?: string
+  note?: string
+}
+export interface InjuryRetrospective {
+  status: 'ok' | 'no_history' | 'no_diagnosis' | 'no_onset' | 'unmapped'
+  diagnosis?: string
+  diagnosis_label?: string
+  source?: string
+  window_weeks?: number
+  analyses_before: number
+  signals: RetrospectiveSignal[]
+  caveat: string
+}
+
 export interface InjuryReport extends OstrcAnswers {
   id: string
   region: string | null

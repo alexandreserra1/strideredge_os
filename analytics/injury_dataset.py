@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from core.database import get_connection
 from analytics.biomechanics import ideal_targets, diagnose
-from analytics.injury_taxonomy import factors_for, is_mapped, valid_diagnosis
+from analytics.injury_taxonomy import DIAGNOSES, factors_for, is_mapped, valid_diagnosis
 
 _FACTOR_KEYS = tuple(ideal_targets().keys())
 
@@ -36,6 +36,52 @@ def injury_history(user_id: str) -> dict:
     for dx in diagnoses:
         factors |= set(factors_for(dx))
     return {"factors": sorted(factors), "diagnoses": sorted(diagnoses), "regions": sorted(regions)}
+
+
+def _ideal_str(t: dict) -> str:
+    """Faixa ideal em texto p/ a UI (mesma direção do diagnose)."""
+    if t["dir"] == "lower_better":
+        return f"≤ {t['hi']:g}{t['unit']}"
+    if t["dir"] == "higher_better":
+        return f"≥ {t['lo']:g}{t['unit']}"
+    return f"{t['lo']:g}–{t['hi']:g}{t['unit']}"
+
+
+def injury_retrospective(user_id: str, diagnosis: str, onset, window_weeks: int = 8) -> dict:
+    """RETROSPECTO HONESTO da lesão: cruza os fatores que a LITERATURA liga ao diagnóstico com as
+    análises de forma do atleta na janela ANTES do onset. É face-validity do prior contra o outcome
+    REAL do próprio atleta — NÃO é prova de causa nem diagnóstico. Reusa `_analyses_before`,
+    `_mean_features`, `diagnose` e a taxonomia. Degrada gracioso: sem diagnóstico mapeado ou sem
+    análises no período → devolve status próprio + caveat, nunca inventa sinal."""
+    dx = DIAGNOSES.get(diagnosis)
+    if not dx or not dx.get("source"):
+        return {"status": "unmapped", "signals": [], "analyses_before": 0,
+                "caveat": "Sem um diagnóstico ligado à literatura, não dá pra cruzar com a sua forma."}
+    base = {"diagnosis": diagnosis, "diagnosis_label": dx["label"], "source": dx["source"],
+            "window_weeks": window_weeks}
+    metrics_list = _analyses_before(get_connection(), user_id, onset, window_weeks)
+    if not metrics_list:
+        return {**base, "status": "no_history", "signals": [], "analyses_before": 0,
+                "caveat": "Você não tem análises de forma no período antes desta lesão pra comparar. "
+                          "Filme suas corridas daqui pra frente — aí a gente consegue cruzar."}
+    feats = _mean_features(metrics_list)
+    targets = ideal_targets()
+    signals = []
+    for f in dx["factors"]:
+        t = targets.get(f)
+        if t is None:
+            continue
+        v = feats.get(f)
+        if v is None:
+            signals.append({"metric": f, "label": t["label"], "present": None,
+                            "note": "não foi medido nas suas capturas desse período"})
+            continue
+        deviated = bool(diagnose({f: v}, {f: t}))   # o MESMO motor de desvio (nada de limiar paralelo)
+        signals.append({"metric": f, "label": t["label"], "present": deviated,
+                        "value": v, "unit": t["unit"], "ideal": _ideal_str(t)})
+    return {**base, "status": "ok", "analyses_before": len(metrics_list), "signals": signals,
+            "caveat": "Isto é uma associação da literatura (não prova que causou), cruzada com um "
+                      "retrospecto das suas próprias capturas — não substitui avaliação profissional."}
 
 
 def _analyses_before(con, user_id: str, onset, window_weeks: int) -> list:

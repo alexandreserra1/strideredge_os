@@ -7,6 +7,7 @@ import type {
   FormPlan,
   AthleteProfile,
   InjuryReport,
+  InjuryRetrospective,
   InjuryTaxonomy,
   OstrcAnswers,
   PlanResponse,
@@ -151,5 +152,8 @@ export const api = {
     list: () => request<InjuryReport[]>('/injuries'),
     log: (report: InjuryLogInput) =>
       request<InjuryReport>('/injuries', { method: 'POST', body: JSON.stringify(report) }),
+    // Cruza a lesão com os sinais biomecânicos das análises ANTES do onset (associação citada).
+    retrospective: (id: string) =>
+      request<InjuryRetrospective>(`/injuries/${id}/retrospective`),
   },
 }
