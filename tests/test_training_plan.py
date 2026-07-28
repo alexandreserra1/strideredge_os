@@ -7,14 +7,14 @@ _M = {"cadence_spm": 152.0, "pelvic_drop_deg": 16.0, "knee_valgus_deg": 14.0}
 
 
 def test_plano_sequencia_fases_em_ordem():
-    """base (ativação/mobilidade) → força → drill de marcha, introduzidas ao longo das semanas."""
+    """As FASES vêm na ordem corretiva (base/ativação → força → drill de marcha), cada uma com
+    janela de semanas, porquê e exercícios (sem repetir semana a semana)."""
     plan = build_plan(assess(_M)["factors"], weeks=6)
-    blocos = [w["bloco"] for w in plan["weeks"]]
-    assert blocos[0] == "base"                       # começa pela base
-    assert "forca" in blocos and "drill_de_marcha" in blocos
-    # nº de sessões só cresce (exercícios se acumulam por bloco, nunca some)
-    counts = [len(w["sessions"]) for w in plan["weeks"]]
-    assert counts == sorted(counts)
+    keys = [ph["key"] for ph in plan["phases"]]
+    ordem = ["base", "forca", "drill_de_marcha"]
+    assert keys == [k for k in ordem if k in keys]   # subsequência na ordem corretiva
+    for ph in plan["phases"]:
+        assert ph["title"] and ph["weeks_label"] and ph["why"] and ph["exercises"]
 
 
 def test_prioriza_o_maior_fator_de_risco():
@@ -23,11 +23,12 @@ def test_prioriza_o_maior_fator_de_risco():
     assert plan["priority"][0]["metric"] == assess(_M)["factors"][0]["metric"]
 
 
-def test_toda_sessao_tem_fonte():
+def test_todo_exercicio_tem_fonte_como_e_progressao():
     plan = build_plan(assess(_M)["factors"], weeks=6)
-    for w in plan["weeks"]:
-        for s in w["sessions"]:
-            assert s["source"] and s["exercise"] and s["dose"]   # citado, nomeado, com dose
+    for ph in plan["phases"]:
+        for ex in ph["exercises"]:
+            # citado, nomeado, com COMO fazer e PROGRESSÃO (o que muda ao longo das semanas)
+            assert ex["source"] and ex["exercise"] and ex["how"] and ex["progression"]
 
 
 def test_respeita_o_prazo_e_sanitiza():
@@ -38,7 +39,7 @@ def test_respeita_o_prazo_e_sanitiza():
 
 def test_sem_desvio_devolve_plano_vazio_com_caveat():
     limpa = build_plan([], weeks=6)
-    assert limpa["weeks"] == [] and "mantenha" in limpa["caveat"].lower()
+    assert limpa["phases"] == [] and "mantenha" in limpa["caveat"].lower()
 
 
 def test_block_start_progride_com_a_duracao():
@@ -55,14 +56,14 @@ def test_plan_from_metrics_nao_gera_sobre_captura_ruim():
     from analytics.training_plan import plan_from_metrics
     ruim = plan_from_metrics({"cadence_spm": 152.0, "reliable": False,
                               "quality_note": "refilme"}, weeks=6)
-    assert ruim.get("unreliable") and ruim["weeks"] == []
+    assert ruim.get("unreliable") and ruim["phases"] == []
 
 
 def test_plan_from_metrics_gera_com_dado_bom():
     from analytics.training_plan import plan_from_metrics
     ok = plan_from_metrics({"cadence_spm": 152.0, "pelvic_drop_deg": 16.0,
                             "knee_valgus_deg": 14.0, "reliable": True}, weeks=6)
-    assert ok["duration_weeks"] == 6 and ok["weeks"] and ok["intro"]
+    assert ok["duration_weeks"] == 6 and ok["phases"] and ok["intro"]
 
 
 def test_plan_service_persiste_e_lista():

@@ -56,6 +56,12 @@ Qualidade de movimento por exercício · carga muscular estimada via aceleraçã
 
 ### 0.3 Gerador de plano adaptativo (feature de produto PLANEJADA — ainda não existe)
 
+> ⚠️ **Obsoleto pós-pivot:** este gerador estilo Runna depende de ACWR/prontidão, fitness,
+> durabilidade e previsão de prova — TUDO da stack `.FIT` **removida no pivot**. Não é atacável no
+> produto de vídeo sem reconstruir isso. O plano corretivo que o produto de vídeo TEM hoje
+> (`analytics/training_plan.py`, faseado por desvio biomecânico) é OUTRA coisa — corrige a FORMA,
+> não prescreve um calendário de treino rumo a uma prova. Mantido como visão futura.
+
 Hoje o sistema **analisa o passado** (treinos ocorridos). O **gerador de plano** é o inverso:
 **prescreve o futuro** — um plano de treino semanal/mensal rumo a uma **prova-alvo** (ex: meia
 maratona em 8 semanas), estilo Runna. É um **módulo NOVO de backend**, não algo pronto pra plugar.

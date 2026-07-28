@@ -10,8 +10,11 @@ devolve um plano corretivo prescritivo com fontes científicas. 100% no aparelho
 
 ## ✅ PRONTO (verificado ponta-a-ponta)
 O fluxo real roda: **registrar → login → upload de vídeo → processa em background → métricas +
-plano corretivo citado**. Rodado E2E via API real (26/jul), coach respondeu em ~24s com 3 ações
-prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
+plano corretivo citado**. Rodado E2E via API real (26–27/jul), coach responde em ~24s com ações
+prescritas + fontes PMC + faixa de risco + perfil de lesão. A 2ª tela (**Minhas Lesões**) também foi
+testada E2E (27/jul): taxonomia, registro OSTRC c/ severity, listagem, e classificação texto→
+diagnóstico (LLM) — todos OK, contrato frontend↔API batendo. **Robustez:** o DuckDB faz CHECKPOINT
+no shutdown (WAL não corrompe mais o boot em restart) e um hook pre-push replica o CI em venv limpo.
 
 - **Motor de pose (Rust `stride_vision`)** — **2 motores:** BlazePose GHUM (Apache, default de
   produto, pés+3D) + YOLO11 (régua da avaliação pareada). RTMPose/Halpe26 foi **removido** (pesos
@@ -28,6 +31,9 @@ prescritas + 6 fontes PMC + faixa de risco + perfil de lesão.
   anti-alucinação, fontes citáveis (PMC/DOI). Eval estilo RAGAS. Streaming SSE.
 - **Risco de lesão** — score v1 aterrado na literatura (faixa relativa, nunca "X%") + perfil por
   diagnóstico (fratura de estresse, fascite, canelite, Aquiles, patelofemoral, banda IT).
+- **Retrospecto de lesão** — na tela de Lesões, cruza a lesão com os SINAIS biomecânicos que a
+  literatura liga a ela, nas análises de forma ANTES do onset (face-validity, associação citada,
+  não prova de causa). É o ciclo do produto fechando: forma medida ↔ outcome real.
 - **Taxonomia + log de lesão** — vocabulário controlado + log OSTRC append-only (backend + frontend).
 - **Frontend web** — 2 telas (Análise de Forma, Minhas Lesões) + Landing + Login; consome a API.
 - **Auth** — registrar/login/sessão + convidado anônimo por capability.

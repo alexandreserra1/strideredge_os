@@ -8,6 +8,7 @@ COM fonte. Reusa a mesma disciplina do veredito: `GroundingGuard` (sem número i
 """
 
 import re
+import unicodedata
 from typing import Callable, Optional
 
 from core.framework.interfaces import BaseLLMClient, BaseRetriever
@@ -16,6 +17,7 @@ from analytics.biomechanics import ideal_targets, diagnose
 from analytics.injury_risk import assess as assess_risk
 from analytics.injury_quality import sanitize_metrics
 from analytics.exercises import for_factors
+from analytics.injury_taxonomy import DIAGNOSES
 
 # Cada fator desviado -> domínios do RAG a consultar (roteamento; evita bleed de calçado/nutrição
 # numa query de cadência). Corretivo puxa biomecânica (o fato) + força/treino (a correção). Reusa
@@ -106,6 +108,68 @@ class FormCoach:
         return out
 
     @staticmethod
+    def _norm(text: str) -> str:
+        """Minúsculas + sem acento — pra casar 'cadência' com 'cadencia' de forma robusta."""
+        nfkd = unicodedata.normalize("NFKD", text or "")
+        return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+    @classmethod
+    def _match_action(cls, actions: list, dev: dict) -> Optional[int]:
+        """Índice da ação que fala DESTE desvio. Casa pelas palavras distintivas do rótulo
+        (ex.: 'cadência' -> a ação que diz 'cadencia'). Escolhe a de maior sobreposição."""
+        kws = [w for w in cls._norm(dev.get("label", "")).split() if len(w) >= 4]
+        if not kws:
+            return None
+        best, best_hits = None, 0
+        for i, a in enumerate(actions):
+            na = cls._norm(a)
+            hits = sum(1 for w in kws if w in na)
+            if hits > best_hits:
+                best, best_hits = i, hits
+        return best
+
+    @classmethod
+    def _mentions_method(cls, action: str, howto: str) -> bool:
+        """A ação já contém o método de medir? Mede a sobreposição das palavras significativas
+        do how_to_measure — sem exigir a frase literal (o LLM parafraseia). Âncora >= 35%."""
+        na = cls._norm(action)
+        sig = [w for w in cls._norm(howto).split() if len(w) > 3]
+        if not sig:
+            return True
+        hits = sum(1 for w in sig if w in na)
+        return hits / len(sig) >= 0.35
+
+    @classmethod
+    def _ensure_measure_method(cls, actions: list, devs: list) -> list:
+        """PÓS-PROCESSAMENTO determinístico (§11/§12): garante que toda ação de um desvio com
+        'como medir sozinho' contenha ESSE método — venha o LLM como vier. Se a ação já traz o
+        método (paráfrase), não duplica; senão anexa o texto pronto de biomechanics.MEASURE_HOWTO.
+        Genérico p/ toda métrica; a cadência é só o caso mais crítico. Não inventa número nem
+        afrouxa o grounding — só materializa o método que já está no código.
+
+        1 método por ação: se dois desvios casarem com a MESMA ação (raro — uma frase que menciona
+        duas métricas), só o primeiro anexa o método; senão a ação viraria uma frase corrida com
+        dois 'como medir' emendados."""
+        out = list(actions)
+        used = set()                              # índices de ação que já receberam um método
+        for d in devs:
+            howto = d.get("how_to_measure")
+            if not howto:
+                continue                          # métrica sem método pronto: não mexe
+            idx = cls._match_action(out, d)
+            if idx is None or idx in used:
+                continue                          # sem ação p/ o desvio, ou ação já tem 1 método
+            if cls._mentions_method(out[idx], howto):
+                used.add(idx)                     # LLM já incluiu: conta como método presente
+                continue                          # já mencionou (não duplica)
+            base = out[idx].rstrip()
+            if base and base[-1] not in ".!?":
+                base += "."
+            out[idx] = f"{base} {howto}"          # anexa o método pronto, de forma natural
+            used.add(idx)
+        return out
+
+    @staticmethod
     def _uncertain_entries(targets: dict, low_quality: list, nulled: list) -> list:
         """Unifica as métricas 'não avaliáveis' num formato único pro frontend: baixa confiança de
         medição + valor implausível anulado. Cada uma: {metric, label, reason}. Sem duplicar."""
@@ -125,6 +189,28 @@ class FormCoach:
             out.append({"metric": m, "label": label,
                         "reason": "valor implausível — provável artefato de captura"})
         return out
+
+    @staticmethod
+    def _recurrence_watch(devs: list, history: Optional[dict]) -> list:
+        """PREVENÇÃO DE RECAÍDA (loop pra frente): pra cada lesão que o atleta JÁ TEVE, se a forma
+        ATUAL ainda mostra um fator que a literatura liga a ela, alerta pra priorizar. É a
+        contraparte do retrospecto (que olha o passado): usa o histórico de lesão — 'preditor #1' —
+        pra ligar o desvio de hoje ao que já machucou. Honesto: associação citada, não recidiva
+        garantida. Vazio sem histórico (convidado) ou sem desvio coincidente."""
+        diagnoses = (history or {}).get("diagnoses", [])
+        if not diagnoses:
+            return []
+        deviated = {d["metric"]: d["label"] for d in devs}
+        watch = []
+        for dx in diagnoses:
+            info = DIAGNOSES.get(dx)
+            if not info or not info.get("source"):
+                continue                       # só lesão mapeada à literatura
+            hits = [deviated[f] for f in info["factors"] if f in deviated]
+            if hits:
+                watch.append({"diagnosis": dx, "label": info["label"],
+                              "source": info["source"], "factors": hits})
+        return watch
 
     @staticmethod
     def _predisposed(by_injury: list) -> Optional[dict]:
@@ -199,6 +285,8 @@ class FormCoach:
         # pra avaliar (num app de lesão, "não medido" != "está ótimo"). Vira selo na UI.
         uncertain = self._uncertain_entries(targets, getattr(devs, "low_quality_metrics", []), nulled)
         risk = self._assess_risk(metrics, profile, history)  # prior OU treinado (mesma interface)
+        # Prevenção de recaída: desvio de hoje que coincide com lesão que o atleta já teve (loop pra frente).
+        recurrence = self._recurrence_watch(devs, history)
 
         if not devs:
             # Sem desvio NAS MÉTRICAS AVALIÁVEIS. Se algo ficou sem avaliar, o veredito NÃO pode
@@ -214,7 +302,7 @@ class FormCoach:
             return {
                 "verdict": verdict,
                 "actions": [], "citations": [], "targets": targets, "deviations": [], "risk": risk,
-                "uncertain_metrics": uncertain,
+                "uncertain_metrics": uncertain, "recurrence_watch": [],
             }
 
         # Roteamento: consulta só os domínios relevantes aos desvios (evita bleed) + biblioteca
@@ -234,13 +322,14 @@ class FormCoach:
 
         return {
             "verdict": text,
-            "actions": self._drills(text),
+            "actions": self._ensure_measure_method(self._drills(text), devs),
             "citations": self._cited(text, hits, lib),
             "targets": targets,
             "deviations": devs,
             "risk": risk,
             "injury_profile": risk.get("by_injury", []),   # risco decomposto POR LESAO (aditivo)
             "uncertain_metrics": uncertain,   # suprimidas por baixa confiabilidade — selo na UI
+            "recurrence_watch": recurrence,   # lesão prévia cujo fator ainda aparece — prevenir recaída
         }
 
     @staticmethod

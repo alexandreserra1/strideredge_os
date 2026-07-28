@@ -434,6 +434,22 @@ export default function FormAnalysisCard({ modality = 'run', view = 'lateral' }:
                   <InfoHint text="Compara suas métricas com as faixas ideais (ajustadas ao seu perfil) e recomenda exercícios amparados por estudos — cada um com a fonte citada." />
                 </h4>
 
+                {/* Prevenção de recaída — lesão que você JÁ teve cujo fator ainda aparece na forma de hoje */}
+                {(plan.recurrence_watch?.length ?? 0) > 0 && (
+                  <div className="rounded-xl border border-accent-red/30 bg-accent-red/[0.06] p-3">
+                    <p className="text-xs font-semibold text-accent-red flex items-center gap-1.5">
+                      <AlertTriangle size={14} /> Atenção à recaída
+                    </p>
+                    {(plan.recurrence_watch ?? []).map(w => (
+                      <p key={w.diagnosis} className="text-[11px] text-text-secondary mt-1.5 leading-snug">
+                        Você já registrou <span className="font-medium text-text-primary">{w.label}</span>, e
+                        sua forma de hoje ainda mostra {w.factors.join(', ')} — que a ciência liga a essa lesão.
+                        Priorize isso pra não voltar. <span title={w.source} className="text-text-muted">📚 {w.source}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 {/* Faixa de risco de lesão — RELATIVA, aterrada na literatura (não é probabilidade) */}
                 {plan.risk && (() => {
                   const band = RISK_COLOR[plan.risk.risk_band] ?? '#94A3B8'  // banda desconhecida -> cinza neutro

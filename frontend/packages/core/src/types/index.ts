@@ -97,6 +97,14 @@ export interface UncertainMetric {
   reason?: string      // por que não deu pra avaliar (baixa confiança | valor implausível)
 }
 
+// Prevenção de recaída: lesão que o atleta JÁ teve cujo fator ainda aparece na forma atual.
+export interface RecurrenceWatch {
+  diagnosis: string
+  label: string
+  source: string
+  factors: string[]      // rótulos dos fatores ainda desviados ligados a essa lesão
+}
+
 export interface FormPlan {
   analysis_id: string
   verdict: string
@@ -107,29 +115,32 @@ export interface FormPlan {
   // métricas que o coach NÃO pôde avaliar com confiança (baixa confiabilidade OU valor
   // implausível anulado). A métrica CONTINUA aparecendo na tela, só ganha um selo com o motivo.
   uncertain_metrics?: UncertainMetric[]
+  recurrence_watch?: RecurrenceWatch[]   // lesão prévia cujo fator ainda aparece — prevenir recaída
 }
 
-// Plano corretivo multi-semana (analytics/training_plan.py) — faseado e citado
-export interface PlanSession {
+// Plano corretivo faseado (analytics/training_plan.py) — POR FASE, não por semana (explicativo, sem
+// repetir o exercício toda semana). Cada fase: título + janela de semanas + porquê + exercícios.
+export interface PlanExercise {
   exercise: string
-  phase: string          // 'ativacao' | 'mobilidade' | 'forca' | 'drill'
-  dose: string
+  how?: string           // como executar + se auto-conferir
+  progression?: string   // o que muda ao longo das semanas (dose progressiva)
   source: string
-  how?: string           // como executar + se auto-conferir (plano explicativo)
 }
 
-export interface PlanWeek {
-  n: number
-  bloco: string          // 'base' | 'forca' | 'drill_de_marcha'
+export interface PlanPhase {
+  key: string            // 'base' | 'forca' | 'drill_de_marcha'
+  title: string          // rótulo humano (ex.: 'Força — fortalecer')
+  weeks_label: string    // ex.: 'Semanas 1–3'
+  why: string            // por que esta fase, nesta ordem
   focus: string
-  sessions: PlanSession[]
+  exercises: PlanExercise[]
 }
 
 export interface CorrectivePlan {
   duration_weeks: number
   priority: { metric: string; label: string }[]
   intro?: string
-  weeks: PlanWeek[]
+  phases: PlanPhase[]
   caveat: string
   unreliable?: boolean   // captura ruim -> sem plano, só o aviso de refilmar
   cover?: string         // capa humana opcional (LLM)
@@ -193,6 +204,28 @@ export interface OstrcAnswers {
   q_volume?: number | null
   q_performance?: number | null
   q_pain?: number | null
+}
+
+// Retrospecto: os sinais biomecânicos que a literatura liga a este diagnóstico, cruzados com as
+// análises de forma do atleta ANTES do onset. Associação citada, não prova de causa.
+export interface RetrospectiveSignal {
+  metric: string
+  label: string
+  present: boolean | null   // true = sinal apareceu antes; false = não; null = não medido
+  value?: number
+  unit?: string
+  ideal?: string
+  note?: string
+}
+export interface InjuryRetrospective {
+  status: 'ok' | 'no_history' | 'no_diagnosis' | 'no_onset' | 'unmapped'
+  diagnosis?: string
+  diagnosis_label?: string
+  source?: string
+  window_weeks?: number
+  analyses_before: number
+  signals: RetrospectiveSignal[]
+  caveat: string
 }
 
 export interface InjuryReport extends OstrcAnswers {

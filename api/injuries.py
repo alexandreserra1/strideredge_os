@@ -67,6 +67,25 @@ class InjuryService:
             [injury_id, user_id]).fetchone()
         return self._row(row) if row else None
 
+    def retrospective(self, injury_id: str, user_id: str) -> Optional[dict]:
+        """Cruza a lesão com o histórico de forma do atleta ANTES do onset (face-validity da
+        literatura contra o outcome real). Recurso do atleta (ownership em toda leitura). Sem
+        diagnóstico ou sem data → status honesto, nunca inventa. Reusa analytics.injury_dataset."""
+        from datetime import date
+        from analytics.injury_dataset import injury_retrospective
+        report = self.get_for_user(injury_id, user_id)
+        if not report:
+            return None
+        if not report.get("diagnosis"):
+            return {"status": "no_diagnosis", "signals": [], "analyses_before": 0,
+                    "caveat": "Registre o diagnóstico (ou use a classificação) pra eu cruzar com a "
+                              "sua forma."}
+        onset = report.get("onset_date")
+        if not onset:
+            return {"status": "no_onset", "signals": [], "analyses_before": 0,
+                    "caveat": "Sem a data de início não dá pra olhar as análises do período anterior."}
+        return injury_retrospective(user_id, report["diagnosis"], date.fromisoformat(str(onset)[:10]))
+
     def list(self, user_id: str) -> list:
         rows = get_connection().execute(
             f"SELECT {_COLS} FROM injury_reports WHERE user_id = ? ORDER BY onset_date DESC NULLS LAST",

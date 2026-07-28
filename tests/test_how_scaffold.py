@@ -31,9 +31,9 @@ def test_diagnose_anexa_how_to_measure_no_desvio():
 def test_sessoes_do_plano_carregam_o_como_fazer():
     # plano a partir de um fator real -> toda sessão traz o 'how' do exercício
     plan = build_plan([{"metric": "cadence_spm", "label": "cadência"}], weeks=6)
-    sessions = [s for w in plan["weeks"] for s in w["sessions"]]
-    assert sessions, "plano sem sessões"
-    assert all(s.get("how", "").strip() for s in sessions), "sessão sem 'como fazer'"
+    exercicios = [ex for ph in plan["phases"] for ex in ph["exercises"]]
+    assert exercicios, "plano sem exercícios"
+    assert all(ex.get("how", "").strip() for ex in exercicios), "exercício sem 'como fazer'"
 
 
 def test_for_factors_traz_exercicio_com_how_citado():

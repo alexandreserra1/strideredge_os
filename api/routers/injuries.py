@@ -62,3 +62,15 @@ def classify_injury(injury_id: str, request: Request,
     if report is None:
         raise HTTPException(status_code=404, detail="lesão não encontrada")
     return report
+
+
+@router.get("/{injury_id}/retrospective")
+def injury_retrospective(injury_id: str, request: Request,
+                         auth: AuthService = Depends(get_auth_service),
+                         injuries: InjuryService = Depends(get_injury_service)):
+    """Retrospecto honesto: cruza a lesão com os SINAIS biomecânicos que a literatura liga a ela,
+    nas análises de forma do atleta ANTES do onset. Associação, não prova de causa."""
+    out = injuries.retrospective(injury_id, user_id(request, auth))
+    if out is None:
+        raise HTTPException(status_code=404, detail="lesão não encontrada")
+    return out
